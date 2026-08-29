@@ -2409,8 +2409,9 @@ function collectNarrativeHistory() {
   for (const child of children) {
     if (child.classList.contains('turn-info')) {
       blocks.push({ type: 'turn-info', text: child.textContent });
-    } else if (child.classList.contains('narrative-block')) {
-      blocks.push({ type: 'narrative', html: child.innerHTML });
+    } else if (child.classList.contains('narrative-area')) {
+      const textEl = child.querySelector('.narrative-text');
+      blocks.push({ type: 'narrative', html: textEl ? textEl.innerHTML : '' });
     } else if (child.classList.contains('ink-divider')) {
       blocks.push({ type: 'divider' });
     }
@@ -2519,6 +2520,21 @@ function applySnapshot(save) {
       else if (block.type === 'narrative') gameContainer.appendChild(renderNarrative(block.html, false));
       else if (block.type === 'divider') addDivider();
     }
+       // 添加"继续"按钮，让玩家触发下一回合
+    addDivider();
+    const resumeBtn = document.createElement('button');
+    resumeBtn.className = 'choice-btn';
+    resumeBtn.textContent = '继续前行';
+    resumeBtn.style.margin = '1rem auto';
+    resumeBtn.style.display = 'block';
+    resumeBtn.addEventListener('click', () => {
+      resumeBtn.remove();
+      const yearName = getYearName(GameState.year);
+      const monthNames = ['正','二','三','四','五','六','七','八','九','十','冬','腊'];
+      const context = `玩家选择继续。当前状态：第${GameState.turn}回，${yearName}${monthNames[GameState.month-1]}月。角色：${GameState.character.name}，${GameState.character.background}出身，官职${GameState.character.position}。请根据之前的剧情，生成下一回合的叙事和新选项。`;
+      processAITurn(context);
+    });
+    gameContainer.appendChild(resumeBtn);
     scrollToBottom();
   }
 }
