@@ -1,0 +1,16 @@
+{
+  "name": "moshi-daming",
+  "version": "1.0.0",
+  "description": "墨史·大明 — 洪武年间文字冒险游戏",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

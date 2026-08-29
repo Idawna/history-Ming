@@ -1,0 +1,2476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f5f0e8">
+<meta name="description" content="墨史·大明 — 洪武年间文字冒险游戏">
+<meta name="apple-mobile-web-app-title" content="墨史·大明">
+<title>墨史 · 大明</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ========== RESET & BASE ========== */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --paper:       #f5f0e8;
+  --paper-light: #faf7f2;
+  --ink:         #2c2c2c;
+  --ink-light:   #5a5a5a;
+  --ink-faint:   #9a9590;
+  --cinnabar:    #c0392b;
+  --cinnabar-dark: #a5311f;
+  --cinnabar-glow: rgba(192, 57, 43, 0.15);
+  --seal-red:    #b8372b;
+  --gold:        #b8860b;
+  --huaixi:      #c0392b;
+  --zhedong:     #2e6da4;
+  --donggong:    #27874a;
+  --zhuwang:     #7b4fa0;
+  --jinchen:     #b8860b;
+  --scroll-bg:   #ede8dd;
+  --shadow:      rgba(44, 44, 44, 0.08);
+  --transition:  0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html { font-size: 16px; scroll-behavior: smooth; }
+
+body {
+  font-family: 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+  background-color: var(--paper);
+  /* subtle rice-paper texture */
+  background-image:
+    radial-gradient(ellipse at 20% 50%, rgba(210,200,180,0.15) 0%, transparent 70%),
+    radial-gradient(ellipse at 80% 20%, rgba(200,190,170,0.1) 0%, transparent 60%);
+  color: var(--ink);
+  line-height: 1.85;
+  min-height: 100vh;
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+/* ========== SCROLLBAR ========== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--ink-faint); border-radius: 3px; }
+
+/* ========== LAYOUT ========== */
+#app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 20px 80px;
+  padding-top: max(24px, env(safe-area-inset-top));
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
+  padding-bottom: max(80px, env(safe-area-inset-bottom));
+  position: relative;
+}
+
+/* ========== HEADER ========== */
+.header {
+  text-align: center;
+  padding: 40px 0 30px;
+  position: relative;
+}
+
+.header-title {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.header-subtitle {
+  font-size: 0.85rem;
+  font-weight: 300;
+  color: var(--ink-faint);
+  letter-spacing: 0.15em;
+}
+
+.header-line {
+  width: 120px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ink-faint), transparent);
+  margin: 20px auto 0;
+}
+
+/* ========== PACING EFFECTS ========== */
+.pacing-container {
+  transition: all 0.6s ease;
+  border-left: 3px solid transparent;
+  padding-left: 0;
+  border-radius: 0;
+}
+
+.pacing-紧迫 .pacing-container {
+  border-left-color: var(--cinnabar);
+  padding-left: 16px;
+  animation: urgentPulse 2s ease-in-out infinite;
+}
+
+.pacing-缓冲 {
+  background-color: #f0f5e8;
+}
+.pacing-缓冲 .pacing-container {
+  padding: 8px 0;
+}
+
+.pacing-反转 {
+  position: relative;
+}
+.pacing-反转::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--cinnabar), #e74c3c, var(--cinnabar));
+  animation: reversalGlow 1.5s ease-in-out infinite;
+}
+
+.pacing-沉淀 {
+  filter: saturate(0.6);
+}
+
+@keyframes urgentPulse {
+  0%, 100% { border-left-color: var(--cinnabar); }
+  50% { border-left-color: rgba(192, 57, 43, 0.3); }
+}
+
+@keyframes reversalGlow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ========== NARRATIVE AREA ========== */
+.narrative-area {
+  padding: 24px 0;
+  min-height: 200px;
+}
+
+.narrative-text {
+  font-size: 1.05rem;
+  font-weight: 400;
+  line-height: 2;
+  text-align: justify;
+  color: var(--ink);
+  opacity: 0;
+  transform: translateY(12px);
+  animation: fadeInUp 0.8s ease forwards;
+}
+
+.narrative-text p {
+  margin-bottom: 1.2em;
+  text-indent: 2em;
+}
+
+.narrative-text p:first-child {
+  text-indent: 0;
+}
+
+.narrative-text .year-mark {
+  display: block;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--ink-faint);
+  letter-spacing: 0.2em;
+  margin-bottom: 1.5em;
+}
+
+/* --- 驳回叙事（行动不可行） --- */
+.narrative-text.rejected {
+  position: relative;
+  padding: 20px 20px 20px 24px;
+  background: linear-gradient(135deg, rgba(192,57,43,0.04) 0%, rgba(192,57,43,0.02) 100%);
+  border-left: 3px solid var(--cinnabar);
+  border-radius: 4px;
+  font-style: italic;
+  color: var(--ink-light);
+}
+
+.narrative-text.rejected::before {
+  content: '此路不通';
+  display: block;
+  font-style: normal;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  color: var(--cinnabar);
+  margin-bottom: 12px;
+  text-indent: 0;
+  opacity: 0.7;
+}
+
+.narrative-text.rejected p {
+  text-indent: 2em;
+  margin-bottom: 1em;
+}
+
+.narrative-text.rejected p:first-child {
+  text-indent: 0;
+}
+
+/* 驳回回合的选项区域提示 */
+.choices-area.rejected-hint::before {
+  content: '请重新斟酌你的行动';
+  display: block;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+  letter-spacing: 0.15em;
+  margin-bottom: 12px;
+  font-style: italic;
+}
+
+/* --- 流式输出区域 --- */
+.stream-area {
+  padding: 24px 0;
+  min-height: 120px;
+}
+
+.stream-text {
+  font-size: 1.05rem;
+  font-weight: 400;
+  line-height: 2;
+  text-align: justify;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  opacity: 0;
+  animation: fadeInUp 0.4s ease forwards;
+}
+
+.stream-text .stream-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1.1em;
+  background: var(--cinnabar);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 0.8s step-end infinite;
+  border-radius: 1px;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes fadeInUp {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========== INK DIVIDER ========== */
+.ink-divider {
+  width: 100%;
+  height: 20px;
+  margin: 8px 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ink-divider::before {
+  content: '';
+  width: 60%;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--ink-faint) 15%,
+    var(--ink-light) 50%,
+    var(--ink-faint) 85%,
+    transparent 100%
+  );
+  opacity: 0.5;
+}
+
+.ink-divider::after {
+  content: '◆';
+  position: absolute;
+  font-size: 8px;
+  color: var(--ink-faint);
+  background: var(--paper);
+  padding: 0 12px;
+}
+
+/* ========== CHOICES AREA ========== */
+.choices-area {
+  padding: 16px 0 24px;
+}
+
+.choice-btn {
+  display: block;
+  width: 100%;
+  padding: 16px 24px;
+  margin-bottom: 12px;
+  background: var(--scroll-bg);
+  border: 1px solid rgba(44, 44, 44, 0.12);
+  border-radius: 4px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  font-weight: 400;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  position: relative;
+  transition: all var(--transition);
+  opacity: 0;
+  transform: translateX(-10px);
+  line-height: 1.6;
+  /* bamboo scroll texture */
+  background-image: linear-gradient(
+    90deg,
+    rgba(44,44,44,0.02) 0px,
+    transparent 1px,
+    transparent 14px,
+    rgba(44,44,44,0.015) 15px
+  );
+  background-size: 15px 100%;
+}
+
+.choice-btn:nth-child(1) { animation: slideInChoice 0.5s 0.3s ease forwards; }
+.choice-btn:nth-child(2) { animation: slideInChoice 0.5s 0.45s ease forwards; }
+.choice-btn:nth-child(3) { animation: slideInChoice 0.5s 0.6s ease forwards; }
+.choice-btn:nth-child(4) { animation: slideInChoice 0.5s 0.75s ease forwards; }
+
+@keyframes slideInChoice {
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.choice-btn:hover {
+  background-color: #e8e0d2;
+  border-color: rgba(44, 44, 44, 0.25);
+  transform: translateX(4px);
+  box-shadow: -3px 0 0 var(--cinnabar);
+}
+
+.choice-btn:active {
+  transform: translateX(2px);
+  background-color: #ddd5c5;
+}
+
+.choice-btn .choice-index {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  text-align: center;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.choice-btn .choice-text {
+  flex: 1;
+}
+
+.choice-btn.free-action {
+  border-style: dashed;
+  background: transparent;
+  color: var(--ink-light);
+  font-style: italic;
+}
+
+.choice-btn.free-action:hover {
+  background: rgba(192, 57, 43, 0.04);
+  border-color: var(--cinnabar);
+  color: var(--cinnabar);
+  box-shadow: -3px 0 0 var(--cinnabar);
+}
+
+/* ========== FREE ACTION INPUT ========== */
+.free-action-input-area {
+  display: none;
+  margin-top: 8px;
+  margin-bottom: 16px;
+  animation: fadeInUp 0.3s ease forwards;
+}
+
+.free-action-input-area.active {
+  display: flex;
+  gap: 8px;
+}
+
+.free-action-input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid rgba(44, 44, 44, 0.2);
+  border-radius: 4px;
+  background: var(--paper-light);
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  color: var(--ink);
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.free-action-input:focus {
+  border-color: var(--cinnabar);
+  box-shadow: 0 0 0 2px var(--cinnabar-glow);
+}
+
+.free-action-input::placeholder {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+.send-btn {
+  padding: 12px 20px;
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  border-radius: 4px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.send-btn:hover {
+  background: var(--cinnabar);
+}
+
+/* ========== STATUS PANEL ========== */
+.status-panel {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 720px;
+  z-index: 100;
+  transition: all 0.4s ease;
+}
+
+.status-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background: rgba(44, 44, 44, 0.92);
+  backdrop-filter: blur(12px);
+  color: var(--paper);
+  font-size: 0.82rem;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  user-select: none;
+  transition: all var(--transition);
+}
+
+.status-summary:hover {
+  background: rgba(44, 44, 44, 0.96);
+}
+
+.status-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-pacing-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  background: rgba(255,255,255,0.1);
+}
+
+.status-toggle {
+  font-size: 0.9rem;
+  transition: transform 0.3s ease;
+}
+
+.status-panel.expanded .status-toggle {
+  transform: rotate(180deg);
+}
+
+.status-detail {
+  background: rgba(44, 44, 44, 0.95);
+  backdrop-filter: blur(16px);
+  padding: 0 20px;
+  max-height: 0;
+  overflow: hidden;
+  transition: all 0.4s ease;
+}
+
+.status-panel.expanded .status-detail {
+  max-height: 420px;
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+}
+
+/* Status content */
+.status-section {
+  margin-bottom: 16px;
+}
+
+.status-section:last-child {
+  margin-bottom: 0;
+}
+
+.status-section-title {
+  font-size: 0.72rem;
+  font-weight: 300;
+  color: rgba(245, 240, 232, 0.5);
+  letter-spacing: 0.2em;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.attr-row, .faction-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 0.82rem;
+  color: rgba(245, 240, 232, 0.85);
+}
+
+.attr-label, .faction-label {
+  width: 48px;
+  flex-shrink: 0;
+  font-weight: 400;
+}
+
+.attr-bar-wrap, .faction-bar-wrap {
+  flex: 1;
+  height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  margin: 0 10px;
+  overflow: hidden;
+  position: relative;
+}
+
+.attr-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.attr-bar.power   { background: linear-gradient(90deg, #e74c3c, #c0392b); }
+.attr-bar.people  { background: linear-gradient(90deg, #f39c12, #e67e22); }
+.attr-bar.wisdom  { background: linear-gradient(90deg, #3498db, #2980b9); }
+.attr-bar.bond    { background: linear-gradient(90deg, #2ecc71, #27ae60); }
+.attr-bar.fame    { background: linear-gradient(90deg, #9b59b6, #8e44ad); }
+
+.attr-value {
+  width: 28px;
+  text-align: right;
+  font-size: 0.78rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Faction bar - dual direction */
+.faction-bar-container {
+  flex: 1;
+  height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  margin: 0 10px;
+  position: relative;
+  overflow: visible;
+}
+
+.faction-bar-center {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255,255,255,0.2);
+  z-index: 1;
+}
+
+.faction-bar-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 3px;
+  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.faction-value {
+  width: 32px;
+  text-align: right;
+  font-size: 0.78rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Emperor section */
+.emperor-section {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(184, 134, 11, 0.08);
+  border: 1px solid rgba(184, 134, 11, 0.15);
+  border-radius: 6px;
+}
+
+.emperor-label {
+  font-size: 0.85rem;
+  color: var(--gold);
+  margin-right: 12px;
+  white-space: nowrap;
+}
+
+.emperor-bar-wrap {
+  flex: 1;
+  height: 8px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+  position: relative;
+  overflow: visible;
+}
+
+.emperor-bar-center {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255,255,255,0.2);
+  z-index: 1;
+}
+
+.emperor-bar-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #b8860b, #daa520);
+  border-radius: 4px;
+  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.emperor-value {
+  width: 36px;
+  text-align: right;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ========== FLOATING CHANGE NOTIFICATIONS ========== */
+.floating-changes {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.float-notify {
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: 'Noto Serif SC', serif;
+  background: rgba(44, 44, 44, 0.88);
+  color: var(--paper);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transform: translateY(-10px) translateX(10px);
+  animation: floatIn 0.4s ease forwards, floatOut 0.4s 2s ease forwards;
+  white-space: nowrap;
+}
+
+.float-notify.positive { border-left: 3px solid #2ecc71; }
+.float-notify.negative { border-left: 3px solid #e74c3c; }
+.float-notify.neutral  { border-left: 3px solid var(--ink-faint); }
+
+@keyframes floatIn {
+  to { opacity: 1; transform: translateY(0) translateX(0); }
+}
+
+@keyframes floatOut {
+  to { opacity: 0; transform: translateY(-20px) translateX(10px); }
+}
+
+/* ========== INPUT SCREENS ========== */
+.input-screen {
+  text-align: center;
+  padding: 40px 0;
+}
+
+.input-screen h2 {
+  font-size: 1.2rem;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: var(--ink);
+}
+
+.input-screen .subtitle {
+  font-size: 0.88rem;
+  color: var(--ink-light);
+  margin-bottom: 28px;
+  font-weight: 300;
+}
+
+.name-input {
+  display: block;
+  width: 240px;
+  margin: 0 auto 16px;
+  padding: 12px 20px;
+  border: none;
+  border-bottom: 2px solid var(--ink);
+  background: transparent;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.3rem;
+  text-align: center;
+  color: var(--ink);
+  outline: none;
+  transition: border-color var(--transition);
+  letter-spacing: 0.1em;
+}
+
+.name-input:focus {
+  border-bottom-color: var(--cinnabar);
+}
+
+.name-input::placeholder {
+  color: var(--ink-faint);
+  font-weight: 300;
+  letter-spacing: 0.15em;
+}
+
+.confirm-btn {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 10px 36px;
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  border-radius: 3px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all var(--transition);
+  letter-spacing: 0.1em;
+}
+
+.confirm-btn:hover {
+  background: var(--cinnabar);
+}
+
+.random-btn {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 10px 28px;
+  background: transparent;
+  color: var(--ink-light);
+  border: 1px solid var(--ink-faint);
+  border-radius: 3px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all var(--transition);
+  letter-spacing: 0.08em;
+}
+
+.random-btn:hover {
+  border-color: var(--cinnabar);
+  color: var(--cinnabar);
+}
+
+/* ========== LOADING DOTS ========== */
+.loading-dots {
+  display: inline-flex;
+  gap: 4px;
+  padding: 16px 0;
+}
+
+.loading-dots span {
+  width: 6px;
+  height: 6px;
+  background: var(--ink-faint);
+  border-radius: 50%;
+  animation: dotPulse 1.4s ease-in-out infinite;
+}
+.loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotPulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.2); }
+}
+
+/* ========== MENU BUTTONS ========== */
+.menu-btns {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  gap: 8px;
+  z-index: 50;
+}
+
+.menu-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--ink-faint);
+  background: rgba(245, 240, 232, 0.9);
+  backdrop-filter: blur(4px);
+  color: var(--ink-light);
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  font-family: 'Noto Serif SC', serif;
+}
+
+.menu-btn:hover {
+  border-color: var(--cinnabar);
+  color: var(--cinnabar);
+  background: rgba(245, 240, 232, 1);
+}
+
+/* ========== SAVE/LOAD MODAL ========== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(44, 44, 44, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-box {
+  background: var(--paper-light);
+  border: 1px solid var(--ink-faint);
+  border-radius: 6px;
+  width: 90%;
+  max-width: 480px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 28px 24px;
+  box-shadow: 0 12px 40px rgba(44,44,44,0.2);
+  transform: translateY(20px);
+  transition: transform 0.3s ease;
+}
+
+.modal-overlay.active .modal-box {
+  transform: translateY(0);
+}
+
+.modal-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  text-align: center;
+  letter-spacing: 0.2em;
+  margin-bottom: 4px;
+  color: var(--ink);
+}
+
+.modal-subtitle {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+  margin-bottom: 24px;
+  letter-spacing: 0.08em;
+}
+
+.save-slot {
+  border: 1px solid #d8d2c8;
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 12px;
+  background: var(--paper);
+  transition: all var(--transition);
+  cursor: pointer;
+}
+
+.save-slot:hover {
+  border-color: var(--cinnabar);
+  box-shadow: 0 2px 8px rgba(192,57,43,0.1);
+}
+
+.save-slot.empty {
+  border-style: dashed;
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 0.9rem;
+  padding: 24px 16px;
+}
+
+.slot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.slot-num {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--cinnabar);
+  letter-spacing: 0.1em;
+}
+
+.slot-time {
+  font-size: 0.75rem;
+  color: var(--ink-faint);
+}
+
+.slot-info {
+  font-size: 0.85rem;
+  color: var(--ink-light);
+  line-height: 1.7;
+}
+
+.slot-info span {
+  margin-right: 12px;
+}
+
+.slot-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.slot-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--ink-faint);
+  background: transparent;
+  color: var(--ink-light);
+  border-radius: 3px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.slot-btn:hover {
+  border-color: var(--cinnabar);
+  color: var(--cinnabar);
+}
+
+.slot-btn.danger:hover {
+  border-color: #c0392b;
+  color: #c0392b;
+}
+
+.modal-close {
+  display: block;
+  margin: 16px auto 0;
+  padding: 8px 28px;
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  border-radius: 3px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.modal-close:hover {
+  background: var(--cinnabar);
+}
+
+/* ========== SEAL WATERMARK ========== */
+.seal-watermark {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 60px;
+  height: 60px;
+  opacity: 0.06;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.seal-watermark svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* ========== TURN INFO ========== */
+.turn-info {
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  letter-spacing: 0.15em;
+  padding: 12px 0 4px;
+  font-weight: 300;
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 480px) {
+  #app { padding: max(16px, env(safe-area-inset-top)) 14px max(80px, env(safe-area-inset-bottom)); }
+  .header { padding: 24px 0 20px; }
+  .header-title { font-size: 1.5rem; letter-spacing: 0.15em; }
+  .header-subtitle { font-size: 0.75rem; }
+  .narrative-text { font-size: 0.95rem; line-height: 1.85; }
+  .choice-btn {
+    padding: 14px 16px;
+    font-size: 0.88rem;
+    min-height: 48px;
+  }
+  .floating-changes { right: 8px; top: max(60px, env(safe-area-inset-top)); }
+  .float-notify { font-size: 0.75rem; padding: 4px 8px; }
+  .status-detail { padding-left: 10px; padding-right: 10px; }
+  .status-panel.expanded .status-detail { max-height: 360px; }
+  .menu-btn {
+    width: 42px;
+    height: 42px;
+    font-size: 1.1rem;
+  }
+  .menu-buttons {
+    top: max(12px, env(safe-area-inset-top));
+    right: 10px;
+  }
+  .modal-content { width: 92vw; max-height: 80vh; max-height: 80dvh; }
+  .turn-info { font-size: 0.78rem; }
+  .attr-bar { height: 8px; }
+  .faction-bar { height: 6px; }
+  .loading-text { font-size: 0.9rem; }
+  .free-input { font-size: 0.9rem; padding: 12px; }
+  .confirm-btn { min-height: 48px; font-size: 0.95rem; }
+  .input-screen h2 { font-size: 1.4rem; }
+  .input-screen .subtitle { font-size: 0.85rem; }
+}
+
+/* ========== HISTORY LOG ========== */
+.history-entry {
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(44,44,44,0.06);
+  opacity: 0.55;
+  transition: opacity var(--transition);
+}
+
+.history-entry:hover {
+  opacity: 0.85;
+}
+
+.history-choice-made {
+  font-size: 0.8rem;
+  color: var(--cinnabar);
+  margin-top: 8px;
+  padding-left: 1em;
+  border-left: 2px solid var(--cinnabar-glow);
+}
+
+/* ========== TYPING EFFECT ========== */
+.typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background: var(--ink);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 0.8s step-end infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+</style>
+</head>
+<body>
+
+<!-- Menu Buttons -->
+<div class="menu-btns">
+  <button class="menu-btn" onclick="toggleMode()" title="切换模式" id="modeBtn">📝</button>
+  <button class="menu-btn" onclick="openSaveModal()" title="存档">💾</button>
+  <button class="menu-btn" onclick="openLoadModal()" title="读档">📖</button>
+</div>
+
+<!-- Save/Load Modal -->
+<div class="modal-overlay" id="saveModal" onclick="closeModalOnOverlay(event)">
+  <div class="modal-box">
+    <div class="modal-title" id="modalTitle">存 档</div>
+    <div class="modal-subtitle" id="modalSubtitle">选择一个档位保存当前进度</div>
+    <div id="modalSlots"></div>
+    <button class="modal-close" onclick="closeModal()">关 闭</button>
+  </div>
+</div>
+
+<!-- Floating Change Notifications -->
+<div class="floating-changes" id="floatingChanges"></div>
+
+<!-- Seal Watermark -->
+<div class="seal-watermark">
+  <svg viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="4" y="4" width="52" height="52" rx="4" stroke="#c0392b" stroke-width="3" fill="none"/>
+    <text x="30" y="28" text-anchor="middle" fill="#c0392b" font-size="14" font-weight="700" font-family="serif">墨史</text>
+    <text x="30" y="46" text-anchor="middle" fill="#c0392b" font-size="14" font-weight="700" font-family="serif">大明</text>
+  </svg>
+</div>
+
+<div id="app">
+  <!-- Header -->
+  <header class="header">
+    <div class="header-title">墨史 · 大明</div>
+    <div class="header-subtitle">洪武年间 · 文字冒险</div>
+    <div class="header-line"></div>
+  </header>
+
+  <!-- Game Container -->
+  <div id="gameContainer"></div>
+</div>
+
+<!-- Status Panel (fixed bottom) -->
+<div class="status-panel" id="statusPanel">
+  <div class="status-summary" id="statusSummary" onclick="toggleStatusPanel()">
+    <div class="status-summary-left">
+      <span id="statusYear">洪武八年</span>
+      <span class="status-pacing-badge" id="statusPacing">📜 日常</span>
+      <span id="statusPosition">未入流</span>
+    </div>
+    <span class="status-toggle" id="statusToggle">▲</span>
+  </div>
+  <div class="status-detail" id="statusDetail">
+    <!-- Attributes -->
+    <div class="status-section">
+      <div class="status-section-title">五 维 属 性</div>
+      <div id="attrRows"></div>
+    </div>
+    <!-- Factions -->
+    <div class="status-section">
+      <div class="status-section-title">势 力 好 感</div>
+      <div id="factionRows"></div>
+    </div>
+    <!-- Emperor -->
+    <div class="status-section">
+      <div class="status-section-title">天 子 圣 眷</div>
+      <div class="emperor-section">
+        <span class="emperor-label">🐉 朱元璋</span>
+        <div class="emperor-bar-wrap">
+          <div class="emperor-bar-center"></div>
+          <div class="emperor-bar-fill" id="emperorBar"></div>
+        </div>
+        <span class="emperor-value" id="emperorValue">0</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== API CONFIG ==========
+// 生产环境：通过后端代理 /api/chat 直连大模型 API，Key 存储在服务端环境变量中
+const BOT_CONFIG = {
+  // 代理端点（Vercel Serverless Function）
+  proxyUrl: '/api/chat',
+  // 模式：'demo' 使用本地模拟数据，'live' 调用真实大模型 API
+  mode: 'live'
+};
+
+// 对话历史（前端维护，每次请求发送给后端）
+let chatHistory = [];
+
+function toggleMode() {
+  if (BOT_CONFIG.mode === 'demo') {
+    BOT_CONFIG.mode = 'live';
+    document.getElementById('modeBtn').textContent = '🔥';
+    document.getElementById('modeBtn').title = '实时模式（点击切回演示）';
+  } else {
+    BOT_CONFIG.mode = 'demo';
+    document.getElementById('modeBtn').textContent = '📝';
+    document.getElementById('modeBtn').title = '演示模式（点击切换实时）';
+  }
+  location.reload();
+}
+
+// ========== GAME STATE ==========
+const GameState = {
+  turn: 1,
+  year: 1375,
+  month: 1,
+  pacing: '日常',
+  character: {
+    name: '',
+    age: 22,
+    background: '',
+    position: '未入流',
+    rank: 0
+  },
+  attributes: { power: 20, people: 30, wisdom: 40, bond: 50, fame: 10 },
+  factions: { huaixi: 0, zhedong: 0, donggong: 0, zhuwang: 0, jinchen: 0 },
+  emperor_feeling: 0,
+  seeds: [],
+  seeds_triggered: []
+};
+
+// ========== LABELS ==========
+const ATTR_LABELS = {
+  power:  '权势', people: '民心', wisdom: '智谋', bond: '情义', fame: '声望'
+};
+
+const FACTION_LABELS = {
+  huaixi:  '淮西', zhedong: '浙东', donggong: '东宫', zhuwang: '诸王', jinchen: '近臣'
+};
+
+const FACTION_COLORS = {
+  huaixi: 'var(--huaixi)', zhedong: 'var(--zhedong)',
+  donggong: 'var(--donggong)', zhuwang: 'var(--zhuwang)', jinchen: 'var(--jinchen)'
+};
+
+const PACING_ICONS = {
+  '紧迫': '🔥', '缓冲': '🍃', '反转': '⚡', '沉淀': '🌊', '日常': '📜'
+};
+
+const YEAR_MAP = {
+  1368: '洪武元年', 1369: '洪武二年', 1370: '洪武三年',
+  1371: '洪武四年', 1372: '洪武五年', 1373: '洪武六年',
+  1374: '洪武七年', 1375: '洪武八年', 1376: '洪武九年',
+  1377: '洪武十年', 1378: '洪武十一年', 1379: '洪武十二年',
+  1380: '洪武十三年', 1381: '洪武十四年', 1382: '洪武十五年',
+  1383: '洪武十六年', 1384: '洪武十七年', 1385: '洪武十八年',
+  1386: '洪武十九年', 1387: '洪武二十年', 1388: '洪武二十一年',
+  1389: '洪武二十二年', 1390: '洪武二十三年', 1391: '洪武二十四年',
+  1392: '洪武二十五年', 1393: '洪武二十六年'
+};
+
+function getYearName(y) {
+  return YEAR_MAP[y] || `洪武${y - 1367}年`;
+}
+
+// ========== DOM REFS ==========
+const gameContainer = document.getElementById('gameContainer');
+const statusPanel   = document.getElementById('statusPanel');
+const floatingChanges = document.getElementById('floatingChanges');
+
+// ========== STATUS PANEL ==========
+let panelExpanded = false;
+
+function toggleStatusPanel() {
+  panelExpanded = !panelExpanded;
+  statusPanel.classList.toggle('expanded', panelExpanded);
+}
+
+function updateStatusPanel() {
+  const yearStr = getYearName(GameState.year);
+  const pacingIcon = PACING_ICONS[GameState.pacing] || '📜';
+  document.getElementById('statusYear').textContent = yearStr;
+  document.getElementById('statusPacing').textContent = `${pacingIcon} ${GameState.pacing}`;
+  document.getElementById('statusPosition').textContent = GameState.character.position;
+
+  // Attributes
+  const attrContainer = document.getElementById('attrRows');
+  attrContainer.innerHTML = '';
+  for (const [key, label] of Object.entries(ATTR_LABELS)) {
+    const val = Math.max(0, Math.min(100, GameState.attributes[key]));
+    const row = document.createElement('div');
+    row.className = 'attr-row';
+    row.innerHTML = `
+      <span class="attr-label">${label}</span>
+      <div class="attr-bar-wrap">
+        <div class="attr-bar ${key}" style="width:${val}%"></div>
+      </div>
+      <span class="attr-value">${val}</span>
+    `;
+    attrContainer.appendChild(row);
+  }
+
+  // Factions
+  const factionContainer = document.getElementById('factionRows');
+  factionContainer.innerHTML = '';
+  for (const [key, label] of Object.entries(FACTION_LABELS)) {
+    const val = Math.max(-100, Math.min(100, GameState.factions[key]));
+    const pct = (val + 100) / 2; // map -100~100 to 0~100
+    const color = FACTION_COLORS[key];
+    const isPositive = val >= 0;
+    const barLeft = isPositive ? '50%' : `${pct}%`;
+    const barWidth = `${Math.abs(val) / 2}%`;
+    const row = document.createElement('div');
+    row.className = 'faction-row';
+    row.innerHTML = `
+      <span class="faction-label">${label}</span>
+      <div class="faction-bar-container">
+        <div class="faction-bar-center"></div>
+        <div class="faction-bar-fill" style="left:${barLeft};width:${barWidth};background:${color}"></div>
+      </div>
+      <span class="faction-value" style="color:${color}">${val > 0 ? '+' : ''}${val}</span>
+    `;
+    factionContainer.appendChild(row);
+  }
+
+  // Emperor
+  const empVal = Math.max(-100, Math.min(100, GameState.emperor_feeling));
+  const empPct = (empVal + 100) / 2;
+  const empPositive = empVal >= 0;
+  const empBar = document.getElementById('emperorBar');
+  empBar.style.left = empPositive ? '50%' : `${empPct}%`;
+  empBar.style.width = `${Math.abs(empVal) / 2}%`;
+  document.getElementById('emperorValue').textContent = `${empVal > 0 ? '+' : ''}${empVal}`;
+}
+
+// ========== PACING VISUAL ==========
+function applyPacing(pacing) {
+  const app = document.getElementById('app');
+  // Remove old pacing classes
+  app.className = '';
+  if (pacing && pacing !== '日常') {
+    app.classList.add(`pacing-${pacing}`);
+  }
+  GameState.pacing = pacing || '日常';
+  updateStatusPanel();
+}
+
+// ========== FLOATING NOTIFICATIONS ==========
+function showFloatingChanges(changes) {
+  const container = floatingChanges;
+  container.innerHTML = '';
+
+  const items = [];
+
+  // Attribute changes
+  if (changes.attributes) {
+    for (const [key, delta] of Object.entries(changes.attributes)) {
+      if (delta !== 0) {
+        items.push({
+          text: `${delta > 0 ? '+' : ''}${delta} ${ATTR_LABELS[key] || key}`,
+          type: delta > 0 ? 'positive' : 'negative'
+        });
+      }
+    }
+  }
+
+  // Faction changes
+  if (changes.factions) {
+    for (const [key, delta] of Object.entries(changes.factions)) {
+      if (delta !== 0) {
+        items.push({
+          text: `${delta > 0 ? '+' : ''}${delta} ${FACTION_LABELS[key] || key}`,
+          type: delta > 0 ? 'positive' : 'negative'
+        });
+      }
+    }
+  }
+
+  // Emperor change
+  if (changes.emperor_feeling && changes.emperor_feeling !== 0) {
+    items.push({
+      text: `${changes.emperor_feeling > 0 ? '+' : ''}${changes.emperor_feeling} 天子圣眷`,
+      type: changes.emperor_feeling > 0 ? 'positive' : 'negative'
+    });
+  }
+
+  items.forEach((item, i) => {
+    setTimeout(() => {
+      const el = document.createElement('div');
+      el.className = `float-notify ${item.type}`;
+      el.textContent = item.text;
+      container.appendChild(el);
+      // Remove after animation
+      setTimeout(() => el.remove(), 2800);
+    }, i * 150);
+  });
+}
+
+// ========== APPLY STATE CHANGES ==========
+function applyChanges(changes) {
+  if (changes.attributes) {
+    for (const [key, delta] of Object.entries(changes.attributes)) {
+      if (GameState.attributes[key] !== undefined) {
+        GameState.attributes[key] = Math.max(0, Math.min(100, GameState.attributes[key] + delta));
+      }
+    }
+  }
+  if (changes.factions) {
+    for (const [key, delta] of Object.entries(changes.factions)) {
+      if (GameState.factions[key] !== undefined) {
+        GameState.factions[key] = Math.max(-100, Math.min(100, GameState.factions[key] + delta));
+      }
+    }
+  }
+  if (changes.emperor_feeling !== undefined) {
+    GameState.emperor_feeling = Math.max(-100, Math.min(100, GameState.emperor_feeling + changes.emperor_feeling));
+  }
+  if (changes.seeds) {
+    GameState.seeds.push(...changes.seeds);
+  }
+
+  updateStatusPanel();
+  showFloatingChanges(changes);
+}
+
+// ========== PARSE AI OUTPUT ==========
+function parseAIOutput(text) {
+  // Split by --- dividers
+  const sections = text.split(/\n---\n/);
+
+  let narrative = '';
+  let choices = [];
+  let stateBlock = null;
+
+  if (sections.length >= 3) {
+    narrative = sections[0].trim();
+    const choicesText = sections[1].trim();
+    const stateText = sections[2].trim();
+
+    // Parse choices
+    const choiceLines = choicesText.split('\n').filter(l => l.trim());
+    choiceLines.forEach(line => {
+      const match = line.match(/^\d+\.\s*[「『]?(.+?)[」』]?\s*$/) ||
+                    line.match(/^\d+\.\s*(.+)$/);
+      if (match) {
+        let text = match[1].trim();
+        // Remove brackets if present
+        text = text.replace(/^[「『]/, '').replace(/[」』]$/, '');
+        choices.push(text);
+      }
+    });
+
+    // Parse JSON state block
+    const jsonMatch = stateText.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      try {
+        stateBlock = JSON.parse(jsonMatch[1]);
+      } catch (e) {
+        console.warn('JSON parse error:', e);
+      }
+    }
+  } else {
+    // Fallback: treat everything as narrative
+    narrative = text.trim();
+  }
+
+  return { narrative, choices, stateBlock };
+}
+
+// ========== RENDER NARRATIVE ==========
+function renderNarrative(html, animate = true) {
+  const div = document.createElement('div');
+  div.className = 'narrative-area';
+
+  const textDiv = document.createElement('div');
+  textDiv.className = 'narrative-text';
+  if (!animate) {
+    textDiv.style.opacity = '1';
+    textDiv.style.transform = 'none';
+    textDiv.style.animation = 'none';
+  }
+  textDiv.innerHTML = html;
+
+  div.appendChild(textDiv);
+  return div;
+}
+
+function narrativeToHTML(text) {
+  const paragraphs = text.split('\n').filter(l => l.trim());
+  return paragraphs.map(p => `<p>${p.trim()}</p>`).join('');
+}
+
+// ========== RENDER CHOICES ==========
+function renderChoices(choices, callback) {
+  const area = document.createElement('div');
+  area.className = 'choices-area';
+
+  const labels = ['甲', '乙', '丙', '丁'];
+
+  choices.forEach((choice, i) => {
+    const btn = document.createElement('button');
+    const isFree = choice.includes('自由行动') || choice.includes('自由');
+
+    if (isFree) {
+      btn.className = 'choice-btn free-action';
+      btn.innerHTML = `<span class="choice-index">${labels[i] || i+1}</span><span class="choice-text">${choice}</span>`;
+    } else {
+      btn.className = 'choice-btn';
+      btn.innerHTML = `<span class="choice-index">${labels[i] || i+1}</span><span class="choice-text">${choice}</span>`;
+    }
+
+    btn.addEventListener('click', () => {
+      if (isFree) {
+        // Show free action input
+        showFreeActionInput(area, callback, choice);
+      } else {
+        // Disable all buttons
+        area.querySelectorAll('.choice-btn').forEach(b => {
+          b.disabled = true;
+          b.style.opacity = '0.4';
+          b.style.pointerEvents = 'none';
+        });
+        btn.style.opacity = '1';
+        btn.style.boxShadow = '-3px 0 0 var(--cinnabar)';
+        // Show "chosen" note
+        const note = document.createElement('div');
+        note.className = 'history-choice-made';
+        note.textContent = `▸ ${choice}`;
+        area.appendChild(note);
+        callback(choice);
+      }
+    });
+
+    area.appendChild(btn);
+  });
+
+  return area;
+}
+
+function showFreeActionInput(area, callback, placeholder) {
+  let inputArea = area.querySelector('.free-action-input-area');
+  if (inputArea) {
+    inputArea.classList.add('active');
+    inputArea.querySelector('input').focus();
+    return;
+  }
+
+  inputArea = document.createElement('div');
+  inputArea.className = 'free-action-input-area active';
+  inputArea.innerHTML = `
+    <input type="text" class="free-action-input" placeholder="输入你想做的任何事…" />
+    <button class="send-btn">发送</button>
+  `;
+
+  area.appendChild(inputArea);
+  const input = inputArea.querySelector('input');
+  const sendBtn = inputArea.querySelector('.send-btn');
+  input.focus();
+
+  const submit = () => {
+    const val = input.value.trim();
+    if (!val) return;
+    inputArea.classList.remove('active');
+    // Disable all
+    area.querySelectorAll('.choice-btn').forEach(b => {
+      b.disabled = true;
+      b.style.opacity = '0.4';
+      b.style.pointerEvents = 'none';
+    });
+    const note = document.createElement('div');
+    note.className = 'history-choice-made';
+    note.textContent = `▸ 自由行动：${val}`;
+    area.appendChild(note);
+    callback(val);
+  };
+
+  sendBtn.addEventListener('click', submit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submit();
+  });
+}
+
+// ========== GAME FLOW HELPERS ==========
+function clearContainer() {
+  gameContainer.innerHTML = '';
+}
+
+function addDivider() {
+  const div = document.createElement('div');
+  div.className = 'ink-divider';
+  gameContainer.appendChild(div);
+}
+
+function addTurnInfo(text) {
+  const div = document.createElement('div');
+  div.className = 'turn-info';
+  div.textContent = text;
+  gameContainer.appendChild(div);
+}
+
+function showLoading(duration = 1200) {
+  return new Promise(resolve => {
+    const loader = document.createElement('div');
+    loader.className = 'loading-dots';
+    loader.innerHTML = '<span></span><span></span><span></span>';
+    gameContainer.appendChild(loader);
+    setTimeout(() => {
+      loader.remove();
+      resolve();
+    }, duration);
+  });
+}
+
+function scrollToBottom() {
+  setTimeout(() => {
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  }, 100);
+}
+
+// ========== NAME GENERATION ==========
+const SURNAMES = [
+  '朱','徐','常','李','蓝','汤','邓','冯','傅','廖',
+  '沐','胡','汪','刘','宋','章','叶','方','沈','陆',
+  '顾','姚','高','周','吴','郑','王','陈','张','杨',
+  '黄','赵','钱','孙','罗','唐','许','韩','萧','曹',
+  '潘','葛','范','鲁','马','余','袁','于','董','程'
+];
+
+function randomSurname() {
+  return SURNAMES[Math.floor(Math.random() * SURNAMES.length)];
+}
+
+function generateGivenName(backgroundKey) {
+  const namesByBg = {
+    huaixi: ['承烈','定远','崇武','振威','铁山','世勋','仲戈','毅夫','伯韬','克戎'],
+    zhedong: ['景濂','伯温','允修','叔明','彦和','敬之','希孟','道传','子静','正叔'],
+    shanggu: ['万贯','宝臣','通海','聚丰','世昌','德裕','金生','利源','润之','丰盈'],
+    qianyuan: ['守拙','怀远','复初','遗安','慕陶','伯夷','叔齐','幼安','子隐','思齐']
+  };
+  const pool = namesByBg[backgroundKey] || namesByBg.huaixi;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function generateCharIntro(surname, givenName, bgKey) {
+  const fullName = surname + givenName;
+  const intros = {
+    huaixi: `${fullName}，凤阳府定远县人氏。父亲早年随太祖起兵，南征北战，积功至千户，后在鄱阳湖一战中身负重伤，归乡不久便病故了。母亲含辛茹苦将你拉扯大，临终前只留下一句话：「你爹是替大明死的，你莫要辱没了他。」\n\n你自幼在军营中摸爬滚打，弓马娴熟，也认得几个字。洪武三年，朝廷追录阵亡将士之后，你蒙荫补为殿前校尉，入京当差。如今你二十五岁，在应天府当了五年差，虽只是个七品武官，却也见过些世面——淮西老将们念着你父亲的旧情，偶尔照拂一二；但朝中风向日变，这层关系究竟是福是祸，你也说不准。`,
+
+    zhedong: `${fullName}，处州府青田县人氏。父亲是个落第秀才，一生未曾中举，只得在乡中开馆授徒，勉强糊口。他对你管教极严，三岁识字，五岁背诗，八岁便开始读《春秋》。你倒也争气，十七岁中秀才，二十岁中举人——只可惜去年春闱名落孙山，铩羽而归。\n\n今年开春，父亲变卖了家中仅有的几亩薄田，凑了盘缠让你入京谋个出路。他说：「为父这辈子困在青田，你不能再困在这里。刘基先生也是青田人，他能做到的，你未必不能。」你背着书箱踏入应天门时，春雨正绵密。你知道，刘基已经死了三年，浙东文官集团正群龙无首——但这也许正是你的机会。`,
+
+    shanggu: `${fullName}，应天府江宁县人氏。沈家是应天府数得上的富户，经营绸缎、茶叶和盐引，在秦淮河畔有三间铺子，在苏州、扬州也有分号。你自小锦衣玉食，五岁开蒙，请的是致仕的老儒；十二岁便跟着父亲学算盘、看账本、辨绸缎成色。\n\n然而你心里清楚，在这大明天下，商人再有钱也不过是砧板上的肉。沈万三的前车之鉴犹在眼前——富可敌国又如何？一纸诏令，抄家流徙。父亲花了大笔银子替你捐了个监生，又托人在通政司谋了个知印的差事，从九品，不入流。你今年二十三岁，穿着皂色官服站在衙门里时，常觉得自己像个穿着戏服的伶人。但你知道，这是沈家从商入仕的唯一一步棋——走好了，沈家便能改换门庭；走砸了，万劫不复。`,
+
+    qianyuan: `${fullName}，大都人氏——不对，如今该叫北平了。你祖上在前元做过翰林待制，虽不是什么大官，却也算得上诗礼传家。洪武元年徐达北伐，元顺帝仓皇北逃，你父亲带着家小滞留大都，没有跟王师走，也没有殉国——他选择了归顺。\n\n降臣之后，这四个字像烙印一样跟了你二十二年。你随父迁入应天府后，邻里侧目，同年避席。父亲被安置在翰林院做个待诏，从九品，俸禄微薄，却整日小心翼翼，连说话都要先看窗外有没有人。去年冬天他染了风寒，拖到开春便去了，临终前抓着你的手说：「为父这辈子，最错的就是没跟着圣上走。你……你莫要再走为父的老路。」你如今在翰林院做个抄誊的小吏，无品无级。你读了一肚子诗书，却连抬头走路都不敢——因为你知道，这世上最不缺的，就是揪着你出身做文章的人。`
+  };
+  return intros[bgKey] || intros.huaixi;
+}
+
+// ========== DEMO: OPENING SCREEN ==========
+async function startGame() {
+  updateStatusPanel();
+
+  // Opening text
+  const auto = getAutoSave();
+  let continueBtn = '';
+  if (auto && auto.gameState && auto.gameState.character.name) {
+    const gs = auto.gameState;
+    continueBtn = `
+      <button class="confirm-btn" id="continueBtn" style="background:var(--cinnabar);margin-bottom:16px;">
+        继续 · ${gs.character.name} · ${getYearName(gs.year)}第${gs.turn}回
+      </button>
+    `;
+  }
+
+  gameContainer.innerHTML = `
+    <div class="input-screen">
+      <h2>洪武八年，天下初定</h2>
+      <p class="subtitle">大明立国已七载，百废待兴。<br>你即将踏入这段波澜壮阔的历史。</p>
+      ${continueBtn}
+      <p class="subtitle" style="margin-top:12px;">你贵姓？</p>
+      <input type="text" class="name-input" id="surnameInput" placeholder="输入姓氏" maxlength="3" autofocus />
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <button class="confirm-btn" id="surnameConfirm">落笔</button>
+        <button class="random-btn" id="surnameRandom">随机姓氏</button>
+      </div>
+    </div>
+  `;
+
+  const continueBtnEl = document.getElementById('continueBtn');
+  if (continueBtnEl) {
+    continueBtnEl.addEventListener('click', () => {
+      if (loadAutoSave()) {
+        // Auto-save restored, close opening
+      }
+    });
+  }
+
+  const surnameInput = document.getElementById('surnameInput');
+  const surnameConfirm = document.getElementById('surnameConfirm');
+  const surnameRandom = document.getElementById('surnameRandom');
+
+  const proceed = (surname) => {
+    if (!surname) {
+      surnameInput.style.borderBottomColor = '#e74c3c';
+      setTimeout(() => surnameInput.style.borderBottomColor = '', 600);
+      return;
+    }
+    showBackgroundSelection(surname);
+  };
+
+  surnameConfirm.addEventListener('click', () => proceed(surnameInput.value.trim()));
+  surnameRandom.addEventListener('click', () => {
+    const s = randomSurname();
+    surnameInput.value = s;
+    proceed(s);
+  });
+  surnameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') proceed(surnameInput.value.trim());
+  });
+
+  scrollToBottom();
+}
+
+// ========== DEMO: BACKGROUND SELECTION ==========
+async function showBackgroundSelection(surname) {
+  clearContainer();
+  await showLoading(800);
+
+  const narrative = `
+    <span class="year-mark">洪武八年 · 正月</span>
+    <p>你站在应天府的城门外，望着巍峨的城墙出神。</p>
+    <p>自洪武元年太祖皇帝登基以来，天下历经七年休养生息。昔日战火纷飞的土地，如今已渐现太平气象。然而在这平静的表象之下，暗流从未停止涌动——淮西勋贵与浙东文官的角力、太子与诸王的微妙关系、天子日益深沉的心思……</p>
+    <p>你深吸一口气。在这大明的棋盘上，每个人都是一枚棋子——但也有人，妄图做那执棋之人。</p>
+    <p style="text-indent:0;text-align:center;color:var(--ink-light);font-size:0.9rem;margin-top:1.5em;">你的出身是？</p>
+  `;
+
+  gameContainer.appendChild(renderNarrative(narrative));
+  scrollToBottom();
+
+  await new Promise(r => setTimeout(r, 400));
+
+  const backgrounds = [
+    '甲、「淮西武将之后」—— 舅舅是蓝玉，自幼在军营长大，弓马娴熟',
+    '乙、「浙东寒门书生」—— 父亲与方孝孺同窗，满腹经纶却无处施展',
+    '丙、「应天府商贾之子」—— 家富甲一方，却渴望改换门庭',
+    '丁、「落魄前元官员之后」—— 祖上曾在元朝为官，如今隐姓埋名'
+  ];
+
+  const choicesArea = renderChoices(backgrounds, (choice) => {
+    const bgMap = {
+      '甲': { key: 'huaixi', bg: '淮西武将之后', age: 25, position: '殿前校尉', rank: 7,
+              power: 15, people: 10, wisdom: 5, bond: 15, fame: 5, huaixi: 20 },
+      '乙': { key: 'zhedong', bg: '浙东寒门书生', age: 23, position: '举人待选', rank: 0,
+              power: 0, people: 10, wisdom: 20, bond: 5, fame: 10, zhedong: 15 },
+      '丙': { key: 'shanggu', bg: '应天府商贾之子', age: 23, position: '通政司知印', rank: 9,
+              power: 5, people: 5, wisdom: 10, bond: 10, fame: 5, jinchen: -5 },
+      '丁': { key: 'qianyuan', bg: '落魄前元官员之后', age: 22, position: '翰林院抄吏', rank: 0,
+              power: 0, people: 0, wisdom: 15, bond: 5, fame: 0, jinchen: -15 }
+    };
+
+    const idx = choice.charAt(0);
+    const bgData = bgMap[idx] || bgMap['甲'];
+
+    // Auto-generate name
+    const givenName = generateGivenName(bgData.key);
+    const fullName = surname + givenName;
+    GameState.character.name = fullName;
+    GameState.character.background = bgData.bg;
+    GameState.character.age = bgData.age;
+    GameState.character.position = bgData.position;
+    GameState.character.rank = bgData.rank;
+
+    // Apply background bonuses
+    if (bgData.power) GameState.attributes.power = Math.min(100, GameState.attributes.power + bgData.power);
+    if (bgData.people) GameState.attributes.people = Math.min(100, GameState.attributes.people + bgData.people);
+    if (bgData.wisdom) GameState.attributes.wisdom = Math.min(100, GameState.attributes.wisdom + bgData.wisdom);
+    if (bgData.bond) GameState.attributes.bond = Math.min(100, GameState.attributes.bond + bgData.bond);
+    if (bgData.fame) GameState.attributes.fame = Math.min(100, GameState.attributes.fame + bgData.fame);
+    if (bgData.huaixi) GameState.factions.huaixi += bgData.huaixi;
+    if (bgData.zhedong) GameState.factions.zhedong += bgData.zhedong;
+    if (bgData.jinchen) GameState.factions.jinchen += bgData.jinchen;
+
+    updateStatusPanel();
+
+    // Show floating changes
+    const attrChanges = {};
+    if (bgData.power) attrChanges.power = bgData.power;
+    if (bgData.people) attrChanges.people = bgData.people;
+    if (bgData.wisdom) attrChanges.wisdom = bgData.wisdom;
+    if (bgData.bond) attrChanges.bond = bgData.bond;
+    if (bgData.fame) attrChanges.fame = bgData.fame;
+    const factionChanges = {};
+    if (bgData.huaixi) factionChanges.huaixi = bgData.huaixi;
+    if (bgData.zhedong) factionChanges.zhedong = bgData.zhedong;
+    if (bgData.jinchen) factionChanges.jinchen = bgData.jinchen;
+    showFloatingChanges({ attributes: attrChanges, factions: factionChanges, emperor_feeling: 0 });
+
+    // Show character intro, then enter game
+    setTimeout(() => showCharacterIntro(surname, givenName, bgData.key), 1200);
+  });
+
+  gameContainer.appendChild(choicesArea);
+  scrollToBottom();
+}
+
+// ========== SHOW CHARACTER INTRO ==========
+async function showCharacterIntro(surname, givenName, bgKey) {
+  clearContainer();
+  await showLoading(1200);
+
+  const fullName = surname + givenName;
+  const intro = generateCharIntro(surname, givenName, bgKey);
+  const paragraphs = intro.split('\n\n');
+
+  let html = `<span class="year-mark">洪武八年 · 正月</span>`;
+  html += `<h3 style="text-align:center;font-weight:500;font-size:1.15rem;letter-spacing:0.2em;margin:8px 0 16px;color:var(--ink);">${fullName}</h3>`;
+  for (const p of paragraphs) {
+    html += `<p>${p}</p>`;
+  }
+
+  gameContainer.appendChild(renderNarrative(html));
+  scrollToBottom();
+
+  // Continue button
+  await new Promise(r => setTimeout(r, 600));
+  const continueDiv = document.createElement('div');
+  continueDiv.style.cssText = 'text-align:center;padding:20px 0;';
+  continueDiv.innerHTML = `<button class="confirm-btn" id="introContinue">踏入洪武</button>`;
+  gameContainer.appendChild(continueDiv);
+  scrollToBottom();
+
+  document.getElementById('introContinue').addEventListener('click', () => {
+    enterGameLoop();
+  });
+}
+
+// ========== DEMO: GAME TURNS ==========
+const DEMO_TURNS = [
+  {
+    text: `洪武八年，春。
+
+${''}天下初定已经七年了。应天府的春天带着潮湿的暖意，秦淮河两岸的柳色年年如故，城头却已换了大明旗帜。
+
+你——新任翰林院待诏——接到了一纸调令。中书省的胡惟庸大人点名要你参与修撰《大明日历》，记录太祖皇帝起兵以来的征伐大事。
+
+这是一份荣耀，也是一份危险。
+
+翰林院的老同僚张学士悄悄拉住了你的袖子，低声道："此差事，去也得去，不去也得去。只是你需记住——翰林院的笔，写的是天子的脸面。落笔之前，先想清楚你在替谁说话。"
+
+你握紧了调令。胡惟庸——淮西集团的领袖，当朝第一权臣。他为何要召一个小小的待诏？
+
+而张学士——他是浙东人，与早已故去的刘伯温同乡。他口中的"替谁说话"，又是什么意思？
+
+你站在翰林院的值房里，窗外是应天府连绵的春雨。`,
+
+    choices: [
+      '「立即前往中书省拜见胡惟庸，以示恭敬」',
+      '「先去拜访翰林院老学士张学士，打听虚实」',
+      '「先去吏部打探此次调令的背景，摸清来龙去脉」',
+      '自由行动：（输入你想做的任何事）'
+    ],
+
+    state: {
+      turn: 1,
+      year: 1375,
+      month: 2,
+      pacing: '缓冲',
+      changes: {
+        attributes: { power: 0, people: 2, wisdom: 3, bond: 0, fame: 5 },
+        factions: { huaixi: 5, zhedong: 0, donggong: 0, zhuwang: 0, jinchen: 0 },
+        emperor_feeling: 0,
+        seeds: ['修撰日历'],
+        seeds_triggered: []
+      },
+      character: { position: '翰林院待诏', rank: 7 }
+    }
+  },
+  {
+    text: `你在张学士的值房里坐了半个时辰。
+
+老学士端着茶盏，说话不紧不慢："刘伯温先生在世时曾与我说过一句话——'大明之患，不在北元残余，而在朝堂之上。'当时我不懂，如今……"他苦笑了一下。
+
+"胡惟庸此人，才干是有的。但你看他近年来笼络了多少人？文武百官中，有一半出自他门下或受过他举荐。天子是什么人？他能容忍这种事多久？"
+
+张学士放下茶盏，目光变得锐利："你此次入日历馆，表面是修史，但我看——胡惟庸是想在史书中做文章。"
+
+"做什么文章？"你问。
+
+"比如——某些战役的功劳，记在谁名下。某些决策的发起者，写的是谁。"老学士站起身来，"这些笔法，看似无关紧要，但百年后的人看到的就是另一个故事。"
+
+他拍了拍你的肩膀："去吧，小心做事。若有人让你改动不该改的……你就说笔墨不济，需查档复核——这是翰林院的老规矩，谁也挑不出毛病。"
+
+窗外，春雨渐歇。你走出张学士的值房，在走廊上站了一会儿。远处，午门的角楼上，有士兵在换岗。`,
+
+    choices: [
+      '「前往中书省，按时赴任日历馆」',
+      '「先去吏部档案房查阅洪武元年的原始军报」',
+      '「去东宫拜访太子朱标，试探东宫的态度」',
+      '自由行动：（输入你想做的任何事）'
+    ],
+
+    state: {
+      turn: 2,
+      year: 1375,
+      month: 2,
+      pacing: '日常',
+      changes: {
+        attributes: { power: 0, people: 0, wisdom: 8, bond: 5, fame: 0 },
+        factions: { huaixi: -3, zhedong: 10, donggong: 0, zhuwang: 0, jinchen: 2 },
+        emperor_feeling: 0,
+        seeds: ['张学士忠告'],
+        seeds_triggered: []
+      },
+      character: { position: '翰林院待诏', rank: 7 }
+    }
+  },
+  {
+    text: `你来到中书省的日历馆。
+
+馆内已聚集了七八名官员，大多是翰林院的同僚。主事的是中书省的一名经历官，名叫陈宁——此人面色白净，说话时总带着三分笑意，让人摸不透他的心思。
+
+"诸位，"陈宁展开一卷黄纸，"此次修撰《大明日历》，胡丞相亲自过目。太祖皇帝起兵濠州，至洪武元年登基称帝，这十几年的征伐大事，都要一一录入。"
+
+他顿了顿，目光扫过众人："其中有些章节……已经有人初拟了稿本。"说着，他让书吏分发了一叠草稿。
+
+你翻开草稿，看到的是鄱阳大战一节——那是太祖与陈友谅的生死之战。然而你很快发现了问题：草稿中，常遇春将军的功劳被大幅削减，而胡惟庸当时的一名幕僚却被添加了不少"运筹帷幄"的描写。
+
+这些描写，与史实相去甚远。
+
+你的手微微发抖。这就是张学士说的"做文章"——这不是修史，这是篡改。
+
+你抬头看向陈宁，对方正笑眯眯地看着你："待诏大人，你觉得这草稿如何？"`,
+
+    choices: [
+      '「直言不讳：此稿与史实不符，下官不敢署名」',
+      '「虚与委蛇：下官回去再仔细斟酌，改日回复」',
+      '「另辟蹊径：建议查阅兵部原始战报，以"考证"之名拖延」',
+      '自由行动：（输入你想做的任何事）'
+    ],
+
+    state: {
+      turn: 3,
+      year: 1375,
+      month: 3,
+      pacing: '紧迫',
+      changes: {
+        attributes: { power: 5, people: -3, wisdom: 2, bond: 0, fame: 4 },
+        factions: { huaixi: -10, zhedong: 5, donggong: 0, zhuwang: 0, jinchen: -5 },
+        emperor_feeling: -8,
+        seeds: ['日历馆风波'],
+        seeds_triggered: ['张学士忠告']
+      },
+      character: { position: '翰林院待诏', rank: 7 }
+    }
+  }
+];
+
+// ========== LIVE MODE: CALL BOT API VIA PROXY ==========
+// ========== STREAMING API CALL ==========
+// 调用后端代理，流式接收 AI 回复，逐字显示在 streamTarget 元素中
+async function streamBotAPI(userMessage, streamTarget) {
+  // 构造当前回合的上下文消息
+  const contextPayload = {
+    current_state: {
+      turn: GameState.turn,
+      year: GameState.year,
+      month: GameState.month,
+      pacing: GameState.pacing,
+      character: GameState.character,
+      attributes: GameState.attributes,
+      factions: GameState.factions,
+      emperor_feeling: GameState.emperor_feeling,
+      seeds: GameState.seeds,
+      seeds_triggered: GameState.seeds_triggered
+    },
+    player_action: userMessage
+  };
+
+  // 把当前玩家行动加入历史
+  chatHistory.push({
+    role: 'user',
+    content: JSON.stringify(contextPayload)
+  });
+
+  // 控制历史长度：保留最近 30 条消息（约 15 回合），防止超出上下文窗口
+  // 每回合 = 1条 user + 1条 assistant，30条 ≈ 15 回合
+  const MAX_HISTORY = 30;
+  const trimmedHistory = chatHistory.slice(-MAX_HISTORY);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s 超时（流式模式下更宽裕）
+
+  let fullText = '';
+  let lastScrollTime = 0;
+
+  try {
+    const resp = await fetch(BOT_CONFIG.proxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: trimmedHistory }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!resp.ok) {
+      let errMsg = `服务器错误 (${resp.status})`;
+      try {
+        const errData = await resp.json();
+        errMsg = errData.error || errData.detail || errMsg;
+      } catch (_) {}
+      throw new Error(errMsg);
+    }
+
+    // 读取流式响应
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      fullText += chunk;
+
+      // 实时更新流式显示区域
+      if (streamTarget) {
+        streamTarget.textContent = fullText;
+        // 节流滚动：每 150ms 最多滚一次，避免性能问题
+        const now = Date.now();
+        if (now - lastScrollTime > 150) {
+          scrollToBottom();
+          lastScrollTime = now;
+        }
+      }
+    }
+
+    // 把 AI 回复加入历史
+    if (fullText.trim()) {
+      chatHistory.push({ role: 'assistant', content: fullText.trim() });
+    }
+
+    return fullText;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    // 失败时回滚刚加入的 user 消息
+    if (chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'user') {
+      chatHistory.pop();
+    }
+    if (err.name === 'AbortError') {
+      throw new Error('请求超时，墨史官似乎陷入了沉思……请重试');
+    }
+    throw err;
+  }
+}
+
+// ========== TURN PROCESSOR ==========
+async function processAITurn(userChoice) {
+  // 创建流式输出区域
+  const streamArea = document.createElement('div');
+  streamArea.className = 'stream-area';
+  const streamText = document.createElement('div');
+  streamText.className = 'stream-text';
+  streamText.innerHTML = '<span class="stream-cursor"></span>';
+  streamArea.appendChild(streamText);
+  gameContainer.appendChild(streamArea);
+  scrollToBottom();
+
+  // 流式接收 AI 回复
+  let rawOutput;
+  try {
+    rawOutput = await streamBotAPI(userChoice, streamText);
+  } catch (err) {
+    console.error('API error:', err);
+    streamArea.remove();
+    showError(`墨史官执笔踟蹰……（${err.message}）`);
+    return;
+  }
+
+  // 流式结束，移除流式区域
+  streamArea.remove();
+
+  if (!rawOutput || !rawOutput.trim()) {
+    showError('墨史官的回复为空，请重试。');
+    return;
+  }
+
+  // 解析完整输出
+  const parsed = parseAIOutput(rawOutput);
+
+  if (!parsed.narrative) {
+    showError('墨史官的回复格式有误，请重试。');
+    return;
+  }
+
+  // 判断是否为驳回（SP v3.1：rejected=true 时数值不变、回合不推进、时间不流逝）
+  const isRejected = parsed.stateBlock &&
+    (parsed.stateBlock.rejected === true || parsed.stateBlock.rejected === 'true');
+
+  // 回合信息（驳回时不显示新回合标记，因为时间没有推进）
+  if (parsed.stateBlock && !isRejected) {
+    const sb = parsed.stateBlock;
+    const yearName = getYearName(sb.year || GameState.year);
+    const monthNames = ['正','二','三','四','五','六','七','八','九','十','冬','腊'];
+    addTurnInfo(`${yearName} · ${monthNames[(sb.month || GameState.month) - 1]}月 · 第${sb.turn || GameState.turn}回`);
+    applyPacing(sb.pacing || GameState.pacing);
+  }
+
+  // 渲染叙事（驳回时使用特殊样式）
+  const narrativeHTML = narrativeToHTML(parsed.narrative);
+  const narrativeEl = renderNarrative(narrativeHTML);
+  if (isRejected) {
+    const textEl = narrativeEl.querySelector('.narrative-text');
+    if (textEl) textEl.classList.add('rejected');
+  }
+  gameContainer.appendChild(narrativeEl);
+  scrollToBottom();
+
+  // 应用状态变更（驳回时跳过：不更新数值、不推进回合、不存档）
+  if (!isRejected) {
+    await new Promise(r => setTimeout(r, 500));
+    if (parsed.stateBlock) {
+      const sb = parsed.stateBlock;
+      GameState.turn = sb.turn || GameState.turn;
+      GameState.year = sb.year || GameState.year;
+      GameState.month = sb.month || GameState.month;
+      GameState.pacing = sb.pacing || GameState.pacing;
+      if (sb.character) {
+        if (sb.character.position) GameState.character.position = sb.character.position;
+        if (sb.character.rank !== undefined) GameState.character.rank = sb.character.rank;
+      }
+      if (sb.changes) {
+        applyChanges(sb.changes);
+      }
+      autoSave();
+    }
+  }
+
+  // 结局判定（驳回不可能触发结局）
+  if (!isRejected && parsed.stateBlock && parsed.stateBlock.ending) {
+    showEnding(parsed.stateBlock.ending, parsed.narrative);
+    return;
+  }
+
+  // 渲染选项（驳回时给出重新选择的提示）
+  await new Promise(r => setTimeout(r, isRejected ? 200 : 400));
+  const choices = parsed.choices.length >= 3 ? parsed.choices : [
+    '继续前行', '另作打算', '静观其变', '自由行动：（输入你想做的任何事）'
+  ];
+
+  const choicesArea = renderChoices(choices, (choice) => {
+    addDivider();
+    // 记录玩家的选择
+    const note = document.createElement('div');
+    note.className = 'history-choice-made';
+    note.textContent = `▸ ${choice}`;
+    gameContainer.appendChild(note);
+    // 下一回合计发给 AI（驳回后的选择仍然作为新的行动输入）
+    processAITurn(choice);
+  });
+
+  if (isRejected) {
+    choicesArea.classList.add('rejected-hint');
+  }
+
+  gameContainer.appendChild(choicesArea);
+  scrollToBottom();
+}
+
+function showError(msg) {
+  const div = document.createElement('div');
+  div.className = 'input-screen';
+  div.innerHTML = `
+    <h2>墨笔滞涩</h2>
+    <p class="subtitle">${msg}</p>
+    <button class="confirm-btn" onclick="this.closest('.input-screen').remove();">再 试</button>
+  `;
+  gameContainer.appendChild(div);
+  scrollToBottom();
+}
+
+function showEnding(ending, narrative) {
+  const div = document.createElement('div');
+  div.className = 'input-screen';
+  div.innerHTML = `
+    <h2>${ending.title || '终章'}</h2>
+    <p class="subtitle">${ending.description || '你的故事到此结束。'}</p>
+    <button class="confirm-btn" onclick="location.reload()">重新开始</button>
+  `;
+  gameContainer.appendChild(div);
+  scrollToBottom();
+}
+
+// ========== MAIN GAME LOOP (supports demo + live) ==========
+async function enterGameLoop() {
+  clearContainer();
+
+  if (BOT_CONFIG.mode === 'live') {
+    // === LIVE MODE ===
+    chatHistory = []; // 重置对话历史
+    // First turn: send character intro as context
+    const initialContext = `游戏开始。玩家角色：${GameState.character.name}，出身：${GameState.character.background}，年龄：${GameState.character.age}，当前官职：${GameState.character.position}。请按照System Prompt的规则开始游戏第一回合。`;
+
+    await processAITurn(initialContext);
+  } else {
+    // === DEMO MODE ===
+    await showLoading(1000);
+
+    for (let i = 0; i < DEMO_TURNS.length; i++) {
+      const turn = DEMO_TURNS[i];
+
+      const yearName = getYearName(turn.state.year);
+      const monthNames = ['正','二','三','四','五','六','七','八','九','十','冬','腊'];
+      addTurnInfo(`${yearName} · ${monthNames[turn.state.month - 1]}月 · 第${turn.state.turn}回`);
+      applyPacing(turn.state.pacing);
+
+      await showLoading(800 + Math.random() * 600);
+
+      const narrativeHTML = narrativeToHTML(turn.text);
+      gameContainer.appendChild(renderNarrative(narrativeHTML));
+      scrollToBottom();
+
+      await new Promise(r => setTimeout(r, 600));
+      GameState.turn = turn.state.turn;
+      GameState.year = turn.state.year;
+      GameState.month = turn.state.month;
+      if (turn.state.character) {
+        GameState.character.position = turn.state.character.position;
+        GameState.character.rank = turn.state.character.rank;
+      }
+      applyChanges(turn.state.changes);
+      autoSave();
+
+      await new Promise(r => setTimeout(r, 400));
+
+      if (i === DEMO_TURNS.length - 1) {
+        const choicesArea = renderChoices(turn.choices, (choice) => {
+          addDivider();
+          if (BOT_CONFIG.mode === 'live') {
+            processAITurn(choice);
+          } else {
+            const endDiv = document.createElement('div');
+            endDiv.className = 'input-screen';
+            endDiv.innerHTML = `
+              <h2>演示到此</h2>
+              <p class="subtitle">这是一个前端原型的交互演示。<br>在实际游戏中，你的选择会发送给墨史官（AI），<br>由AI生成下一段叙事。<br><br>感谢体验「墨史 · 大明」。</p>
+              <button class="confirm-btn" onclick="location.reload()">重新开始</button>
+            `;
+            gameContainer.appendChild(endDiv);
+            scrollToBottom();
+          }
+        });
+        gameContainer.appendChild(choicesArea);
+      } else {
+        const choicesArea = renderChoices(turn.choices, () => {});
+        gameContainer.appendChild(choicesArea);
+        await new Promise(r => setTimeout(r, 2000));
+        const firstBtn = choicesArea.querySelector('.choice-btn');
+        if (firstBtn) firstBtn.click();
+        addDivider();
+      }
+
+      scrollToBottom();
+    }
+  }
+}
+
+// ========== SAVE / LOAD SYSTEM ==========
+const SAVE_KEY = 'moshi_daming_saves';
+const AUTOSAVE_KEY = 'moshi_daming_autosave';
+const SAVE_VERSION = 1;
+let modalMode = 'save'; // 'save' or 'load'
+
+function getSaves() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return [null, null, null];
+    const data = JSON.parse(raw);
+    return data.slots || [null, null, null];
+  } catch (e) {
+    return [null, null, null];
+  }
+}
+
+function writeSaves(slots) {
+  localStorage.setItem(SAVE_KEY, JSON.stringify({
+    version: SAVE_VERSION,
+    slots
+  }));
+}
+
+function getAutoSave() {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
+function clearAutoSave() {
+  localStorage.removeItem(AUTOSAVE_KEY);
+}
+
+function saveToSlot(slotIndex) {
+  const snapshot = {
+    version: SAVE_VERSION,
+    timestamp: Date.now(),
+    gameState: JSON.parse(JSON.stringify(GameState)),
+    narrativeHistory: collectNarrativeHistory()
+  };
+  const slots = getSaves();
+  slots[slotIndex] = snapshot;
+  writeSaves(slots);
+  renderModalSlots();
+
+  // Show brief confirmation
+  const slotEl = document.querySelector(`[data-slot="${slotIndex}"]`);
+  if (slotEl) {
+    const original = slotEl.style.borderColor;
+    slotEl.style.borderColor = '#27ae60';
+    slotEl.style.boxShadow = '0 0 12px rgba(39,174,96,0.2)';
+    setTimeout(() => {
+      slotEl.style.borderColor = original;
+      slotEl.style.boxShadow = '';
+    }, 800);
+  }
+}
+
+function loadFromSlot(slotIndex) {
+  const slots = getSaves();
+  const save = slots[slotIndex];
+  if (!save) return;
+  closeModal();
+  applySnapshot(save);
+}
+
+function deleteSlot(slotIndex) {
+  const slots = getSaves();
+  slots[slotIndex] = null;
+  writeSaves(slots);
+  renderModalSlots();
+}
+
+function collectNarrativeHistory() {
+  const blocks = [];
+  const children = gameContainer.children;
+  for (const child of children) {
+    if (child.classList.contains('turn-info')) {
+      blocks.push({ type: 'turn-info', text: child.textContent });
+    } else if (child.classList.contains('narrative-block')) {
+      blocks.push({ type: 'narrative', html: child.innerHTML });
+    } else if (child.classList.contains('ink-divider')) {
+      blocks.push({ type: 'divider' });
+    }
+  }
+  return blocks;
+}
+
+function formatTime(ts) {
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function renderModalSlots() {
+  const container = document.getElementById('modalSlots');
+  const slots = getSaves();
+  let html = '';
+
+  for (let i = 0; i < 3; i++) {
+    const save = slots[i];
+    if (!save) {
+      html += `
+        <div class="save-slot empty" data-slot="${i}">
+          <div class="slot-num" style="text-align:center;margin-bottom:0;">第 ${i + 1} 档 · 空</div>
+          ${modalMode === 'save'
+            ? `<div class="slot-actions" style="justify-content:center;">
+                 <button class="slot-btn" onclick="event.stopPropagation();saveToSlot(${i})">存入此档</button>
+               </div>`
+            : ''}
+        </div>`;
+    } else {
+      const gs = save.gameState;
+      const yearName = getYearName(gs.year);
+      html += `
+        <div class="save-slot" data-slot="${i}">
+          <div class="slot-header">
+            <span class="slot-num">第 ${i + 1} 档</span>
+            <span class="slot-time">${formatTime(save.timestamp)}</span>
+          </div>
+          <div class="slot-info">
+            <span>👤 ${gs.character.name || '未命名'}</span>
+            <span>🎭 ${gs.character.background || '—'}</span><br>
+            <span>📅 ${yearName} · 第${gs.turn}回</span>
+            <span>🏷️ ${gs.character.position || '—'}</span>
+          </div>
+          <div class="slot-actions">
+            ${modalMode === 'save'
+              ? `<button class="slot-btn" onclick="event.stopPropagation();saveToSlot(${i})">覆盖存档</button>`
+              : `<button class="slot-btn" onclick="event.stopPropagation();loadFromSlot(${i})">读取进度</button>`}
+            <button class="slot-btn danger" onclick="event.stopPropagation();deleteSlot(${i})">删除</button>
+          </div>
+        </div>`;
+    }
+  }
+  container.innerHTML = html;
+}
+
+function openSaveModal() {
+  modalMode = 'save';
+  document.getElementById('modalTitle').textContent = '存 档';
+  document.getElementById('modalSubtitle').textContent = '选择一个档位保存当前进度';
+  renderModalSlots();
+  document.getElementById('saveModal').classList.add('active');
+}
+
+function openLoadModal() {
+  modalMode = 'load';
+  document.getElementById('modalTitle').textContent = '读 档';
+  document.getElementById('modalSubtitle').textContent = '选择一个档位继续游戏';
+  renderModalSlots();
+  document.getElementById('saveModal').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('saveModal').classList.remove('active');
+}
+
+function closeModalOnOverlay(e) {
+  if (e.target === document.getElementById('saveModal')) closeModal();
+}
+
+function saveSnapshot() {
+  return {
+    version: SAVE_VERSION,
+    timestamp: Date.now(),
+    gameState: JSON.parse(JSON.stringify(GameState)),
+    narrativeHistory: collectNarrativeHistory()
+  };
+}
+
+function applySnapshot(save) {
+  if (!save) return;
+  const gs = save.gameState;
+  Object.assign(GameState, gs);
+  if (gs.character) Object.assign(GameState.character, gs.character);
+  if (gs.attributes) Object.assign(GameState.attributes, gs.attributes);
+  if (gs.factions) Object.assign(GameState.factions, gs.factions);
+  if (gs.seeds) GameState.seeds = [...gs.seeds];
+  if (gs.seeds_triggered) GameState.seeds_triggered = [...gs.seeds_triggered];
+
+  updateStatusPanel();
+  clearContainer();
+  if (save.narrativeHistory && save.narrativeHistory.length > 0) {
+    for (const block of save.narrativeHistory) {
+      if (block.type === 'turn-info') addTurnInfo(block.text);
+      else if (block.type === 'narrative') gameContainer.appendChild(renderNarrative(block.html, false));
+      else if (block.type === 'divider') addDivider();
+    }
+    scrollToBottom();
+  }
+}
+
+// Auto-save after each turn (separate key)
+function autoSave() {
+  localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(saveSnapshot()));
+}
+
+function loadAutoSave() {
+  const save = getAutoSave();
+  if (!save) return false;
+  closeModal();
+  applySnapshot(save);
+  return true;
+}
+
+// ========== INIT ==========
+document.addEventListener('DOMContentLoaded', () => {
+  startGame();
+});
+</script>
+</body>
+</html>
