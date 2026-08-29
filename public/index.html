@@ -2262,7 +2262,21 @@ async function enterGameLoop() {
     // === LIVE MODE ===
     chatHistory = []; // 重置对话历史
     // First turn: send character intro as context
-    const initialContext = `游戏开始。玩家角色：${GameState.character.name}，出身：${GameState.character.background}，年龄：${GameState.character.age}，当前官职：${GameState.character.position}。请按照System Prompt的规则开始游戏第一回合。`;
+    const initialContext = `【角色创建已完成，跳过第16.3节首轮格式。玩家角色已确定如下】
+姓名：${GameState.character.name}
+出身：${GameState.character.background}
+年龄：${GameState.character.age}
+起始官职：${GameState.character.position}
+时间：洪武八年正月
+
+请严格按照第16.1节的输出格式，直接输出第一回合的完整内容：
+1. 叙事段落（300字以上，描写角色初入官场的场景和第一个事件）
+2. ---分隔符
+3. 3个选项+1个自由行动（用「」包裹）
+4. ---分隔符
+5. JSON状态块（turn:1, year:1375, month:1, 无变化值）
+
+不要问名字、不要问出身，角色已确定。直接开始叙事。`;
 
     await processAITurn(initialContext);
   } else {
@@ -2520,7 +2534,7 @@ function applySnapshot(save) {
       else if (block.type === 'narrative') gameContainer.appendChild(renderNarrative(block.html, false));
       else if (block.type === 'divider') addDivider();
     }
-       // 添加"继续"按钮，让玩家触发下一回合
+    // 添加"继续"按钮，让玩家触发下一回合
     addDivider();
     const resumeBtn = document.createElement('button');
     resumeBtn.className = 'choice-btn';
