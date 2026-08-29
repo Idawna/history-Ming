@@ -2539,8 +2539,11 @@ function applySnapshot(save) {
     const resumeBtn = document.createElement('button');
     resumeBtn.className = 'choice-btn';
     resumeBtn.textContent = '继续前行';
-    resumeBtn.style.margin = '1rem auto';
+        resumeBtn.style.margin = '1rem auto';
     resumeBtn.style.display = 'block';
+    resumeBtn.style.opacity = '1';
+    resumeBtn.style.transform = 'none';
+    resumeBtn.style.animation = 'none';
     resumeBtn.addEventListener('click', () => {
       resumeBtn.remove();
       const yearName = getYearName(GameState.year);
