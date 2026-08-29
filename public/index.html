@@ -1455,8 +1455,50 @@ function parseAIOutput(text) {
       }
     }
   } else {
-    // Fallback: treat everything as narrative
+    // Fallback: 没有正确分隔，尝试从文本中提取选项
     narrative = text.trim();
+    
+    // 尝试从叙事文本中提取选项（匹配 1. xxx 格式）
+    const lines = narrative.split('\n');
+    const narrativeLines = [];
+    const choiceLines = [];
+    let inChoices = false;
+    
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      
+      // 检测是否是选项格式（1. xxx, 2. xxx 等）
+      const isChoice = /^\d+\.\s*[「『]?(.+?)[」』]?\s*$/.test(line) ||
+                      /^\d+\.\s*(.+)$/.test(line);
+      
+      if (isChoice && !inChoices) {
+        inChoices = true;
+      }
+      
+      if (inChoices && isChoice) {
+        choiceLines.unshift(line);
+      } else if (inChoices) {
+        // 遇到非选项行，停止提取
+        break;
+      }
+    }
+    
+    // 如果提取到选项，从叙事中移除
+    if (choiceLines.length >= 3) {
+      choiceLines.forEach(line => {
+        const match = line.match(/^\d+\.\s*[「『]?(.+?)[」』]?\s*$/) ||
+                      line.match(/^\d+\.\s*(.+)$/);
+        if (match) {
+          let choiceText = match[1].trim();
+          choiceText = choiceText.replace(/^[「『]/, '').replace(/[」』]$/, '');
+          choices.push(choiceText);
+        }
+        // 从叙事中移除这一行
+        narrative = narrative.replace(line, '');
+      });
+      narrative = narrative.trim();
+    }
   }
 
   return { narrative, choices, stateBlock };
@@ -1477,6 +1519,15 @@ function renderNarrative(html, animate = true) {
   textDiv.innerHTML = html;
 
   div.appendChild(textDiv);
+  
+  // 兜底：强制触发重排并确保可见性（修复移动端动画偶尔不生效的问题）
+  setTimeout(() => {
+    if (window.getComputedStyle(textDiv).opacity === '0') {
+      textDiv.style.opacity = '1';
+      textDiv.style.transform = 'translateY(0)';
+    }
+  }, 100);
+  
   return div;
 }
 
@@ -1986,6 +2037,14 @@ async function streamBotAPI(userMessage, streamTarget) {
 
   let fullText = '';
   let lastScrollTime = 0;
+  let userScrolling = false; // 检测用户是否在主动滚动
+
+  // 监听用户滚动事件
+  const scrollHandler = () => {
+    userScrolling = true;
+  };
+  window.addEventListener('wheel', scrollHandler, { passive: true });
+  window.addEventListener('touchmove', scrollHandler, { passive: true });
 
   try {
     const resp = await fetch(BOT_CONFIG.proxyUrl, {
@@ -2017,17 +2076,24 @@ async function streamBotAPI(userMessage, streamTarget) {
       const chunk = decoder.decode(value, { stream: true });
       fullText += chunk;
 
-      // 实时更新流式显示区域
+      // 实时更新流式显示区域（过滤掉选项和状态数据，只显示叙事部分）
       if (streamTarget) {
-        streamTarget.textContent = fullText;
-        // 节流滚动：每 150ms 最多滚一次，避免性能问题
+        // 检测 --- 分隔符，只显示分隔符之前的叙事文本
+        const dividerIndex = fullText.indexOf('\n---\n');
+        const displayText = dividerIndex !== -1 ? fullText.substring(0, dividerIndex) : fullText;
+        streamTarget.textContent = displayText;
+        // 节流滚动：每 150ms 最多滚一次，避免性能问题；用户主动滚动时暂停自动滚动
         const now = Date.now();
-        if (now - lastScrollTime > 150) {
+        if (now - lastScrollTime > 150 && !userScrolling) {
           scrollToBottom();
           lastScrollTime = now;
         }
       }
     }
+
+    // 清理滚动监听器
+    window.removeEventListener('wheel', scrollHandler);
+    window.removeEventListener('touchmove', scrollHandler);
 
     // 把 AI 回复加入历史
     if (fullText.trim()) {
@@ -2037,6 +2103,9 @@ async function streamBotAPI(userMessage, streamTarget) {
     return fullText;
   } catch (err) {
     clearTimeout(timeoutId);
+    // 清理滚动监听器
+    window.removeEventListener('wheel', scrollHandler);
+    window.removeEventListener('touchmove', scrollHandler);
     // 失败时回滚刚加入的 user 消息
     if (chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'user') {
       chatHistory.pop();
