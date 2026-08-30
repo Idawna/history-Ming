@@ -1418,6 +1418,85 @@ function applyChanges(changes) {
   showFloatingChanges(changes);
 }
 
+// ========== JSON 鲁棒解析器 ==========
+// 从任意文本中尝试提取并解析最外层的 JSON 对象，兼容多种 AI 输出风格：
+// ① ```json ... ``` 代码块（含/不含 json 标签、含/不含多余反引号）
+// ② 直接以 { 开头的纯 JSON
+// ③ JSON 前后/中间混了文字、中文标点、空行等噪声
+// ④ 多层嵌套、跨多行、缩进不一
+function tryParseJSON(raw) {
+  if (!raw) return null;
+  const s = typeof raw === 'string' ? raw : String(raw);
+
+  // 策略1：找最外层 {} 块（从首个 { 到对应的 }）
+  const start = s.indexOf('{');
+  if (start >= 0) {
+    // 从 start 开始找匹配的 }，处理嵌套
+    let depth = 0, end = -1;
+    let inStr = false, esc = false;
+    for (let i = start; i < s.length; i++) {
+      const ch = s[i];
+      if (esc) { esc = false; continue; }
+      if (ch === '\\') { esc = true; continue; }
+      if (ch === '"' || ch === "'") { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (end > start) {
+      let candidate = s.slice(start, end + 1);
+      // 清理常见 AI 噪声：中文引号→英文引号、全角冒号/逗号→半角、多余空白
+      candidate = candidate
+        .replace(/\u201c/g, '"').replace(/\u201d/g, '"')  // 中文双引号
+        .replace(/\u2018/g, "'").replace(/\u2019/g, "'")  // 中文单引号
+        .replace(/\uff1a/g, ':')    // 全角冒号
+        .replace(/\uff0c/g, ',')    // 全角逗号
+        .replace(/\u3002/g, '.')    // 中文句号（字符串外不处理，但整体替换一般无害）
+        .replace(/\s+/g, ' ')       // 合并空白
+        .trim();
+      try {
+        const obj = JSON.parse(candidate);
+        // 基本校验：必须包含 turn 或 pacing 等状态字段之一，否则可能是别的 JSON
+        if (obj && typeof obj === 'object' &&
+            ('turn' in obj || 'pacing' in obj || 'year' in obj || 'changes' in obj)) {
+          return obj;
+        }
+      } catch (_) { /* 继续尝试其他策略 */ }
+    }
+  }
+
+  // 策略2：找 ``` 或 ```` 代码块，再从中提取 JSON
+  const codeRe = /`{3,4}\s*(?:json)?\s*([\s\S]*?)`{3,4}/i;
+  const m = s.match(codeRe);
+  if (m) {
+    try {
+      const obj = JSON.parse(m[1].trim());
+      if (obj && typeof obj === 'object' &&
+          ('turn' in obj || 'pacing' in obj || 'year' in obj || 'changes' in obj)) {
+        return obj;
+      }
+    } catch (_) {}
+  }
+
+  return null;
+}
+
+// ========== 叙事文本净化 ==========
+// AI 返回整段 text 中可能混入未解析的 JSON 块/代码块，从显示中剔除
+function sanitizeNarrative(raw) {
+  if (!raw) return raw;
+  let t = raw;
+  // 去掉 ```json ... ``` 代码块
+  t = t.replace(/`{3,4}\s*(?:json)?\s*[\s\S]*?`{3,4}/gi, '');
+  // 去掉残留的 markdown 标记：```、`、```
+  t = t.replace(/`{3,4}\s*/g, '').replace(/`{1,2}/g, '');
+  // 去掉孤立的 { ... } 块（未被解析器捕获的）
+  t = t.replace(/\{[\s\S]*?\}\s*$/gm, '');
+  // 清理首尾空白与连续空行
+  t = t.replace(/\n{3,}/g, '\n\n').trim();
+  return t;
+}
+
 // ========== PARSE AI OUTPUT ==========
 function parseAIOutput(text) {
   // Split by --- dividers
@@ -1428,7 +1507,7 @@ function parseAIOutput(text) {
   let stateBlock = null;
 
   if (sections.length >= 3) {
-    narrative = sections[0].trim();
+    narrative = sanitizeNarrative(sections[0].trim());
     const choicesText = sections[1].trim();
     const stateText = sections[2].trim();
 
@@ -1445,18 +1524,13 @@ function parseAIOutput(text) {
       }
     });
 
-    // Parse JSON state block
-    const jsonMatch = stateText.match(/```json\s*([\s\S]*?)\s*```/);
-    if (jsonMatch) {
-      try {
-        stateBlock = JSON.parse(jsonMatch[1]);
-      } catch (e) {
-        console.warn('JSON parse error:', e);
-      }
-    }
+    // Parse JSON state block：兼容多种代码块写法（```json、```、````、无代码块直接大括号开头）
+    stateBlock = tryParseJSON(stateText);
   } else {
-    // Fallback: 没有正确分隔，尝试从文本中提取选项
-    narrative = text.trim();
+    // Fallback: 没有正确分隔，尝试从全文（含JSON散落）中提取选项+状态
+    // 先尝试从整段 text 中提取 JSON（有些 AI 把 JSON 放在末尾不分割）
+    stateBlock = tryParseJSON(text);
+    narrative = sanitizeNarrative(text.trim());
     
     // 尝试从叙事文本中提取选项（匹配 1. xxx 格式）
     const lines = narrative.split('\n');
@@ -1690,9 +1764,9 @@ function generateGivenName(backgroundKey) {
 function generateCharIntro(surname, givenName, bgKey) {
   const fullName = surname + givenName;
   const intros = {
-    huaixi: `${fullName}，凤阳府定远县人氏。父亲早年随太祖起兵，南征北战，积功至千户，后在鄱阳湖一战中身负重伤，归乡不久便病故了。母亲含辛茹苦将你拉扯大，临终前只留下一句话：「你爹是替大明死的，你莫要辱没了他。」\n\n你自幼在军营中摸爬滚打，弓马娴熟，也认得几个字。洪武三年，朝廷追录阵亡将士之后，你蒙荫补为殿前校尉，入京当差。如今你二十五岁，在应天府当了五年差，虽只是个七品武官，却也见过些世面——淮西老将们念着你父亲的旧情，偶尔照拂一二；但朝中风向日变，这层关系究竟是福是祸，你也说不准。`,
+    huaixi: `${fullName}，凤阳府定远县人氏。父亲早年随太祖起兵，南征北战，积功至千户，后在鄱阳湖一战中身负重伤，归乡不久便病故了。母亲蓝氏含辛茹苦将你拉扯大，她的幼弟蓝玉——你的嫡亲舅舅——如今在大都督府当差，随军北征西讨，正是当红的时候，逢年过节总不忘捎东西来看望你们母子。母亲临终前只留下一句话：「你爹是替大明死的，你莫要辱没了他。」\n\n你自幼在军营中摸爬滚打，弓马娴熟，也认得几个字。洪武三年，朝廷追录阵亡将士之后，你蒙荫补为殿前校尉，入京当差。如今你二十五岁，在应天府当了五年差，虽只是个七品武官，却也见过些世面——淮西老将们念着你父亲的旧情，舅舅蓝玉在军中又多有照拂；但朝中风向日变，这层关系究竟是福是祸，你也说不准。`,
 
-    zhedong: `${fullName}，处州府青田县人氏。父亲是个落第秀才，一生未曾中举，只得在乡中开馆授徒，勉强糊口。他对你管教极严，三岁识字，五岁背诗，八岁便开始读《春秋》。你倒也争气，十七岁中秀才，二十岁中举人——只可惜去年春闱名落孙山，铩羽而归。\n\n今年开春，父亲变卖了家中仅有的几亩薄田，凑了盘缠让你入京谋个出路。他说：「为父这辈子困在青田，你不能再困在这里。刘基先生也是青田人，他能做到的，你未必不能。」你背着书箱踏入应天门时，春雨正绵密。你知道，刘基已经死了三年，浙东文官集团正群龙无首——但这也许正是你的机会。`,
+    zhedong: `${fullName}，处州府青田县人氏。父亲是个落第秀才，一生未曾中举，只得在乡中开馆授徒，勉强糊口。他年轻时曾游学金华，与宁海方孝孺同在宋濂先生门下问学，虽日后境遇天差地别，书信往来却未曾断过。他对你管教极严，三岁识字，五岁背诗，八岁便开始读《春秋》。你倒也争气，十七岁中秀才，二十岁中举人——只可惜去年春闱名落孙山，铩羽而归。\n\n今年开春，父亲变卖了家中仅有的几亩薄田，凑了盘缠让你入京谋个出路。他说：「为父这辈子困在青田，你不能再困在这里。刘基先生也是青田人，他能做到的，你未必不能。」你背着书箱踏入应天门时，春雨正绵密。你听闻，刘基先生去年便已致仕归乡，如今缠绵病榻，据说胡丞相曾遣太医登门送药，个中蹊跷无人敢议——浙东文官集团失了擎天之柱，风雨欲来。但这也许正是你的机会。`,
 
     shanggu: `${fullName}，应天府江宁县人氏。沈家是应天府数得上的富户，经营绸缎、茶叶和盐引，在秦淮河畔有三间铺子，在苏州、扬州也有分号。你自小锦衣玉食，五岁开蒙，请的是致仕的老儒；十二岁便跟着父亲学算盘、看账本、辨绸缎成色。\n\n然而你心里清楚，在这大明天下，商人再有钱也不过是砧板上的肉。沈万三的前车之鉴犹在眼前——富可敌国又如何？一纸诏令，抄家流徙。父亲花了大笔银子替你捐了个监生，又托人在通政司谋了个知印的差事，从九品，不入流。你今年二十三岁，穿着皂色官服站在衙门里时，常觉得自己像个穿着戏服的伶人。但你知道，这是沈家从商入仕的唯一一步棋——走好了，沈家便能改换门庭；走砸了，万劫不复。`,
 
@@ -1855,6 +1929,7 @@ async function showCharacterIntro(surname, givenName, bgKey) {
 
   const fullName = surname + givenName;
   const intro = generateCharIntro(surname, givenName, bgKey);
+  GameState.character.intro = intro; // 固定身世存档：之后每回合随上下文下发给AI，防止AI即兴改编身世
   const paragraphs = intro.split('\n\n');
 
   let html = `<span class="year-mark">洪武八年 · 正月</span>`;
@@ -2001,17 +2076,113 @@ ${''}天下初定已经七年了。应天府的春天带着潮湿的暖意，秦
 ];
 
 // ========== LIVE MODE: CALL BOT API VIA PROXY ==========
+// 收集最近 n 段叙事的纯文本，作为"前情提要"随每回合下发
+// 作用：①读档后 chatHistory 清空，AI 靠这个衔接剧情 ②长局历史被裁剪后也不会忘身世
+function collectRecentPlot(n) {
+  const texts = [];
+  const areas = gameContainer.querySelectorAll('.narrative-area .narrative-text');
+  for (let i = areas.length - 1; i >= 0 && texts.length < n; i--) {
+    const t = areas[i].textContent.trim();
+    if (t) texts.unshift(t);
+  }
+  if (!texts.length) return undefined;
+  return '【前情提要】以下是玩家屏幕上已发生的最近剧情，必须无缝衔接，不得重复、不得矛盾：\n' + texts.join('\n');
+}
+
+// ========== 历史锚点节奏引擎（前端硬控，不再依赖AI自觉） ==========
+// 锚点表与 SP 第10.1节六大锚点严格一致
+const HISTORY_ANCHORS = [
+  { id: 1, name: '刘伯温之死', desc: '刘伯温病逝/被毒杀，浙东线核心触发', start: 1,  end: 3,  time: '洪武八年·1375年四月' },
+  { id: 2, name: '胡惟庸案',   desc: '胡惟庸被诛、牵连数万人，第一次大清洗', start: 22, end: 25, time: '洪武十三年·1380年正月' },
+  { id: 3, name: '郭桓案',     desc: '户部侍郎郭桓贪腐案发，经济线大案', start: 26, end: 28, time: '洪武十八年·1385年' },
+  { id: 4, name: '李善长案',   desc: '李善长被赐死、株连三万余人，株连最广', start: 38, end: 40, time: '洪武二十三年·1390年' },
+  { id: 5, name: '蓝玉案',     desc: '蓝玉被诛、牵连一万五千余人，淮西勋贵末日', start: 46, end: 48, time: '洪武二十六年·1393年' },
+  { id: 6, name: '朱元璋驾崩', desc: '朱元璋病逝、建文帝即位，游戏终点', start: 57, end: 60, time: '洪武三十一年·1398年闰五月' }
+];
+
+// 即将生成的回合号：屏幕上还没有叙事=开局第1回；否则=当前回合+1
+function getNextTurn() {
+  const hasNarratives = gameContainer.querySelectorAll('.narrative-area').length > 0;
+  return hasNarratives ? GameState.turn + 1 : GameState.turn;
+}
+
+// 按回合号硬判节奏，返回 { pacing, directive }；规则与 SP 第12.2节一致
+function getRhythmDirective(turn) {
+  const t = turn;
+  let r = null;
+
+  // 优先级1：锚点事件窗口内 → ⚡反转
+  for (const a of HISTORY_ANCHORS) {
+    if (t >= a.start && t <= a.end) {
+      r = { pacing: '反转', directive:
+`【节奏指令·硬控】本回合处于历史锚点「${a.name}」事件窗口（第${a.start}-${a.end}回，历史时间：${a.time}）——${a.desc}。
+本回合节奏必须为⚡反转：叙事800-1200字，长短句交替、以有冲击力的场面开头，写出格局骤变；给3个选项，其中必须有1个让玩家直接面对该事件；事件须在窗口内迎来高潮，不得拖延到窗口之外。` };
+      break;
+    }
+  }
+  // 优先级2：锚点前1-3回合 → 🔥紧迫
+  if (!r) {
+    for (const a of HISTORY_ANCHORS) {
+      const dist = a.start - t;
+      if (dist >= 1 && dist <= 3) {
+        r = { pacing: '紧迫', directive:
+`【节奏指令·硬控】距离历史锚点「${a.name}」还有${dist}回（预计第${a.start}回爆发，历史时间：${a.time}）——${a.desc}。
+本回合节奏必须为🔥紧迫：叙事800-1200字，短句为主（单句不超过20字），急促紧张、命悬一线；给3个选项，至少1个涉及该锚点相关人物或事件（布局、打探、伏笔均可），但禁止提前剧透事件结果。` };
+        break;
+      }
+    }
+  }
+  // 优先级3：锚点后1-2回合 → 🌊沉淀
+  if (!r) {
+    for (const a of HISTORY_ANCHORS) {
+      const after = t - a.end;
+      if (after >= 1 && after <= 2) {
+        r = { pacing: '沉淀', directive:
+`【节奏指令·硬控】历史锚点「${a.name}」刚落幕${after}回，本回合节奏必须为🌊沉淀：叙事300-500字，长句、深沉内敛，写事件余波与劫后余生；给3个选项，以善后、清算、自保、反思为主；时间可跳跃6-12个月。` };
+        break;
+      }
+    }
+  }
+  // 优先级4：无事件回合 → 奇数🍃缓冲 / 偶数📜日常
+  if (!r) {
+    if (t % 2 === 1) {
+      r = { pacing: '缓冲', directive:
+`【节奏指令·硬控】本回合无历史锚点临近，节奏为🍃缓冲（事件间歇期）：叙事500-800字，中长句、从容细腻，表面平静下暗流涌动；给4个选项，以探索、社交、经营为主；1回合约代表2-3个月。` };
+    } else {
+      r = { pacing: '日常', directive:
+`【节奏指令·硬控】本回合无历史锚点临近，节奏为📜日常（常规政务）：叙事400-700字，平稳扎实、生活化细节，岁月流转；给4个经营型选项；1回合约代表3-6个月，可用蒙太奇式叙事推进时间。` };
+    }
+  }
+
+  // 种子引爆例外 + 强制对齐 JSON
+  r.directive += `\n\n【️强制·种子例外与JSON】若本回合你判断 current_state.seeds 中某颗种子达到引爆时机，可将节奏升级为反转并写出引爆后果，种子引爆优先于上述历史节奏；②除此之外**必须严格按上述节奏执行，JSON 状态块中的 pacing 字段必须填写「${r.pacing}」，不可填写其他值**（前端会校验，填错则整个状态块被丢弃、数值回合全不推进）；③year/month 须与锚点历史时间（${HISTORY_ANCHORS.find(a=>t>=a.start&&t<=a.end)?.time || '见时间系统'}）的推进逻辑一致；④JSON 必须放在 \`{ ... }\` 代码块内，且紧跟在三个选项之后，用 \`---\` 分隔。`;
+  return r;
+}
+
 // ========== STREAMING API CALL ==========
 // 调用后端代理，流式接收 AI 回复，逐字显示在 streamTarget 元素中
 async function streamBotAPI(userMessage, streamTarget) {
+  // 前端节奏引擎：按即将生成的回合号硬判节奏（历史锚点不再依赖AI自觉）
+  const rhythm = getRhythmDirective(getNextTurn());
   // 构造当前回合的上下文消息
   const contextPayload = {
+    rhythm_directive: rhythm.directive,
+    character_canon: GameState.character.intro
+      ? `【角色身世·铁律】以下角色身世小传是玩家开局时确认过的正史设定，任何叙事涉及角色姓名、籍贯、家庭、早年经历、出身时，必须与之严格一致，不得改写、不得新增矛盾设定、不得重新介绍角色身世：\n${GameState.character.intro}`
+      : undefined,
+    recent_plot: collectRecentPlot(4),
     current_state: {
       turn: GameState.turn,
       year: GameState.year,
       month: GameState.month,
       pacing: GameState.pacing,
-      character: GameState.character,
+      character: {
+        name: GameState.character.name,
+        age: GameState.character.age,
+        background: GameState.character.background,
+        position: GameState.character.position,
+        rank: GameState.character.rank
+      },
       attributes: GameState.attributes,
       factions: GameState.factions,
       emperor_feeling: GameState.emperor_feeling,
@@ -2079,8 +2250,14 @@ async function streamBotAPI(userMessage, streamTarget) {
       // 实时更新流式显示区域（过滤掉选项和状态数据，只显示叙事部分）
       if (streamTarget) {
         // 检测 --- 分隔符，只显示分隔符之前的叙事文本
+        let displayText = fullText;
         const dividerIndex = fullText.indexOf('\n---\n');
-        const displayText = dividerIndex !== -1 ? fullText.substring(0, dividerIndex) : fullText;
+        if (dividerIndex !== -1) displayText = fullText.substring(0, dividerIndex);
+        // 流式阶段也过滤掉可能出现的 JSON 代码块残影
+        displayText = displayText
+          .replace(/`{3,4}\s*(?:json)?\s*[\s\S]*?(?:`{3,4}|$)/gi, '')
+          .replace(/\{\s*[\s\S]*?(?:\}\s*(?:,?\s*\n|\s*$))/gm, '')
+          .trim();
         streamTarget.textContent = displayText;
         // 节流滚动：每 150ms 最多滚一次，避免性能问题；用户主动滚动时暂停自动滚动
         const now = Date.now();
@@ -2119,6 +2296,8 @@ async function streamBotAPI(userMessage, streamTarget) {
 
 // ========== TURN PROCESSOR ==========
 async function processAITurn(userChoice) {
+  // 前端节奏引擎：本回合目标节奏（在叙事上屏/回合推进前计算，回合号准确）
+  const engineRhythm = getRhythmDirective(getNextTurn());
   // 创建流式输出区域
   const streamArea = document.createElement('div');
   streamArea.className = 'stream-area';
@@ -2161,12 +2340,15 @@ async function processAITurn(userChoice) {
     (parsed.stateBlock.rejected === true || parsed.stateBlock.rejected === 'true');
 
   // 回合信息（驳回时不显示新回合标记，因为时间没有推进）
+  let finalPacing = engineRhythm.pacing;
   if (parsed.stateBlock && !isRejected) {
     const sb = parsed.stateBlock;
+    // 种子引爆例外：AI 自报「反转」而引擎不是反转时，采信 AI（历史锚点节奏仍以引擎为准）
+    if (sb.pacing === '反转' && engineRhythm.pacing !== '反转') finalPacing = '反转';
     const yearName = getYearName(sb.year || GameState.year);
     const monthNames = ['正','二','三','四','五','六','七','八','九','十','冬','腊'];
     addTurnInfo(`${yearName} · ${monthNames[(sb.month || GameState.month) - 1]}月 · 第${sb.turn || GameState.turn}回`);
-    applyPacing(sb.pacing || GameState.pacing);
+    applyPacing(finalPacing);
   }
 
   // 渲染叙事（驳回时使用特殊样式）
@@ -2187,7 +2369,7 @@ async function processAITurn(userChoice) {
       GameState.turn = sb.turn || GameState.turn;
       GameState.year = sb.year || GameState.year;
       GameState.month = sb.month || GameState.month;
-      GameState.pacing = sb.pacing || GameState.pacing;
+      GameState.pacing = finalPacing; // 节奏硬控：存档/状态面板同步最终判定值（历史锚点引擎为准，种子引爆例外）
       if (sb.character) {
         if (sb.character.position) GameState.character.position = sb.character.position;
         if (sb.character.rank !== undefined) GameState.character.rank = sb.character.rank;
@@ -2262,15 +2444,10 @@ async function enterGameLoop() {
     // === LIVE MODE ===
     chatHistory = []; // 重置对话历史
     // First turn: send character intro as context
-    const initialContext = `【角色创建已完成，跳过第16.3节首轮格式。玩家角色已确定如下】
-姓名：${GameState.character.name}
-出身：${GameState.character.background}
-年龄：${GameState.character.age}
-起始官职：${GameState.character.position}
-时间：洪武八年正月
+    const initialContext = `【角色创建已完成，跳过第16.3节首轮格式。玩家角色已确定，身世小传玩家已在开局界面读过，即上文 character_canon 字段】
 
 请严格按照第16.1节的输出格式，直接输出第一回合的完整内容：
-1. 叙事段落（300字以上，描写角色初入官场的场景和第一个事件）
+1. 叙事段落（300字以上）：从小传结尾处角色的当前处境直接接续，展开他到任/当差后遇到的第一个事件。可以引用小传中的人物与细节（如父亲遗言、家世处境），但禁止复述、重写或扩写小传本身，禁止重新介绍角色身世
 2. ---分隔符
 3. 3个选项+1个自由行动（用「」包裹）
 4. ---分隔符
@@ -2378,43 +2555,77 @@ function clearAutoSave() {
 }
 
 function saveToSlot(slotIndex) {
-  const snapshot = {
-    version: SAVE_VERSION,
-    timestamp: Date.now(),
-    gameState: JSON.parse(JSON.stringify(GameState)),
-    narrativeHistory: collectNarrativeHistory()
-  };
-  const slots = getSaves();
-  slots[slotIndex] = snapshot;
-  writeSaves(slots);
-  renderModalSlots();
+  try {
+    // 若该档位已有存档，先确认覆盖
+    const slots = getSaves();
+    const existing = slots[slotIndex];
+    if (existing && existing.timestamp) {
+      const ok = confirm(`第 ${slotIndex + 1} 档已有存档（${formatTime(existing.timestamp)}），是否覆盖？`);
+      if (!ok) return;
+    }
+    // 基本校验：GameState 必须至少有角色名才能存档
+    if (!GameState.character.name) {
+      alert('角色尚未命名，无法存档');
+      return;
+    }
+    const snapshot = {
+      version: SAVE_VERSION,
+      timestamp: Date.now(),
+      gameState: JSON.parse(JSON.stringify(GameState)),
+      narrativeHistory: collectNarrativeHistory()
+    };
+    slots[slotIndex] = snapshot;
+    writeSaves(slots);
+    // 重新渲染槽位，覆盖存档后立即刷新显示
+    renderModalSlots();
 
-  // Show brief confirmation
-  const slotEl = document.querySelector(`[data-slot="${slotIndex}"]`);
-  if (slotEl) {
-    const original = slotEl.style.borderColor;
-    slotEl.style.borderColor = '#27ae60';
-    slotEl.style.boxShadow = '0 0 12px rgba(39,174,96,0.2)';
-    setTimeout(() => {
-      slotEl.style.borderColor = original;
-      slotEl.style.boxShadow = '';
-    }, 800);
+    // 视觉确认：边框闪绿
+    const slotEl = document.querySelector(`[data-slot="${slotIndex}"]`);
+    if (slotEl) {
+      const original = slotEl.style.borderColor;
+      const originalShadow = slotEl.style.boxShadow;
+      slotEl.style.borderColor = '#27ae60';
+      slotEl.style.boxShadow = '0 0 12px rgba(39,174,96,0.25)';
+      setTimeout(() => {
+        slotEl.style.borderColor = original;
+        slotEl.style.boxShadow = originalShadow;
+      }, 900);
+    }
+  } catch (err) {
+    console.error('saveToSlot failed:', err);
+    alert('存档失败：' + (err.message || err));
   }
 }
 
 function loadFromSlot(slotIndex) {
-  const slots = getSaves();
-  const save = slots[slotIndex];
-  if (!save) return;
-  closeModal();
-  applySnapshot(save);
+  try {
+    const slots = getSaves();
+    const save = slots[slotIndex];
+    if (!save || !save.gameState) {
+      alert('该档位存档损坏或为空');
+      return;
+    }
+    closeModal();
+    applySnapshot(save);
+    // 读档后立刻同步 autosave，防止下次进入首页加载的是旧自动档
+    autoSave();
+  } catch (err) {
+    console.error('loadFromSlot failed:', err);
+    alert('读档失败：' + (err.message || err));
+  }
 }
 
 function deleteSlot(slotIndex) {
-  const slots = getSaves();
-  slots[slotIndex] = null;
-  writeSaves(slots);
-  renderModalSlots();
+  if (!confirm(`确定删除第 ${slotIndex + 1} 档？此操作不可恢复。`)) return;
+  try {
+    const slots = getSaves();
+    slots[slotIndex] = null;
+    writeSaves(slots);
+    renderModalSlots();
+  } catch (err) {
+    console.error('deleteSlot failed:', err);
+    alert('删除失败：' + (err.message || err));
+  }
 }
 
 function collectNarrativeHistory() {
@@ -2434,19 +2645,23 @@ function collectNarrativeHistory() {
 }
 
 function formatTime(ts) {
+  if (!ts || !isFinite(ts)) return '未知时间';
   const d = new Date(ts);
+  if (isNaN(d.getTime())) return '未知时间';
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function renderModalSlots() {
   const container = document.getElementById('modalSlots');
+  if (!container) return;
   const slots = getSaves();
   let html = '';
 
   for (let i = 0; i < 3; i++) {
     const save = slots[i];
-    if (!save) {
+    // 无存档
+    if (!save || !save.gameState) {
       html += `
         <div class="save-slot empty" data-slot="${i}">
           <div class="slot-num" style="text-align:center;margin-bottom:0;">第 ${i + 1} 档 · 空</div>
@@ -2454,31 +2669,35 @@ function renderModalSlots() {
             ? `<div class="slot-actions" style="justify-content:center;">
                  <button class="slot-btn" onclick="event.stopPropagation();saveToSlot(${i})">存入此档</button>
                </div>`
-            : ''}
+            : `<div class="slot-actions" style="justify-content:center;color:var(--ink-faint);font-size:0.9rem;">空档</div>`}
         </div>`;
-    } else {
-      const gs = save.gameState;
-      const yearName = getYearName(gs.year);
-      html += `
-        <div class="save-slot" data-slot="${i}">
-          <div class="slot-header">
-            <span class="slot-num">第 ${i + 1} 档</span>
-            <span class="slot-time">${formatTime(save.timestamp)}</span>
-          </div>
-          <div class="slot-info">
-            <span>👤 ${gs.character.name || '未命名'}</span>
-            <span>🎭 ${gs.character.background || '—'}</span><br>
-            <span>📅 ${yearName} · 第${gs.turn}回</span>
-            <span>🏷️ ${gs.character.position || '—'}</span>
-          </div>
-          <div class="slot-actions">
-            ${modalMode === 'save'
-              ? `<button class="slot-btn" onclick="event.stopPropagation();saveToSlot(${i})">覆盖存档</button>`
-              : `<button class="slot-btn" onclick="event.stopPropagation();loadFromSlot(${i})">读取进度</button>`}
-            <button class="slot-btn danger" onclick="event.stopPropagation();deleteSlot(${i})">删除</button>
-          </div>
-        </div>`;
+      continue;
     }
+    // 有存档
+    const gs = save.gameState;
+    const yearName = getYearName(gs.year) || `洪武${gs.year - 1367}年`;
+    const charName = (gs.character && gs.character.name) ? gs.character.name : '未命名';
+    const charBg = (gs.character && gs.character.background) ? gs.character.background : '—';
+    const charPos = (gs.character && gs.character.position) ? gs.character.position : '未入流';
+    html += `
+      <div class="save-slot" data-slot="${i}">
+        <div class="slot-header">
+          <span class="slot-num">第 ${i + 1} 档</span>
+          <span class="slot-time">${formatTime(save.timestamp)}</span>
+        </div>
+        <div class="slot-info">
+          <span>👤 ${charName}</span>
+          <span>🎭 ${charBg}</span><br>
+          <span>📅 ${yearName} · 第${gs.turn || '?'}回</span>
+          <span>🏷️ ${charPos}</span>
+        </div>
+        <div class="slot-actions">
+          ${modalMode === 'save'
+            ? `<button class="slot-btn" onclick="event.stopPropagation();saveToSlot(${i})">覆盖存档</button>`
+            : `<button class="slot-btn" onclick="event.stopPropagation();loadFromSlot(${i})">读取进度</button>`}
+          <button class="slot-btn danger" onclick="event.stopPropagation();deleteSlot(${i})">删除</button>
+        </div>
+      </div>`;
   }
   container.innerHTML = html;
 }
@@ -2517,14 +2736,28 @@ function saveSnapshot() {
 }
 
 function applySnapshot(save) {
-  if (!save) return;
+  if (!save || !save.gameState) return;
   const gs = save.gameState;
-  Object.assign(GameState, gs);
-  if (gs.character) Object.assign(GameState.character, gs.character);
-  if (gs.attributes) Object.assign(GameState.attributes, gs.attributes);
-  if (gs.factions) Object.assign(GameState.factions, gs.factions);
-  if (gs.seeds) GameState.seeds = [...gs.seeds];
-  if (gs.seeds_triggered) GameState.seeds_triggered = [...gs.seeds_triggered];
+  // 基础容错：确保 gs 的嵌套对象存在
+  if (!gs.character) gs.character = { name: '', age: 22, background: '', position: '未入流', rank: 0 };
+  if (!gs.attributes) gs.attributes = { power: 20, people: 30, wisdom: 40, bond: 50, fame: 10 };
+  if (!gs.factions) gs.factions = { huaixi: 0, zhedong: 0, donggong: 0, zhuwang: 0, jinchen: 0 };
+  if (!Array.isArray(gs.seeds)) gs.seeds = [];
+  if (!Array.isArray(gs.seeds_triggered)) gs.seeds_triggered = [];
+
+  // 重置 GameState 再合并（避免上一局的残留字段污染）
+  GameState.turn = gs.turn || 1;
+  GameState.year = gs.year || 1375;
+  GameState.month = gs.month || 1;
+  GameState.pacing = gs.pacing || '日常';
+  GameState.emperor_feeling = gs.emperor_feeling || 0;
+
+  // 浅层合并嵌套对象
+  GameState.character = { ...GameState.character, ...gs.character };
+  GameState.attributes = { ...gs.attributes };
+  GameState.factions = { ...gs.factions };
+  GameState.seeds = [...gs.seeds];
+  GameState.seeds_triggered = [...gs.seeds_triggered];
 
   updateStatusPanel();
   clearContainer();
@@ -2539,7 +2772,7 @@ function applySnapshot(save) {
     const resumeBtn = document.createElement('button');
     resumeBtn.className = 'choice-btn';
     resumeBtn.textContent = '继续前行';
-        resumeBtn.style.margin = '1rem auto';
+    resumeBtn.style.margin = '1rem auto';
     resumeBtn.style.display = 'block';
     resumeBtn.style.opacity = '1';
     resumeBtn.style.transform = 'none';
@@ -2548,7 +2781,7 @@ function applySnapshot(save) {
       resumeBtn.remove();
       const yearName = getYearName(GameState.year);
       const monthNames = ['正','二','三','四','五','六','七','八','九','十','冬','腊'];
-      const context = `玩家选择继续。当前状态：第${GameState.turn}回，${yearName}${monthNames[GameState.month-1]}月。角色：${GameState.character.name}，${GameState.character.background}出身，官职${GameState.character.position}。请根据之前的剧情，生成下一回合的叙事和新选项。`;
+      const context = `玩家选择继续。当前状态：第${GameState.turn}回，${yearName}${monthNames[GameState.month-1]}月。请严格依据 character_canon（角色身世铁律）与 recent_plot（前情提要）衔接剧情，生成下一回合的叙事和新选项；身世细节以 character_canon 为准，不得自行改编。`;
       processAITurn(context);
     });
     gameContainer.appendChild(resumeBtn);
@@ -2562,11 +2795,16 @@ function autoSave() {
 }
 
 function loadAutoSave() {
-  const save = getAutoSave();
-  if (!save) return false;
-  closeModal();
-  applySnapshot(save);
-  return true;
+  try {
+    const save = getAutoSave();
+    if (!save || !save.gameState) return false;
+    closeModal();
+    applySnapshot(save);
+    return true;
+  } catch (err) {
+    console.error('loadAutoSave failed:', err);
+    return false;
+  }
 }
 
 // ========== INIT ==========
