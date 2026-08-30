@@ -1558,8 +1558,8 @@ function parseAIOutput(text) {
       }
     }
     
-    // 如果提取到选项，从叙事中移除
-    if (choiceLines.length >= 3) {
+    // 如果提取到选项，从叙事中移除（即使只有 1-2 个也保留，不强制要求 3 个）
+    if (choiceLines.length >= 1) {
       choiceLines.forEach(line => {
         const match = line.match(/^\d+\.\s*[「『]?(.+?)[」』]?\s*$/) ||
                       line.match(/^\d+\.\s*(.+)$/);
@@ -2204,7 +2204,7 @@ async function streamBotAPI(userMessage, streamTarget) {
   const trimmedHistory = chatHistory.slice(-MAX_HISTORY);
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s 超时（流式模式下更宽裕）
+  const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s 超时（flash 模型响应较慢）
 
   let fullText = '';
   let lastScrollTime = 0;
@@ -2389,9 +2389,20 @@ async function processAITurn(userChoice) {
 
   // 渲染选项（驳回时给出重新选择的提示）
   await new Promise(r => setTimeout(r, isRejected ? 200 : 400));
-  const choices = parsed.choices.length >= 3 ? parsed.choices : [
-    '继续前行', '另作打算', '静观其变', '自由行动：（输入你想做的任何事）'
-  ];
+  // 部分选项修复：解析器提取到了 1-2 个选项时，保留它们并补充默认项到 3 个；
+  // 完全没提取到时才回退到默认四项
+  const DEFAULT_CHOICES = ['继续前行', '另作打算', '静观其变', '自由行动：（输入你想做的任何事）'];
+  let choices;
+  if (parsed.choices.length >= 3) {
+    choices = parsed.choices;
+  } else if (parsed.choices.length >= 1) {
+    // 保留 AI 已写出的部分选项，补齐到 3 个
+    choices = parsed.choices.slice(0, 3);
+    const filler = DEFAULT_CHOICES.slice(0, 3 - choices.length);
+    choices = choices.concat(filler);
+  } else {
+    choices = DEFAULT_CHOICES;
+  }
 
   const choicesArea = renderChoices(choices, (choice) => {
     addDivider();
