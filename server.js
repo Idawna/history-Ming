@@ -79,7 +79,7 @@ app.post('/api/chat', async (req, res) => {
         messages: fullMessages,
         stream: true,
         temperature: 0.7,
-        max_tokens: 4096,
+        max_tokens: 8192,
       }),
     });
 
