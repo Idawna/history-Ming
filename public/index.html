@@ -2126,8 +2126,225 @@ function getNextTurn() {
   return hasNarratives ? GameState.turn + 1 : GameState.turn;
 }
 
+// ========== 动态规则生成器（v3.5：SP规则代码化） ==========
+
+// NPC生卒年表（硬编码，不再依赖AI判断）
+const NPC_BIRTH_DEATH = {
+  '朱元璋': { birth: 1328, death: 1398, personality: '多疑务实、痛恨贪腐、欣赏能臣' },
+  '朱标':   { birth: 1355, death: 1392, personality: '仁厚温和、太子、1392年病逝' },
+  '朱棣':   { birth: 1360, death: 1424, personality: '燕王、骁勇善战、野心勃勃' },
+  '蓝玉':   { birth: null, death: 1393, personality: '淮西勋贵、粗犷直接、骄横跋扈' },
+  '李善长': { birth: 1314, death: 1390, personality: '前朝旧臣、圆滑世故、优柔寡断' },
+  '胡惟庸': { birth: null, death: 1380, personality: '中书省丞相、精明强干、野心勃勃' },
+  '刘基':   { birth: 1311, death: 1375, personality: '浙东文臣、含蓄深沉、算无遗策' },
+  '汤和':   { birth: 1326, death: 1395, personality: '淮西老将、谨慎低调、明哲保身' },
+  '郭桓':   { birth: null, death: 1385, personality: '户部侍郎、贪腐案发' }
+};
+
+// 1. 获取当前在世NPC列表（代码硬控，杜绝死人复活）
+function getAliveNPCs(year) {
+  const alive = [];
+  for (const [name, info] of Object.entries(NPC_BIRTH_DEATH)) {
+    if (year < info.death) {
+      const age = info.birth ? year - info.birth : null;
+      const ageStr = age ? `${age}岁` : '年龄不详';
+      alive.push(`${name}(${ageStr}，${info.personality})`);
+    }
+  }
+  return alive.length ? `【当前在世重要人物】${alive.join('；')}。已故之人严禁以活人身份出场。` : '';
+}
+
+// 2. 获取当前可用机构名称（制度时间窗硬控，杜绝穿帮）
+function getAllowedInstitutions(year) {
+  const allowed = ['官差', '衙役'];
+  if (year >= 1382) allowed.push('巡卒', '缇骑', '锦衣卫');
+  if (year >= 1420) allowed.push('东厂');
+  if (year >= 1477) allowed.push('西厂');
+  
+  const forbidden = [];
+  if (year < 1382) forbidden.push('锦衣卫', '缇骑', '巡卒');
+  if (year < 1420) forbidden.push('东厂');
+  if (year < 1477) forbidden.push('西厂');
+  
+  let hint = `【当前时期(${year}年)可用称谓】${allowed.join('、')}`;
+  if (forbidden.length) {
+    hint += `；【严禁使用】${forbidden.join('、')}（尚未设立）`;
+  }
+  return hint;
+}
+
+// 3. 获取锚点铺垫方向（只给方向不给名称，防止剧透）
+function getAnchorDirection(anchorId) {
+  const directions = {
+    1: "浙东文臣的命运正在被审视",
+    2: "丞相府风声渐紧，中书省权力引发猜忌",
+    3: "户部账目异常、地方财政频出问题",
+    4: "前朝旧臣的牵连开始浮现",
+    5: "淮西勋贵骄横跋扈、屡生事端",
+    6: "太祖龙体抱恙、朝局暗流涌动"
+  };
+  return directions[anchorId] || "";
+}
+
+// 4. 获取锚点信息（分层：当前锚点完整信息、下一个锚点只给方向、更远锚点禁止提及）
+function getAnchorHints(currentTurn) {
+  let currentAnchor = null;
+  let nextAnchorHint = null;
+  const forbiddenEvents = [];
+  
+  for (const anchor of HISTORY_ANCHORS) {
+    // 当前锚点：在窗口内或刚结束（余波期2回合）
+    if (currentTurn >= anchor.start && currentTurn <= anchor.end + 2) {
+      currentAnchor = anchor;
+    }
+    // 下一个锚点：即将发生（距离≤5回合）→ 只给铺垫方向
+    else if (currentTurn < anchor.start && currentTurn >= anchor.start - 5) {
+      nextAnchorHint = getAnchorDirection(anchor.id);
+    }
+    // 更远的锚点：禁止提及
+    else if (currentTurn < anchor.start - 5) {
+      forbiddenEvents.push(anchor.name);
+    }
+  }
+  
+  const hints = {};
+  if (currentAnchor) {
+    hints.current = `【当前锚点】${currentAnchor.name}（${currentAnchor.time}）：${currentAnchor.desc}`;
+  }
+  if (nextAnchorHint) {
+    hints.next_hint = `【可铺垫方向】${nextAnchorHint}（可写模糊的坊间传闻、制度异常、人物处境，但严禁点名事件名称或预言结局）`;
+  }
+  if (forbiddenEvents.length) {
+    hints.forbidden = `【严禁提及】${forbiddenEvents.join('、')}（尚未发生，不得作为已发生事件描写）`;
+  }
+  return hints;
+}
+
+
+// ========== v3.6: background-anchor mapping, ending paths, surveillance ==========
+
+const BACKGROUND_ANCHOR_MAP = {
+  '淮西武将之后': {
+    core_interest: '军权、旧部存亡、出征机会',
+    anchors: {
+      1: '远观朝局变动，与军营无直接关系',
+      2: '淮西阵营被猜忌的大环境，武将人人自危',
+      3: '军屯账目可间接触及，但非切身',
+      4: '淮西系老人被清洗，武将感到切肤之痛',
+      5: '舅舅蓝玉被诛——全书最高潮，亲情与自保的抉择',
+      6: '淮西武将视角看新帝即位，旧时代终结'
+    }
+  },
+  '浙东寒门书生': {
+    core_interest: '文名、师门存亡、文字风险',
+    anchors: {
+      1: '恩师刘伯温之死——开局情感暴击，精神导师陨落',
+      2: '浙东文人被卷入政治清洗，文字狱风险升温',
+      3: '户部案波及有限，可让同门师兄弟发表看法',
+      4: '党争波及浙东文人，同门可能受牵连',
+      5: '大清洗波及所有朝臣，书生身份天然脆弱',
+      6: '书生视角看新帝即位，文治还是武功？'
+    }
+  },
+  '应天府商贾之子': {
+    core_interest: '商路、账目、税赋、货源',
+    anchors: {
+      1: '朝局动荡影响商路安全，观望囤货',
+      2: '胡惟庸曾拉拢过你，其倒台牵连商业伙伴',
+      3: '户部直属全书高潮——直接面临交出账本/销毁证据/趁乱转移的抉择',
+      4: '株连导致商税改革，生意受冲击',
+      5: '军需采购被查，商贾卷入军方丑闻',
+      6: '新朝经济政策洗牌，最终商业格局定格'
+    }
+  },
+  '落魄前元官员之后': {
+    core_interest: '身份安全、监视压力、洗白机会',
+    anchors: {
+      1: '新朝清洗信号，前元旧臣人人自危',
+      2: '大案波及所有“身份可疑”之人，被排查风险',
+      3: '底层小姥可能被推出来当替罪羊',
+      4: '保护人李善长被赐死——全书高潮，前元身份彻底暴露',
+      5: '大清洗气氛，监视压力达到顶峰',
+      6: '新朝是否接纳前朝余孽？最终命运定格'
+    }
+  }
+};
+
+function getBackgroundAnchorHint(bg, t) {
+  var m = BACKGROUND_ANCHOR_MAP[bg];
+  if (!m) return '';
+  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+    var a = HISTORY_ANCHORS[i];
+    if (t >= a.start - 3 && t <= a.end + 2) {
+      var h = m.anchors[a.id] || '';
+      return '\u3010' + a.name + '\u00b7\u4f60\u7684\u5207\u8eab\u89d2\u5ea6\u3011' + h + '\uff08\u4f60\u7684\u6838\u5fc3\u5229\u76ca\uff1a' + m.core_interest + '\u3002\u9009\u9879\u5fc5\u987b\u4ece\u6b64\u89d2\u5ea6\u5207\u5165\uff0c\u81f3\u5c111\u4e2a\u9009\u9879\u76f4\u63a5\u5173\u8054\u6b64\u5229\u76ca\uff09';
+    }
+  }
+  return '';
+}
+
+var ENDING_CONDITIONS = {
+  '淮西武将之后': [
+    {name:'封狼居胥',cond:'权势\u226570 + 民\u5fc3\u226550 + 淮\u897f\u2265+30 + 天\u5b50\u597d\u611f\u2265-10 + 出\u5f81\u22652\u6b21',note:'战\u529f\u8d6b\u8d6b'},
+    {name:'卸\u7532\u5f52\u7530',cond:'权\u52bf\u226430 + 民\u5fc3\u226545 + 天\u5b50\u597d\u611f\u2265+20 + 忠\u8bda\u226540',note:'解\u7532\u8fd8\u4e61'},
+    {name:'武\u5723\u4f20\u4eba',cond:'智\u8c0b\u226565 + 声\u671b\u226560 + 权\u52bf30~55',note:'以\u6b66\u5165\u9053'}
+  ],
+  '浙东寒门书生': [
+    {name:'一\u4ee3\u5927\u5112',cond:'智\u8c0b\u226580 + 声\u671b\u226580 + 权\u52bf\u226440 + 浙\u4e1c\u2265+50 + 忠\u8bda\u226565',note:'文\u575b\u5b97\u5e08'},
+    {name:'帝\u5e08',cond:'东\u5bab\u597d\u611f\u2265+70 + 智\u8c0b\u226570 + 天\u5b50\u597d\u611f\u2265+10 + 声\u671b\u226560 + 忠\u8bda\u226555',note:'天\u5b50\u4e4b\u5e08'},
+    {name:'殉\u9053\u8005',cond:'文\u5b57\u72f1/\u515a\u4e89\u6b7b + 声\u671b\u226575 + 智\u8c0b\u226555 + 忠\u8bda\u226570 + 浙\u4e1c\u2265+60',note:'以\u6b7b\u660e\u5fd7'}
+  ],
+  '应天府商贾之子': [
+    {name:'富\u7532\u4e00\u65b9',cond:'权\u52bf\u226425 + 民\u5fc3\u226550 + 声\u671b\u226540',note:'商\u9053\u81f3\u5c0a'},
+    {name:'财\u653f\u540d\u81e3',cond:'权\u52bf\u226555 + 民\u5fc3\u226555 + 声\u671b\u226560 + 天\u5b50\u597d\u611f\u2265+20',note:'理\u8d22\u9ad8\u624b'},
+    {name:'两\u9762\u4e09\u5200',cond:'权\u52bf\u226550 + 2+\u9635\u8425\u2265+40 + 忠\u8bda\u226435 + 声\u671b30~55 + 民\u5fc3\u226440',note:'灰\u8272\u751f\u5b58'}
+  ],
+  '落\u9b44\u524d\u5143\u5b98\u5458\u4e4b\u540e': [
+    {name:'天\u5b50\u8fd1\u81e3',cond:'权\u52bf\u226570 + 近\u81e3\u2265+60 + 天\u5b50\u597d\u611f\u2265+20 + 其\u4ed6\u9635\u8425\u2264+10 + 智\u8c0b\u226565 + 忠\u8bda\u226440',note:'孤\u72ec\u6743\u81e3'},
+    {name:'洗\u5fc3\u9769\u9762',cond:'民\u5fc3\u226580 + 声\u671b\u226570 + 天\u5b50\u597d\u611f\u2265+30 + 忠\u8bda\u226560',note:'以\u7ee9\u6d17\u540d'},
+    {name:'前\u671d\u4f59\u5b7d',cond:'死\u4ea1(\u65cf\u706d/\u515a\u4e89) + 声\u671b\u226575',note:'宿\u547d\u96be\u9003'}
+  ]
+};
+
+function getEndingConditions(bg) {
+  var list = ENDING_CONDITIONS[bg];
+  if (!list) return '';
+  var lines = list.map(function(e){return '  \u2192 '+e.name+'\uff08'+e.note+'\uff09\uff1a'+e.cond;}).join('\n');
+  return '\u3010\u4f60\u7684\u51fa\u8eab\u4e13\u5c5e\u7ed3\u5c40\u8def\u5f84\u3011\u6bcf\u6b21\u751f\u6210\u9009\u9879\u65f6\uff0c\u81f3\u5c111\u4e2a\u9009\u9879\u987b\u63a8\u52a8\u4ee5\u4e0b\u67d0\u4e2a\u7ed3\u5c40\u6761\u4ef6\uff1a\n' + lines;
+}
+
+function getBackgroundPathReminder(bg, turn) {
+  if (!bg) return '';
+  if (bg === '浙东寒门书生' && turn > 0 && turn % 4 === 0) {
+    return '\u3010\u6587\u5b57\u8def\u5f84\u63d0\u9192\u3011\u672c\u56de\u5408\u987b\u5305\u542b\u81f3\u5c111\u4e2a\u6587\u4eba\u884c\u4e3a\u9009\u9879\uff08\u7f16\u7e82\u6587\u96c6/\u53c2\u4e0e\u8bd7\u4f1a/\u6559\u6388\u751f\u5f92/\u4e0a\u4e66\u8bba\u653f/\u4e0e\u6587\u4eba\u5708\u901a\u4fe1\uff09\uff0c\u8fd9\u662f\u901a\u5411\u201c\u6b89\u9053\u8005\u201d\u7ed3\u5c40\u7684\u5fc5\u8981\u79ef\u7d2f\u3002';
+  }
+  if (bg === '落魄前元官员之后' && turn > 0 && turn % 4 === 0) {
+    return '\u3010\u6d17\u767d\u8def\u5f84\u63d0\u9192\u3011\u672c\u56de\u5408\u987b\u5305\u542b\u81f3\u5c111\u4e2a\u201c\u529e\u5b9e\u4e8b/\u79ef\u6c11\u5fc3\u201d\u9009\u9879\uff08\u5ba1\u7406\u5192\u6848/\u8d48\u6d4e\u707e\u6c11/\u5174\u4fee\u6c34\u5229/\u6559\u5316\u767e\u59d3\uff09\uff0c\u8fd9\u662f\u901a\u5411\u201c\u6d17\u5fc3\u9769\u9762\u201d\u7ed3\u5c40\u7684\u5fc5\u8981\u79ef\u7d2f\u3002';
+  }
+  return '';
+}
+
+function getSurveillanceHint(year, turn, bg) {
+  if (bg !== '落魄前元官员之后') return '';
+  var lv = 1;
+  if (turn >= 8) lv = 2;
+  if (turn >= 18) lv = 3;
+  if (turn >= 30) lv = 4;
+  if (turn >= 40) lv = 5;
+  var purge = (turn>=22&&turn<=25)||(turn>=38&&turn<=40)||(turn>=46&&turn<=48);
+  if (purge) lv = Math.min(5, lv + 1);
+  var h = {
+    1:'\u3010\u76d1\u89c6\u00b7\u6697\u6d41\u3011\u9526\u8863\u536b\u5076\u5c14\u6709\u4eba\u5728\u4f60\u529e\u516c\u7684\u53bf\u8865\u9644\u8fd1\u8f6c\u60a0\uff0c\u4f46\u672a\u76f4\u63a5\u63a5\u89e6\u3002',
+    2:'\u3010\u76d1\u89c6\u00b7\u6e10\u7d27\u3011\u4f60\u6ce8\u610f\u5230\u6709\u4eba\u8bb0\u5f55\u4f60\u6bcf\u65e5\u7684\u884c\u8e2a\uff0c\u4fe1\u4ef6\u4f3c\u88ab\u62c6\u9605\u8fc7\u3002',
+    3:'\u3010\u76d1\u89c6\u00b7\u76d8\u67e5\u3011\u9526\u8863\u536b\u767e\u6237\u4eb2\u81ea\u767b\u95e8\u201c\u62dc\u8bbf\u201d\uff0c\u95ee\u4f60\u51e0\u4e2a\u5173\u4e8e\u524d\u671d\u65e7\u4e8b\u7684\u95ee\u9898\u3002',
+    4:'\u3010\u76d1\u89c6\u00b7\u9ad8\u538b\u3011\u4f60\u7684\u516c\u52a1\u88ab\u53cd\u590d\u6838\u67e5\uff0c\u540c\u50da\u5f00\u59cb\u523b\u610f\u4e0e\u4f60\u4fdd\u6301\u8ddd\u79bb\u3002',
+    5:'\u3010\u76d1\u89c6\u00b7\u5371\u6025\u3011\u9526\u8863\u536b\u5df2\u638c\u63e1\u4f60\u90e8\u5206\u628a\u67c4\uff0c\u968f\u65f6\u53ef\u80fd\u52a8\u624b\u2014\u2014\u5927\u6848\u671f\u95f4\u5c24\u5176\u5371\u9669\u3002'
+  };
+  return h[lv];
+}
+
 // 按回合号硬判节奏，返回 { pacing, directive }；规则与 SP 第12.2节一致
-function getRhythmDirective(turn) {
+function getRhythmDirective(turn, background) {
   const t = turn;
   let r = null;
 
@@ -2169,6 +2386,13 @@ function getRhythmDirective(turn) {
   if (!r) {
     r = { pacing: '日常', directive:
 `【节奏指令·硬控】本回合无历史锚点临近，节奏为📜日常（常规政务 + 时间快进）：叙事400-700字，平稳扎实、生活化细节，岁月流转；给4个经营型选项（探索/社交/官场/经营均可）；⏰时间**必须推进6-12个月**，允许蒙太奇式快进（"半年过去""年关将至""次年春""转眼间已是洪武X年"），本回合的核心任务是推进年份向下一个历史锚点靠拢。所有出场人物、机构、制度必须符合当前年份的真实历史（例如：1382年前不可出现"锦衣卫"字样，只能称"缇骑""巡卒""官差"；已死之人不得复活；未发生的案件不可作为已发生事件提及，但可作为模糊的坊间风声伏笔）。` };
+    // v3.6: warrior acceleration
+    if (background === '淮西武将之后') {
+      var inA = HISTORY_ANCHORS.some(function(a){return turn>=a.start && turn<=a.end+2;});
+      if (!inA && turn > 5) {
+        r.directive += '\n\n\u3010\u23e9\u6b66\u5c06\u52a0\u901f\u3011\u5f53\u524d\u65e0\u76f4\u63a5\u5173\u8054\u6b66\u5c06\u7684\u6838\u5fc3\u951a\u70b9\uff0c\u65f6\u95f4\u63a8\u8fdb\u5e45\u5ea6\u7ffb\u500d\u81f312-24\u4e2a\u6708\uff0c\u5feb\u901f\u63a8\u8fdb\u5230\u84dd\u7389\u6848\u7b49\u6b66\u5c06\u5207\u8eab\u951a\u70b9\u3002';
+      }
+    }
   }
 
   // 种子引爆例外 + 强制对齐 JSON
@@ -2180,7 +2404,7 @@ function getRhythmDirective(turn) {
 // 调用后端代理，流式接收 AI 回复，逐字显示在 streamTarget 元素中
 async function streamBotAPI(userMessage, streamTarget) {
   // 前端节奏引擎：按即将生成的回合号硬判节奏（历史锚点不再依赖AI自觉）
-  const rhythm = getRhythmDirective(getNextTurn());
+  const rhythm = getRhythmDirective(getNextTurn(), GameState.character.background);
   // 构造当前回合的上下文消息
   const contextPayload = {
     rhythm_directive: rhythm.directive,
@@ -2206,6 +2430,16 @@ async function streamBotAPI(userMessage, streamTarget) {
       emperor_feeling: GameState.emperor_feeling,
       seeds: GameState.seeds,
       seeds_triggered: GameState.seeds_triggered
+    },
+    // v3.6：动态规则扩展
+    dynamic_rules: {
+      alive_npcs: getAliveNPCs(GameState.year),
+      institutions: getAllowedInstitutions(GameState.year),
+      anchor_info: getAnchorHints(getNextTurn()),
+      background_anchor_hint: getBackgroundAnchorHint(GameState.character.background, getNextTurn()),
+      ending_conditions: getEndingConditions(GameState.character.background),
+      path_reminder: getBackgroundPathReminder(GameState.character.background, getNextTurn()),
+      surveillance_hint: getSurveillanceHint(GameState.year, getNextTurn(), GameState.character.background)
     },
     player_action: userMessage
   };
