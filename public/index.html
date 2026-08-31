@@ -1213,6 +1213,7 @@ const GameState = {
   character: {
     name: '',
     age: 22,
+    baseAge: 22,   // 开局（1375年）年龄，年龄由前端按年份差硬算，不采信AI
     background: '',
     position: '未入流',
     rank: 0
@@ -1886,6 +1887,7 @@ async function showBackgroundSelection(surname) {
     GameState.character.name = fullName;
     GameState.character.background = bgData.bg;
     GameState.character.age = bgData.age;
+    GameState.character.baseAge = bgData.age;
     GameState.character.position = bgData.position;
     GameState.character.rank = bgData.rank;
 
@@ -2086,7 +2088,25 @@ function collectRecentPlot(n) {
     if (t) texts.unshift(t);
   }
   if (!texts.length) return undefined;
-  return '【前情提要】以下是玩家屏幕上已发生的最近剧情，必须无缝衔接，不得重复、不得矛盾：\n' + texts.join('\n');
+  return '【前情提要】以下是玩家屏幕上已发生的最近剧情，必须无缝衔接、保持连贯，但严禁重复其中已写过的场景、事件、措辞与桥段（不得把同一件事再写一遍、不得让玩家原地经历相似情节）：\n' + texts.join('\n');
+}
+
+// 收集最近已出现/已选择的选项，防止 AI 反复给同样的选项
+function collectRecentChoices() {
+  const texts = [];
+  const areas = gameContainer.querySelectorAll('.choices-area');
+  for (let i = Math.max(0, areas.length - 3); i < areas.length; i++) {
+    areas[i].querySelectorAll('.choice-text').forEach(el => {
+      const t = (el.textContent || '').trim();
+      if (t && !t.includes('自由行动') && !t.includes('自由')) texts.push(t);
+    });
+  }
+  gameContainer.querySelectorAll('.history-choice-made').forEach(el => {
+    const t = (el.textContent || '').replace(/^▸\s*/, '').trim();
+    if (t) texts.push('（玩家已选过）' + t);
+  });
+  if (!texts.length) return undefined;
+  return '【近期选项·严禁重复】以下选项最近已经给过或玩家已经选过，本回合3个固定选项必须是全新的行动方向，严禁原样重复或近义改写（如换个同义词再说一遍）；每个选项必须推动局面发生实质变化，严禁"静观其变/继续前行"这类选了毫无进展的凑数选项：\n' + texts.slice(-12).join('\n');
 }
 
 // ========== 历史锚点节奏引擎（前端硬控，不再依赖AI自觉） ==========
@@ -2114,9 +2134,11 @@ function getRhythmDirective(turn) {
   // 优先级1：锚点事件窗口内 → ⚡反转
   for (const a of HISTORY_ANCHORS) {
     if (t >= a.start && t <= a.end) {
+      const finaleExtra = a.id === 6 ? `
+【终局强制·最高优先级】本锚点是游戏终点。朱元璋必须在本窗口（第${a.start}-${a.end}回，${a.time}）内驾崩；驾崩发生当回合的 JSON 状态块**必须包含 ending 结局字段**（含 title 与 description，按第11章结局规则根据玩家五项数值/阵营/好感结算结局，叙事不少于500字）。铁律：①驾崩只允许发生一次，本窗口之后朱元璋不得再出现、不得再次驾崩；②时间不得越过1398年，严禁书写建文、永乐年间任何剧情；③玩家若亲近燕王，最多在结局余韵中以一句"燕王就藩北平，北地风云暗涌"收束，严禁展开靖难；④输出 ending 后不得再给选项。` : '';
       r = { pacing: '反转', directive:
 `【节奏指令·硬控】本回合处于历史锚点「${a.name}」事件窗口（第${a.start}-${a.end}回，历史时间：${a.time}）——${a.desc}。
-本回合节奏必须为⚡反转：叙事800-1200字，长短句交替、以有冲击力的场面开头，写出格局骤变；给3个选项，其中必须有1个让玩家直接面对该事件；事件须在窗口内迎来高潮，不得拖延到窗口之外。` };
+本回合节奏必须为⚡反转：叙事800-1200字，长短句交替、以有冲击力的场面开头，写出格局骤变；给3个选项，其中必须有1个让玩家直接面对该事件；事件须在窗口内迎来高潮，不得拖延到窗口之外。${finaleExtra}` };
       break;
     }
   }
@@ -2165,7 +2187,8 @@ async function streamBotAPI(userMessage, streamTarget) {
     character_canon: GameState.character.intro
       ? `【角色身世·铁律】以下角色身世小传是玩家开局时确认过的正史设定，任何叙事涉及角色姓名、籍贯、家庭、早年经历、出身时，必须与之严格一致，不得改写、不得新增矛盾设定、不得重新介绍角色身世：\n${GameState.character.intro}`
       : undefined,
-    recent_plot: collectRecentPlot(4),
+    recent_plot: collectRecentPlot(8),
+    recent_choices: collectRecentChoices(),
     current_state: {
       turn: GameState.turn,
       year: GameState.year,
@@ -2334,15 +2357,37 @@ async function processAITurn(userChoice) {
   const isRejected = parsed.stateBlock &&
     (parsed.stateBlock.rejected === true || parsed.stateBlock.rejected === 'true');
 
+  // ===== 时间/回合硬校验（驳回时全部跳过）=====
+  let clamped = false; // 本回合是否触发了钳制（若AI时间没推进，视为原地踏步）
+  if (parsed.stateBlock && !isRejected) {
+    const sb = parsed.stateBlock;
+    const gYear = GameState.year, gMonth = GameState.month;
+    // turn：只允许等于"即将生成的回合号"（与节奏引擎 getNextTurn 一致：开局为1，之后递增），其余钳制
+    const nextTurn = getNextTurn();
+    const sbTurn = parseInt(sb.turn, 10);
+    GameState.turn = (Number.isFinite(sbTurn) && sbTurn === nextTurn) ? sbTurn : nextTurn;
+    // year/month：只许前进不许倒退，上限洪武三十一年(1398)；月份非法则钳
+    let y = parseInt(sb.year, 10), m = parseInt(sb.month, 10);
+    if (!Number.isFinite(y)) y = gYear;
+    if (!Number.isFinite(m) || m < 1 || m > 12) m = gMonth;
+    if (y < gYear || (y === gYear && m < gMonth)) { y = gYear; m = gMonth; clamped = true; }
+    if (y > 1398) { y = 1398; m = 6; }
+    GameState.year = y;
+    GameState.month = m;
+    // 角色年龄：前端按年份差硬算，不采信AI（开局1375年=baseAge）
+    if (!GameState.character.baseAge) GameState.character.baseAge = GameState.character.age || 22;
+    GameState.character.age = GameState.character.baseAge + (y - 1375);
+  }
+
   // 回合信息（驳回时不显示新回合标记，因为时间没有推进）
   let finalPacing = engineRhythm.pacing;
   if (parsed.stateBlock && !isRejected) {
     const sb = parsed.stateBlock;
     // 种子引爆例外：AI 自报「反转」而引擎不是反转时，采信 AI（历史锚点节奏仍以引擎为准）
     if (sb.pacing === '反转' && engineRhythm.pacing !== '反转') finalPacing = '反转';
-    const yearName = getYearName(sb.year || GameState.year);
+    const yearName = getYearName(GameState.year);
     const monthNames = ['正','二','三','四','五','六','七','八','九','十','冬','腊'];
-    addTurnInfo(`${yearName} · ${monthNames[(sb.month || GameState.month) - 1]}月 · 第${sb.turn || GameState.turn}回`);
+    addTurnInfo(`${yearName} · ${monthNames[GameState.month - 1]}月 · 第${GameState.turn}回`);
     applyPacing(finalPacing);
   }
 
@@ -2361,9 +2406,7 @@ async function processAITurn(userChoice) {
     await new Promise(r => setTimeout(r, 500));
     if (parsed.stateBlock) {
       const sb = parsed.stateBlock;
-      GameState.turn = sb.turn || GameState.turn;
-      GameState.year = sb.year || GameState.year;
-      GameState.month = sb.month || GameState.month;
+      // turn/year/month/age 已在前面硬校验钳制，此处不再采信AI
       GameState.pacing = finalPacing; // 节奏硬控：存档/状态面板同步最终判定值（历史锚点引擎为准，种子引爆例外）
       if (sb.character) {
         if (sb.character.position) GameState.character.position = sb.character.position;
@@ -2376,9 +2419,17 @@ async function processAITurn(userChoice) {
     }
   }
 
-  // 结局判定（驳回不可能触发结局）
+  // 结局判定：AI主动给ending，或到达终局硬边界（第60回合 / 年份越过1398）时强制截断
+  const atFinaleBoundary = !isRejected && (GameState.turn >= 60 || GameState.year >= 1398);
   if (!isRejected && parsed.stateBlock && parsed.stateBlock.ending) {
     showEnding(parsed.stateBlock.ending, parsed.narrative);
+    return;
+  }
+  if (atFinaleBoundary) {
+    showEnding(
+      { title: '洪武落幕', description: '洪武三十一年，太祖驾崩。建文帝即位，改元建文。你的洪武仕途在此画上句号——身后功过，留与青史。（未检测到结局结算：AI未能输出结局字段，系统按终局边界强制结束。）' },
+      parsed.narrative
+    );
     return;
   }
 
