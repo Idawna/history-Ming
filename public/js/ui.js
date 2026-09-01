@@ -131,6 +131,144 @@ function showFloatingChanges(changes) {
   });
 }
 
+// ========== SEED SYSTEM HELPERS ==========
+// 根据种子 ID 推断类型（兼容 AI 不返回 type 的情况）
+function _inferSeedType(seedId) {
+  if (!seedId) return '政治炸弹';
+  // 根据关键词推断
+  if (seedId.includes('弹劾') || seedId.includes('奏疏') || seedId.includes('旧账')) return '政治炸弹';
+  if (seedId.includes('人情') || seedId.includes('回报') || seedId.includes('恩')) return '人情债';
+  if (seedId.includes('把柄') || seedId.includes('证据') || seedId.includes('贪腐')) return '把柄暴露';
+  if (seedId.includes('谣言') || seedId.includes('流言') || seedId.includes('传闻')) return '谣言传播';
+  if (seedId.includes('反水') || seedId.includes('背叛') || seedId.includes('出卖')) return '盟友反水';
+  // 默认随机分配
+  var types = SEED_TYPES;
+  return types[Math.floor(Math.random() * types.length)];
+}
+
+// 根据模板随机生成种子效果
+function _rollSeedEffect(seedType) {
+  var template = SEED_TEMPLATES[seedType];
+  if (!template) return { attributes: {}, factions: null };
+  
+  var effect = { attributes: {}, factions: null, emperor_feeling: 0 };
+  var tpl = template.effect;
+  
+  // 属性效果
+  if (tpl.attributes) {
+    for (var attr in tpl.attributes) {
+      var range = tpl.attributes[attr];
+      var roll = range[0] + Math.floor(Math.random() * (range[1] - range[0] + 1));
+      effect.attributes[attr] = roll;
+    }
+  }
+  
+  // 圣眷效果
+  if (tpl.emperor_feeling) {
+    var efRange = tpl.emperor_feeling;
+    effect.emperor_feeling = efRange[0] + Math.floor(Math.random() * (efRange[1] - efRange[0] + 1));
+  }
+  
+  // 阵营效果（动态计算：针对玩家最高阵营）
+  if (tpl.factions === null) {
+    // 政治炸弹/谣言传播/盟友反水：针对玩家最高阵营造成负面影响
+    var maxFaction = null, maxVal = -Infinity;
+    for (var fk in GameState.factions) {
+      if (Math.abs(GameState.factions[fk]) > maxVal) {
+        maxVal = Math.abs(GameState.factions[fk]);
+        maxFaction = fk;
+      }
+    }
+    if (maxFaction && maxVal > 20) {
+      // 阵营效果：-5 到 -15（针对最高阵营）
+      effect.factions = {};
+      effect.factions[maxFaction] = -(5 + Math.floor(Math.random() * 11));
+    }
+  } else if (tpl.factions) {
+    effect.factions = {};
+    for (var fk2 in tpl.factions) {
+      var fRange = tpl.factions[fk2];
+      effect.factions[fk2] = fRange[0] + Math.floor(Math.random() * (fRange[1] - fRange[0] + 1));
+    }
+  }
+  
+  return effect;
+}
+
+// 获取种子引爆概率（含出身修正）
+function _getSeedTriggerRate(seedType) {
+  var template = SEED_TEMPLATES[seedType];
+  if (!template) return 0.5;
+  
+  var rate = template.triggerRate;
+  var origin = GameState.character.background;
+  
+  // 出身修正
+  if (template.originMod && template.originMod[origin]) {
+    rate += template.originMod[origin];
+  }
+  
+  return Math.max(0.1, Math.min(1.0, rate)); // 限制在 10%-100%
+}
+
+// 应用多个种子效果（处理叠加）
+function _applySeedEffects(seeds) {
+  var totalEffect = { attributes: {}, emperor_feeling: 0, factions: {} };
+  
+  // 按类型分组，处理叠加
+  var typeCount = {};
+  for (var i = 0; i < seeds.length; i++) {
+    var s = seeds[i];
+    typeCount[s.type] = (typeCount[s.type] || 0) + 1;
+  }
+  
+  // 应用效果
+  for (var j = 0; j < seeds.length; j++) {
+    var seed = seeds[j];
+    var effect = seed.effect;
+    var stackMultiplier = 1 + (typeCount[seed.type] - 1) * 0.5; // 同类型叠加：2个=1.5倍，3个=2倍
+    
+    // 属性效果
+    if (effect.attributes) {
+      for (var ak in effect.attributes) {
+        totalEffect.attributes[ak] = (totalEffect.attributes[ak] || 0) + Math.round(effect.attributes[ak] * stackMultiplier);
+      }
+    }
+    
+    // 圣眷效果
+    if (effect.emperor_feeling) {
+      totalEffect.emperor_feeling += Math.round(effect.emperor_feeling * stackMultiplier);
+    }
+    
+    // 阵营效果
+    if (effect.factions) {
+      for (var fk in effect.factions) {
+        totalEffect.factions[fk] = (totalEffect.factions[fk] || 0) + Math.round(effect.factions[fk] * stackMultiplier);
+      }
+    }
+  }
+  
+  // 实际应用到 GameState
+  for (var ak2 in totalEffect.attributes) {
+    var key = ak2;
+    var val = totalEffect.attributes[ak2];
+    if (GameState.attributes[key] !== undefined) {
+      GameState.attributes[key] = Math.max(0, Math.min(100, GameState.attributes[key] + val));
+    }
+  }
+  if (totalEffect.emperor_feeling) {
+    GameState.emperor_feeling = Math.max(-100, Math.min(100, GameState.emperor_feeling + totalEffect.emperor_feeling));
+  }
+  for (var fk2 in totalEffect.factions) {
+    if (GameState.factions[fk2] !== undefined) {
+      GameState.factions[fk2] = Math.max(-100, Math.min(100, GameState.factions[fk2] + totalEffect.factions[fk2]));
+    }
+  }
+  
+  console.log('[种子效果] 应用:', JSON.stringify(totalEffect));
+  return totalEffect;
+}
+
 // ========== APPLY STATE CHANGES ==========
 // v3.8.2: 新增跷跷板机制柔性化 + wisdom安全网 + ef正向收益
 function applyChanges(changes) {
@@ -186,6 +324,23 @@ function applyChanges(changes) {
       changes.emperor_feeling = -maxEfDelta;
       console.log(`[上限校验] 圣眷原值${efVal}，截断为${-maxEfDelta}`);
     }
+  }
+
+  // ========== P2-A: 出身偏向锁定（方案C） ==========
+  // 前5回合内，出身偏向阵营变化幅度减半
+  // 如果 AI 标记了 faction_break（玩家选择了"决裂/投靠"选项），则不减半
+  if (GameState.turn <= 5 && changes.factions && !changes.faction_break) {
+    const originFaction = ORIGIN_FACTION_MAP[GameState.character.background];
+    if (originFaction && changes.factions[originFaction] !== undefined) {
+      const original = changes.factions[originFaction];
+      // 向零取整：+7→+3, -8→-4
+      changes.factions[originFaction] = Math.sign(original) * Math.floor(Math.abs(original) / 2);
+      console.log('[出身锁定] 第' + GameState.turn + '回合，' + originFaction + '变化 ' + original + ' → ' + changes.factions[originFaction] + '（减半）');
+    }
+  }
+  if (changes.faction_break) {
+    console.log('[出身锁定] 玩家选择决裂/投靠选项，跳过减半（faction_break=true）');
+    delete changes.faction_break; // 清理，防止传入后续逻辑
   }
 
   // ========== 方案A：每回合代价检查 ==========
@@ -289,8 +444,101 @@ function applyChanges(changes) {
   if (changes.emperor_feeling !== undefined) {
     GameState.emperor_feeling = Math.max(-100, Math.min(100, GameState.emperor_feeling + changes.emperor_feeling));
   }
-  if (changes.seeds) {
-    GameState.seeds.push(...changes.seeds);
+  // P2-B 代码化：种子系统完整实现
+  // 1. 新种子入库（存储完整对象，含类型、预计引爆回合、效果）
+  if (changes.seeds && changes.seeds.length > 0) {
+    for (var si = 0; si < changes.seeds.length; si++) {
+      var seedInput = changes.seeds[si];
+      var seedId = typeof seedInput === 'string' ? seedInput : seedInput.id;
+      var seedType = (typeof seedInput === 'object' && seedInput.type) ? seedInput.type : _inferSeedType(seedId);
+      
+      if (seedId && GameState.seeds.every(function(s) { return s.id !== seedId; })) {
+        var template = SEED_TEMPLATES[seedType] || SEED_TEMPLATES['政治炸弹']; // 默认类型
+        var latency = template.latency;
+        var latencyRoll = latency[0] + Math.floor(Math.random() * (latency[1] - latency[0] + 1));
+        var effect = _rollSeedEffect(seedType);
+        
+        GameState.seeds.push({
+          id: seedId,
+          type: seedType,
+          planted_turn: GameState.turn,
+          trigger_turn: GameState.turn + latencyRoll,
+          effect: effect
+        });
+        console.log('[种子] 新种下:', seedId, '类型:', seedType, '预计引爆回合:', GameState.turn + latencyRoll);
+      }
+    }
+  }
+  
+  // 2. 检查种子引爆（AI主动 + 到期自动 + 上限溢出）
+  var seedsToTrigger = [];
+  var now = GameState.turn;
+  
+  // 2a. AI 主动引爆
+  if (changes.seeds_triggered && changes.seeds_triggered.length > 0) {
+    for (var ti = 0; ti < changes.seeds_triggered.length; ti++) {
+      var trigId = changes.seeds_triggered[ti];
+      var idx = GameState.seeds.findIndex(function(s) { return s.id === trigId; });
+      if (idx >= 0) {
+        seedsToTrigger.push(GameState.seeds[idx]);
+        GameState.seeds.splice(idx, 1);
+        console.log('[种子引爆] AI触发:', trigId);
+      }
+    }
+  }
+  
+  // 2b. 到期概率引爆
+  for (var di = GameState.seeds.length - 1; di >= 0; di--) {
+    var seed = GameState.seeds[di];
+    if (now >= seed.trigger_turn) {
+      var rate = _getSeedTriggerRate(seed.type);
+      if (Math.random() < rate || now - seed.planted_turn >= 8) { // 超期必引爆
+        seedsToTrigger.push(seed);
+        GameState.seeds.splice(di, 1);
+        console.log('[种子引爆] 到期触发:', seed.id, '概率:', rate);
+      }
+    }
+  }
+  
+  // 2c. 上限溢出（最早的自动引爆）
+  var MAX_SEEDS = 5;
+  while (GameState.seeds.length > MAX_SEEDS) {
+    var oldest = GameState.seeds.shift();
+    seedsToTrigger.push(oldest);
+    console.log('[种子引爆] 上限溢出:', oldest.id);
+  }
+  
+  // 3. 应用种子效果
+  if (seedsToTrigger.length > 0) {
+    var seedEffects = _applySeedEffects(seedsToTrigger);
+    // 把种子效果合并到 changes 中，让后续逻辑（飘字等）处理
+    if (seedEffects.attributes) {
+      for (var ak in seedEffects.attributes) {
+        if (changes.attributes && changes.attributes[ak] !== undefined) {
+          changes.attributes[ak] += seedEffects.attributes[ak];
+        } else if (changes.attributes) {
+          changes.attributes[ak] = seedEffects.attributes[ak];
+        }
+      }
+    }
+    if (seedEffects.emperor_feeling && changes.emperor_feeling !== undefined) {
+      changes.emperor_feeling += seedEffects.emperor_feeling;
+    } else if (seedEffects.emperor_feeling) {
+      changes.emperor_feeling = seedEffects.emperor_feeling;
+    }
+    if (seedEffects.factions) {
+      for (var fk in seedEffects.factions) {
+        if (changes.factions && changes.factions[fk] !== undefined) {
+          changes.factions[fk] += seedEffects.factions[fk];
+        } else if (changes.factions) {
+          changes.factions[fk] = seedEffects.factions[fk];
+        }
+      }
+    }
+    // 记录到 seeds_triggered
+    for (var sti = 0; sti < seedsToTrigger.length; sti++) {
+      GameState.seeds_triggered.push(seedsToTrigger[sti].id);
+    }
   }
 
   // v3.8.2: 死亡倒计时递减（每回合调用一次）
@@ -316,6 +564,18 @@ function applyChanges(changes) {
     var fk = fkeys[Math.floor(Math.random() * fkeys.length)];
     var fb = Math.floor(Math.random() * 3) + 1;
     GameState.factions[fk] = Math.min(100, GameState.factions[fk] + fb);
+  }
+
+  // P2-C: AI 标记争议文字（文字狱风险）
+  if (changes.controversial_text === true) {
+    GameState.wroteControversialText = true;
+    console.log('[文字狱] AI 标记本回合存在争议文字');
+  }
+
+  // P2-E: AI 标记出征事件（封狼居胥需要出征≥2次）
+  if (changes.expedition === true) {
+    GameState.expeditionCount++;
+    console.log('[出征] 第 ' + GameState.expeditionCount + ' 次出征');
   }
 
   updateStatusPanel();

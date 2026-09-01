@@ -41,7 +41,21 @@ async function streamBotAPI(userMessage, streamTarget) {
       branch_focus: getBranchFocus(getNextTurn(), GameState.character.background),
       death_warning: (function(){ var w = checkDeathWarning(); return w.length ? '【死亡预警】' + w.join('、') + '——命运已在悬崖边缘，叙事中必须埋下明显的危险信号' : ''; })(),
       faction_decay: (function(){ return GameState.factionDecayThisTurn ? '【阵营衰减】上回合因阵营关系过度深入（绝对值>80），自然回落：' + GameState.factionDecayThisTurn + '。叙事中可体现"树大招风""功高遭忌后关系微妙疏远"等意象，但不可直接提及数值' : ''; })(),
-      favor_crash: (function(){ return GameState.favorCrashThisTurn ? '【圣眷暴跌】' + GameState.favorCrashThisTurn + '——朱元璋猜忌加深，圣眷骤降。叙事中必须体现"帝王心术""天威难测""昨日恩宠今日猜忌"等紧张意象，可描写朝臣态度转变、皇帝冷淡等细节' : ''; })()
+      favor_crash: (function(){ return GameState.favorCrashThisTurn ? '【圣眷暴跌】' + GameState.favorCrashThisTurn + '——朱元璋猜忌加深，圣眷骤降。叙事中必须体现"帝王心术""天威难测""昨日恩宠今日猜忌"等紧张意象，可描写朝臣态度转变、皇帝冷淡等细节' : ''; })(),
+      origin_lock: (function(){
+        if (GameState.turn > 5) return '';
+        var of = ORIGIN_FACTION_MAP[GameState.character.background];
+        if (!of) return '';
+        var fl = FACTION_LABELS[of] || of;
+        var bg = GameState.character.background;
+        var actionHint = '';
+        if (bg === '淮西武将之后' || bg === '浙东寒门书生') {
+          actionHint = '对本出身玩家，"决裂"选项意味着与出身阵营主动切割（如：公开弹劾淮西/浙东同僚、拒绝旧部拉拢、向皇帝告发旧交等），选择后该阵营大幅下降；';
+        } else {
+          actionHint = '对本出身玩家，"投靠"选项意味着主动融入/靠近近臣圈子（如：结交近臣门路、进献投名状、主动承担近臣交代的差事等），选择后近臣阵营大幅回升；';
+        }
+        return '【出身锁定·前' + (6 - GameState.turn) + '回合】' + bg + '的出身偏向阵营「' + fl + '」当前变化幅度减半（初始关系更稳固）。' + actionHint + '你必须在3个选项中安排至少1个与出身阵营关系重大转变的选项（用叙事语言包装，不要出现"决裂""数值"等游戏术语）。当玩家选择该选项时，你必须在state block的changes中加入"faction_break": true标记，以便前端取消减半。';
+      })()
     },
     player_action: userMessage
   };
@@ -679,7 +693,10 @@ function applySnapshot(save) {
   GameState.character = { ...GameState.character, ...gs.character };
   GameState.attributes = { ...gs.attributes };
   GameState.factions = { ...gs.factions };
-  GameState.seeds = [...gs.seeds];
+  // 种子格式兼容：旧版存盘种子为字符串，统一转为对象格式
+  GameState.seeds = gs.seeds.map(function(s) {
+    return typeof s === 'string' ? { id: s, planted_turn: 1 } : s;
+  });
   GameState.seeds_triggered = [...gs.seeds_triggered];
 
   updateStatusPanel();
