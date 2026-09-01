@@ -132,6 +132,7 @@ function showFloatingChanges(changes) {
 }
 
 // ========== APPLY STATE CHANGES ==========
+// v3.8.2: 新增跷跷板机制柔性化 + wisdom安全网 + ef正向收益
 function applyChanges(changes) {
   if (changes.attributes) {
     for (const [key, delta] of Object.entries(changes.attributes)) {
@@ -140,13 +141,36 @@ function applyChanges(changes) {
       }
     }
   }
+
+  // v3.8.2: 跷跷板机制柔性化（SP 5.1 代码实现）
+  // 淮西↔浙东、东宫↔诸王 为对立阵营，一方变化时另一方自动反向半值
+  const seesawPairs = [['huaixi', 'zhedong'], ['donggong', 'zhuwang']];
   if (changes.factions) {
     for (const [key, delta] of Object.entries(changes.factions)) {
       if (GameState.factions[key] !== undefined) {
         GameState.factions[key] = Math.max(-100, Math.min(100, GameState.factions[key] + delta));
+        // 跷跷板：对立阵营反向变化 delta/2（向下取整，符号取反）
+        for (const pair of seesawPairs) {
+          let opposite = null;
+          if (pair[0] === key) opposite = pair[1];
+          else if (pair[1] === key) opposite = pair[0];
+          if (opposite !== null && delta !== 0) {
+            const counterDelta = -Math.sign(delta) * Math.max(1, Math.floor(Math.abs(delta) / 2));
+            GameState.factions[opposite] = Math.max(-100, Math.min(100, GameState.factions[opposite] + counterDelta));
+          }
+        }
       }
     }
   }
+
+  // v3.8.2: wisdom安全网——30%概率额外扣1-3点（防止wisdom只升不降）
+  if (changes.attributes && changes.attributes.wisdom > 0) {
+    if (Math.random() < 0.3) {
+      const penalty = Math.floor(Math.random() * 3) + 1;
+      GameState.attributes.wisdom = Math.max(0, GameState.attributes.wisdom - penalty);
+    }
+  }
+
   if (changes.emperor_feeling !== undefined) {
     GameState.emperor_feeling = Math.max(-100, Math.min(100, GameState.emperor_feeling + changes.emperor_feeling));
   }
@@ -154,7 +178,33 @@ function applyChanges(changes) {
     GameState.seeds.push(...changes.seeds);
   }
 
+  // v3.8.2: 死亡倒计时递减（每回合调用一次）
+  if (typeof tickDeathCountdown === 'function') tickDeathCountdown();
+
+  // v3.8.2: ef正向收益——高圣眷带来随机属性/声望加成
+  const ef = GameState.emperor_feeling;
+  var efBonus = {};
+  if (ef >= 20 && Math.random() < 0.15) {
+    var w = Math.floor(Math.random() * 3) + 1;
+    GameState.attributes.wisdom = Math.min(100, GameState.attributes.wisdom + w);
+    efBonus.wisdom = w;
+  }
+  if (ef >= 50 && Math.random() < 0.2) {
+    var keys = ['power', 'people', 'fame'];
+    var rk = keys[Math.floor(Math.random() * keys.length)];
+    var rb = Math.floor(Math.random() * 3) + 1;
+    GameState.attributes[rk] = Math.min(100, GameState.attributes[rk] + rb);
+    efBonus[rk] = rb;
+  }
+  if (ef >= 80 && Math.random() < 0.25) {
+    var fkeys = Object.keys(GameState.factions);
+    var fk = fkeys[Math.floor(Math.random() * fkeys.length)];
+    var fb = Math.floor(Math.random() * 3) + 1;
+    GameState.factions[fk] = Math.min(100, GameState.factions[fk] + fb);
+  }
+
   updateStatusPanel();
   showFloatingChanges(changes);
+  // ef加成单独飘字提示
+  if (Object.keys(efBonus).length > 0) showFloatingChanges({ attributes: efBonus });
 }
-

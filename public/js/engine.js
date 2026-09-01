@@ -376,15 +376,29 @@ function allFactionsLTE(v) {
   return true;
 }
 
+// v3.8.2: 死亡倒计时机制（替代原1回合缓冲，改为3回合窗口期）
 function checkDeath() {
   var a = GameState.attributes, f = GameState.factions, ef = GameState.emperor_feeling;
   var mx = maxFaction(), mn = minFaction();
+  var fk = Object.keys(f);
 
+  // === 必死（不缓冲，条件极端意味着已无力回天） ===
   // P1: 牵连族灭 (必死)
   if (a.power >= 60 && mx >= 80 && ef <= -30 && a.wisdom < 40) return 0;
-  // P2: 帝怒诛杀 (必死)
-  if (ef <= -70 && (a.power >= 50 || a.fame >= 60)) return 1;
-  // P3: 胡蓝之狱 (概率, 锚点窗口内)
+  // P6: 四面楚歌 (必死)
+  if (allFactionsLTE(-50)) return 5;
+
+  // === 倒计时型死亡（v3.8.2: 3回合窗口期，替代原1回合缓冲） ===
+
+  // P2: 帝怒诛杀 (倒计时)
+  if (ef <= -70 && (a.power >= 50 || a.fame >= 60)) {
+    if (GameState.deathCountdownType === 2) {
+      if (GameState.deathCountdown === 0) return 1;
+    } else {
+      GameState.deathCountdown = 3; GameState.deathCountdownType = 2; return -1;
+    }
+  }
+  // P3: 胡蓝之狱 (概率, 锚点窗口内——概率型天然有随机性，不缓冲)
   for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
     var an = HISTORY_ANCHORS[i];
     if ((an.id === 3 || an.id === 7) && GameState.turn >= an.start && GameState.turn <= an.end + 2) {
@@ -393,32 +407,80 @@ function checkDeath() {
       break;
     }
   }
-  // P4: 党争覆灭
-  var fk = Object.keys(f);
+  // P4: 党争覆灭 (倒计时)
   for (var j = 0; j < fk.length; j++) {
-    if (f[fk[j]] >= 70 && GameState.factionPurged && GameState.factionPurged[fk[j]]) return 3;
+    if (f[fk[j]] >= 70 && GameState.factionPurged && GameState.factionPurged[fk[j]]) {
+      if (GameState.deathCountdownType === 4) {
+        if (GameState.deathCountdown === 0) return 3;
+      } else {
+        GameState.deathCountdown = 3; GameState.deathCountdownType = 4; return -1;
+      }
+    }
   }
-  // P5: 功高震主 (必死)
-  if (a.power >= 85 && a.wisdom < 55 && ef < 20) return 4;
-  // P6: 四面楚歌 (必死)
-  if (allFactionsLTE(-50)) return 5;
-  // P7: 流放致死 (必死)
-  if (ef <= -50 && a.people <= 20 && allFactionsLTE(0)) return 6;
-  // P8: 文字狱 (概率)
+  // P5: 功高震主 (倒计时)
+  if (a.power >= 85 && a.wisdom < 55 && ef < 20) {
+    if (GameState.deathCountdownType === 5) {
+      if (GameState.deathCountdown === 0) return 4;
+    } else {
+      GameState.deathCountdown = 3; GameState.deathCountdownType = 5; return -1;
+    }
+  }
+  // P7: 流放致死 (倒计时)
+  if (ef <= -50 && a.people <= 20 && allFactionsLTE(0)) {
+    if (GameState.deathCountdownType === 7) {
+      if (GameState.deathCountdown === 0) return 6;
+    } else {
+      GameState.deathCountdown = 3; GameState.deathCountdownType = 7; return -1;
+    }
+  }
+  // P8: 文字狱 (概率60%)
   if (f.zhedong >= 40 && (a.fame >= 50 || a.power >= 40) && ef < 10 && GameState.wroteControversialText) {
     if (Math.random() < 0.6) return 7;
   }
-  // P9: 阴谋暗杀 (概率)
+  // P9: 阴谋暗杀 (概率50%)
   if (a.wisdom <= 30) {
     var lowC = 0; for (var m = 0; m < fk.length; m++) if (f[fk[m]] <= -40) lowC++;
     if (lowC >= 2 && (a.power >= 40 || a.fame >= 50)) {
       if (Math.random() < 0.5) return 8;
     }
   }
-  // P10: 积劳成疾
-  if (GameState.consecutiveHighPowerTurns >= 10 && a.power >= 60) return 9;
+  // P10: 积劳成疾 (倒计时)
+  if (GameState.consecutiveHighPowerTurns >= 10 && a.power >= 60) {
+    if (GameState.deathCountdownType === 10) {
+      if (GameState.deathCountdown === 0) return 9;
+    } else {
+      GameState.deathCountdown = 3; GameState.deathCountdownType = 10; return -1;
+    }
+  }
 
   return -1;
+}
+
+// v3.8.2: 死亡倒计时递减（在 applyChanges 中每回合调用）
+function tickDeathCountdown() {
+  if (GameState.deathCountdown > 0) {
+    GameState.deathCountdown--;
+    // 倒计时归零且条件不再成立→逃脱，清除倒计时
+    if (GameState.deathCountdown === 0) {
+      var stillDying = false;
+      var t = GameState.deathCountdownType;
+      var a = GameState.attributes, f = GameState.factions, ef = GameState.emperor_feeling;
+      if (t === 2 && ef <= -70 && (a.power >= 50 || a.fame >= 60)) stillDying = true;
+      if (t === 5 && a.power >= 85 && a.wisdom < 55 && ef < 20) stillDying = true;
+      if (t === 7 && ef <= -50 && a.people <= 20 && allFactionsLTE(0)) stillDying = true;
+      if (t === 10 && GameState.consecutiveHighPowerTurns >= 10 && a.power >= 60) stillDying = true;
+      // P4需检查阵营清洗状态
+      if (t === 4) {
+        var fk = Object.keys(f);
+        for (var j = 0; j < fk.length; j++) {
+          if (f[fk[j]] >= 70 && GameState.factionPurged && GameState.factionPurged[fk[j]]) stillDying = true;
+        }
+      }
+      if (!stillDying) {
+        GameState.deathCountdownType = 0;
+      }
+    }
+  }
 }
 
 function checkDeathWarning() {
@@ -429,6 +491,13 @@ function checkDeathWarning() {
   var mn2 = minFaction();
   if (mn2 <= -40) warns.push('派系倾轧');
   if (ef <= -40 && a.people <= 30) warns.push('流放之兆');
+  // v3.8.2: 死亡倒计时预警
+  if (GameState.deathCountdown > 0) {
+    if (GameState.deathCountdown === 1) warns.push('命悬一线');
+    else warns.push('死劫逼近（' + GameState.deathCountdown + '回合）');
+  }
+  // v3.8.1: 英年早逝预警
+  if (a.power <= 20 && a.bond <= 25 && a.people <= 30 && a.fame <= 25) warns.push('壮志未酬');
   return warns;
 }
 
@@ -468,11 +537,19 @@ function getCommonEnding() {
     {name:'\u6743\u503e\u671d\u91ce', desc:'\u4e00\u4eba\u4e4b\u4e0b\uff0c\u4e07\u4eba\u4e4b\u4e0a\u3002\u4f60\u7684\u6743\u52bf\u5df2\u7ecf\u5230\u4e86\u4eba\u81e3\u7684\u9876\u5cf0\uff0c\u671d\u5803\u5927\u5c0f\u4e8b\u52a1\u7686\u7531\u4f60\u5b9a\u593a\u3002',
      check: function(){ return a.power >= 85 && a.wisdom >= 60 && ef >= -20 && countFactionsGTE(30) >= 2; }},
     {name:'\u906e\u81ed\u4e07\u5e74', desc:'\u4e07\u4eba\u5524\u9a82\uff0c\u5978\u4f5e\u4e4b\u540d\u3002\u4f60\u7684\u540d\u5b57\u6210\u4e86\u8d2a\u5b98\u6c61\u540f\u7684\u4ee3\u540d\u8bcd\uff0c\u7559\u4e0b\u5343\u53e4\u9a82\u540d\u3002',
-     check: function(){ return a.fame <= 15 && a.power >= 50 && GameState.attributes.bond <= 25; }},
+     check: function(){ return a.fame <= 25 && a.power >= 50 && GameState.attributes.bond <= 25; }},
     {name:'\u4e71\u4e16\u9690\u8005', desc:'\u5f52\u9690\u6797\u6cc9\uff0c\u4e0d\u95ee\u671d\u5803\u3002\u4f60\u653e\u5f03\u4e86\u529f\u540d\u5bcc\u8d35\uff0c\u5728\u5c71\u6c34\u95f4\u627e\u5230\u4e86\u5185\u5fc3\u7684\u5b81\u9759\u3002',
      check: function(){ return a.power <= 20 && a.fame >= 40 && a.wisdom >= 55 && a.people >= 40; }},
+    // v3.8.2: 新增fame中间地带结局（填补25-40与40-60之间的空白）
+    {name:'乡望素著', desc:'十里八乡，交口称颂。你虽未名动天下，却在乡里间留下了极好的名声。百姓记得你的善举，同僚记得你的为人。这份平凡的尊重，或许比庙堂上的功名更持久。',
+     check: function(){ return a.fame >= 25 && a.fame < 40 && a.people >= 45 && a.wisdom >= 35 && a.bond >= 30; }},
+    {name:'名满天下', desc:'天下士人谈及当世人物，无人不知你的名字。你未必权倾一时，却以才学与品行赢得了广泛的敬重。这份声望不靠权位维系，而是来自你走过的每一步。',
+     check: function(){ return a.fame >= 40 && a.fame < 60 && a.wisdom >= 50 && a.people >= 40 && a.bond >= 35; }},
     {name:'\u5168\u8eab\u800c\u9000', desc:'\u5e73\u6de1\u662f\u798f\uff0c\u5584\u7ec8\u3002\u4f60\u6ca1\u6709\u5efa\u4e0b\u4e0d\u4e16\u529f\u4e1a\uff0c\u4f46\u5e73\u5e73\u5b89\u5b89\u5ea6\u8fc7\u4e86\u8fd9\u4e2a\u6ce1\u8840\u65f6\u4ee3\u3002\u8fd9\u672c\u8eab\u5c31\u662f\u6700\u5927\u7684\u80dc\u5229\u3002',
-     check: function(){ return a.power >= 30 && a.power <= 60 && ef >= -10 && allFactionsGTE(-30) && allFactionsLTE(40) && GameState.attributes.bond >= 50; }}
+     check: function(){ return a.power >= 30 && a.power <= 60 && ef >= -10 && allFactionsGTE(-30) && allFactionsLTE(40) && GameState.attributes.bond >= 50; }},
+    // v3.8.1: 英年早逝——非暴力死亡，壮志未酬
+    {name:'英年早逝', desc:'壮志未酬，赍志而殁。你没能在这个波澜壮阔的时代留下自己的印记，便在默默无闻中走到了终点。',
+     check: function(){ return a.power <= 15 && GameState.attributes.bond <= 20 && a.people <= 25 && a.fame <= 20; }}
   ];
   for (var i = 0; i < endings.length; i++) {
     if (endings[i].check()) return endings[i];

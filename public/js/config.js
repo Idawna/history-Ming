@@ -46,7 +46,10 @@ const GameState = {
   consecutiveHighPowerTurns: 0,
   wroteControversialText: false,
   factionPurged: {},
-  deathWarningCount: 0
+  deathWarningCount: 0,
+  // v3.8.2: 死亡倒计时（替代原deathBuffer，3回合窗口期）
+  deathCountdown: 0,
+  deathCountdownType: 0
 };
 
 // ========== LABELS ==========
