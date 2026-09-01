@@ -31,17 +31,17 @@ function collectRecentChoices() {
 }
 
 // ========== 历史锚点节奏引擎（前端硬控，不再依赖AI自觉） ==========
-// 锚点表与 SP 第10.1节六大锚点严格一致
+// 锚点表按历史年份严格排序（v3.8.9修正：胡惟庸案1380→空印案1382）
 const HISTORY_ANCHORS = [
-  { id: 1, name: '刘伯温之死', desc: '刘伯温病逝/被毒杀，浙东线核心触发', start: 2,  end: 4,  time: '洪武八年·1375年四月' },
-  { id: 2, name: '空印案',     desc: '各地官员携空白盖印文书入京被查处，户部系统震荡', start: 12, end: 13, time: '洪武十五年·1382年' },
-  { id: 3, name: '胡惟庸案',   desc: '胡惟庸被诛、牵连数万人，第一次大清洗', start: 21, end: 24, time: '洪武十三年·1380年正月' },
-  { id: 4, name: '郭桓案',     desc: '户部侍郎郭桓贪腐案发，经济线大案', start: 27, end: 29, time: '洪武十八年·1385年' },
-  { id: 5, name: '李善长案',   desc: '李善长被赐死、株连三万余人，株连最广', start: 38, end: 40, time: '洪武二十三年·1390年' },
-  { id: 6, name: '太子之死',   desc: '太子朱标病逝，继承格局骤变，诸王觊觎储位', start: 43, end: 44, time: '洪武二十五年·1392年' },
-  { id: 7, name: '蓝玉案',     desc: '蓝玉被诛、牵连一万五千余人，淮西勋贵末日', start: 47, end: 49, time: '洪武二十六年·1393年' },
-  { id: 8, name: '锦衣卫膨胀', desc: '锦衣卫权力巅峰，诏狱人满为患，朝野噤声', start: 52, end: 53, time: '洪武二十九年·1396年' },
-  { id: 9, name: '朱元璋驾崩', desc: '朱元璋病逝、建文帝即位，游戏终点', start: 57, end: 60, time: '洪武三十一年·1398年闰五月' }
+  { id: 1, name: '刘伯温之死', desc: '刘伯温病逝/被毒杀，浙东线核心触发', start: 2,  end: 4,  time: '洪武八年·1375年四月', year: 1375 },
+  { id: 2, name: '胡惟庸案',   desc: '胡惟庸被诛、牵连数万人，第一次大清洗', start: 12, end: 15, time: '洪武十三年·1380年正月', year: 1380 },
+  { id: 3, name: '空印案',     desc: '各地官员携空白盖印文书入京被查处，户部系统震荡', start: 21, end: 22, time: '洪武十五年·1382年', year: 1382 },
+  { id: 4, name: '郭桓案',     desc: '户部侍郎郭桓贪腐案发，经济线大案', start: 27, end: 29, time: '洪武十八年·1385年', year: 1385 },
+  { id: 5, name: '李善长案',   desc: '李善长被赐死、株连三万余人，株连最广', start: 38, end: 40, time: '洪武二十三年·1390年', year: 1390 },
+  { id: 6, name: '太子之死',   desc: '太子朱标病逝，继承格局骤变，诸王觊觎储位', start: 43, end: 44, time: '洪武二十五年·1392年', year: 1392 },
+  { id: 7, name: '蓝玉案',     desc: '蓝玉被诛、牵连一万五千余人，淮西勋贵末日', start: 47, end: 49, time: '洪武二十六年·1393年', year: 1393 },
+  { id: 8, name: '锦衣卫膨胀', desc: '锦衣卫权力巅峰，诏狱人满为患，朝野噤声', start: 52, end: 53, time: '洪武二十九年·1396年', year: 1396 },
+  { id: 9, name: '朱元璋驾崩', desc: '朱元璋病逝、建文帝即位，游戏终点', start: 57, end: 60, time: '洪武三十一年·1398年闰五月', year: 1398 }
 ];
 
 // 即将生成的回合号：屏幕上还没有叙事=开局第1回；否则=当前回合+1
@@ -101,8 +101,8 @@ function getAllowedInstitutions(year) {
 function getAnchorDirection(anchorId) {
   const directions = {
     1: "浙东文臣的命运正在被审视",
-    2: "地方官携带空白盖印文书入京，户部系统暗流涌动",
-    3: "丞相府风声渐紧，中书省权力引发猜忌",
+    2: "丞相府风声渐紧，中书省权力引发猜忌", // v3.8.9: 胡惟庸案现为id=2
+    3: "地方官携带空白盖印文书入京，户部系统暗流涌动", // v3.8.9: 空印案现为id=3
     4: "户部账目异常、地方财政频出问题",
     5: "前朝旧臣的牵连开始浮现",
     6: "太子东宫气氛凝重，储位之争暗流涌动",
@@ -144,6 +144,10 @@ function getAnchorHints(currentTurn) {
   if (forbiddenEvents.length) {
     hints.forbidden = `【严禁提及】${forbiddenEvents.join('、')}（尚未发生，不得作为已发生事件描写）`;
   }
+  // v3.8.10: 锚点顺序铁律——明确告诉AI当前允许的最大锚点
+  var maxAllowedId = (typeof getAllowedMaxAnchorId === 'function') ? getAllowedMaxAnchorId() : HISTORY_ANCHORS[HISTORY_ANCHORS.length - 1].id;
+  var maxAnchor = HISTORY_ANCHORS.find(function(a){ return a.id === maxAllowedId; });
+  hints.anchor_order_lock = '【锚点顺序铁律·最高优先级】当前允许触发的最大锚点为ID=' + maxAllowedId + '（' + (maxAnchor ? maxAnchor.name : '全部完成') + '）。严禁在叙事、选项、状态块中提到ID>' + maxAllowedId + '的任何锚点事件名称、关键词或暗示（如ID=7蓝玉案在ID=2胡惟庸案完成前严禁提及"蓝玉案""蓝玉被诛""蓝玉谋反"）。违反将导致整回合被驳回、数值不推进。';
   return hints;
 }
 
@@ -447,10 +451,10 @@ function checkDeath() {
       GameState.deathCountdown = 3; GameState.deathCountdownType = 2; return -1;
     }
   }
-  // P3a: 胡案牵连 (anchor 3, 倒计时, v3.8.3 降低概率)
+  // P3a: 胡案牵连 (anchor 2, v3.8.9修正：胡惟庸案现为id=2)
   for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
     var an = HISTORY_ANCHORS[i];
-    if (an.id === 3 && GameState.turn >= an.start && GameState.turn <= an.end + 2) {
+    if (an.id === 2 && GameState.turn >= an.start && GameState.turn <= an.end + 2) {
       var p = (mx * 0.25 + Math.max(0, -ef) * 0.15 + Math.max(0, 50 - a.wisdom) * 0.1) / 100;
       if (Math.random() < p) {
         if (GameState.deathCountdownType === 3) {
@@ -641,7 +645,7 @@ function updateDeathTracking(narrative) {
   for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
     var an = HISTORY_ANCHORS[i];
     if (turn >= an.start && turn <= an.end + 2) {
-      if (an.id === 3) GameState.factionPurged.huaixi = true;
+      if (an.id === 2) GameState.factionPurged.huaixi = true; // v3.8.9: 胡惟庸案现为id=2
       if (an.id === 7) GameState.factionPurged.huaixi = true;
       if (an.id === 5) GameState.factionPurged.zhedong = true;
       if (an.id === 6) GameState.factionPurged.donggong = true;
@@ -958,3 +962,74 @@ function applyFavorRisk() {
   }
 }
 
+
+// ========== v3.8.10: 锚点顺序强制控制 ==========
+
+// 锚点关键词表（用于校验AI输出）
+function getAnchorKeywords(anchorId) {
+  var map = {
+    1: ['刘伯温之死', '刘伯温病逝', '刘基之死', '刘基病逝'],
+    2: ['胡惟庸案', '胡惟庸被诛', '胡惟庸谋反', '胡案爆发'],
+    3: ['空印案', '空印案发', '空白盖印案发'],
+    4: ['郭桓案', '郭桓贪腐', '郭桓被查', '郭桓案发'],
+    5: ['李善长案', '李善长被赐死', '李善长赐死', '李善长案发'],
+    6: ['太子之死', '朱标病逝', '太子病逝', '朱标之死'],
+    7: ['蓝玉案', '蓝玉被诛', '蓝玉谋反', '蓝案爆发'],
+    8: ['锦衣卫膨胀', '锦衣卫权力巅峰', '诏狱人满为患'],
+    9: ['朱元璋驾崩', '太祖驾崩', '朱元璋病逝']
+  };
+  return map[anchorId] || [];
+}
+
+// 获取当前允许的最大锚点ID（第一个未完成的锚点）
+function getAllowedMaxAnchorId() {
+  if (!GameState.completedAnchors) GameState.completedAnchors = [];
+  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+    var a = HISTORY_ANCHORS[i];
+    if (!GameState.completedAnchors.includes(a.id)) {
+      return a.id; // 第一个未完成的锚点
+    }
+  }
+  // 所有锚点都已完成
+  return HISTORY_ANCHORS[HISTORY_ANCHORS.length - 1].id;
+}
+
+// 锚点完成检测（回合 > anchor.end + 2 时标记完成）
+function checkAnchorCompletion() {
+  if (!GameState.completedAnchors) GameState.completedAnchors = [];
+  var turn = GameState.turn;
+  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+    var a = HISTORY_ANCHORS[i];
+    if (turn > a.end + 2 && !GameState.completedAnchors.includes(a.id)) {
+      GameState.completedAnchors.push(a.id);
+      console.log('[锚点完成] 第' + turn + '回合，锚点「' + a.name + '」(id=' + a.id + ') 已完成');
+    }
+  }
+}
+
+// AI输出校验：检测是否包含未允许锚点的关键词
+function validateAnchorOrder(rawOutput) {
+  if (!GameState.completedAnchors) GameState.completedAnchors = [];
+  var maxAllowedId = getAllowedMaxAnchorId();
+  var violations = [];
+  
+  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+    var a = HISTORY_ANCHORS[i];
+    if (a.id <= maxAllowedId) continue; // 已允许，跳过
+    
+    // 检查是否包含锚点关键词
+    var keywords = getAnchorKeywords(a.id);
+    for (var k = 0; k < keywords.length; k++) {
+      if (rawOutput.includes(keywords[k])) {
+        violations.push('严禁提及「' + a.name + '」（关键词"' + keywords[k] + '"被检测到，该锚点尚未允许触发）');
+        break;
+      }
+    }
+  }
+  
+  return violations.length > 0 
+    ? { valid: false, violations: violations } 
+    : { valid: true };
+}
+
+// ========== v3.8.10 END ==========

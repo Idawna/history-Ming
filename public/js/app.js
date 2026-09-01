@@ -206,6 +206,18 @@ async function processAITurn(userChoice) {
     return;
   }
 
+  // v3.8.10: 锚点顺序校验——检测AI输出是否包含未允许锚点的关键词
+  if (typeof validateAnchorOrder === 'function') {
+    var anchorValidation = validateAnchorOrder(rawOutput);
+    if (!anchorValidation.valid) {
+      console.warn('[锚点顺序违规]', anchorValidation.violations);
+      // 强制驳回：创建 stateBlock 并设置 rejected=true
+      if (!parsed.stateBlock) parsed.stateBlock = {};
+      parsed.stateBlock.rejected = true;
+      parsed.stateBlock.rejected_reason = '锚点顺序违规：' + anchorValidation.violations.join('；');
+    }
+  }
+
   // 判断是否为驳回（SP v3.1：rejected=true 时数值不变、回合不推进、时间不流逝）
   const isRejected = parsed.stateBlock &&
     (parsed.stateBlock.rejected === true || parsed.stateBlock.rejected === 'true');
@@ -225,6 +237,24 @@ async function processAITurn(userChoice) {
     if (!Number.isFinite(m) || m < 1 || m > 12) m = gMonth;
     if (y < gYear || (y === gYear && m < gMonth)) { y = gYear; m = gMonth; clamped = true; }
     if (y > 1398) { y = 1398; m = 6; }
+    
+    // v3.8.9: 锚点强制年份同步——确保NPC死亡判定与锚点事件一致
+    // 检查当前回合是否处于某个锚点窗口内，如果是则强制同步年份
+    if (typeof HISTORY_ANCHORS !== 'undefined') {
+      for (var ai = 0; ai < HISTORY_ANCHORS.length; ai++) {
+        var anchor = HISTORY_ANCHORS[ai];
+        if (GameState.turn >= anchor.start && GameState.turn <= anchor.end) {
+          // 当前回合在锚点窗口内，强制同步年份
+          if (anchor.year && y < anchor.year) {
+            y = anchor.year;
+            m = 1; // 锚点年份的起始月份
+            console.log('[锚点同步] 第' + GameState.turn + '回合进入锚点「' + anchor.name + '」窗口，强制年份同步至' + anchor.year + '年');
+          }
+          break;
+        }
+      }
+    }
+    
     GameState.year = y;
     GameState.month = m;
     // 角色年龄：前端按年份差硬算，不采信AI（开局1375年=baseAge）
@@ -266,6 +296,7 @@ async function processAITurn(userChoice) {
         if (sb.character.rank !== undefined) GameState.character.rank = sb.character.rank;
       }
       if (sb.changes) {
+        console.log('[DEBUG] parsed stateBlock.changes:', JSON.stringify(sb.changes));
         applyChanges(sb.changes);
       }
       // v3.8: 死亡追踪更新 + 即时死亡判定
@@ -290,6 +321,10 @@ async function processAITurn(userChoice) {
         return;
       }
       autoSave();
+      // v3.8.10: 回合结束后检测锚点完成
+      if (typeof checkAnchorCompletion === 'function') {
+        checkAnchorCompletion();
+      }
     }
   }
 
@@ -733,7 +768,7 @@ function saveSnapshot() {
 function applySnapshot(save) {
   if (!save || !save.gameState) return;
   const gs = save.gameState;
-  // 基本容错：确保 gs 的嵌套对象存在
+  // 基础容错：确保 gs 的嵌套对象存在
   if (!gs.character) gs.character = { name: '', age: 22, background: '', position: '未入流', rank: 0 };
   if (!gs.attributes) gs.attributes = { power: 20, people: 30, wisdom: 40, bond: 50, fame: 10 };
   if (!gs.factions) gs.factions = { huaixi: 0, zhedong: 0, donggong: 0, zhuwang: 0, jinchen: 0 };
@@ -756,6 +791,8 @@ function applySnapshot(save) {
     return typeof s === 'string' ? { id: s, planted_turn: 1 } : s;
   });
   GameState.seeds_triggered = [...gs.seeds_triggered];
+  // v3.8.10: 恢复已完成锚点列表（兼容旧存档）
+  GameState.completedAnchors = Array.isArray(gs.completedAnchors) ? [...gs.completedAnchors] : [];
 
   updateStatusPanel();
   clearContainer();

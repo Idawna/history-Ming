@@ -57,7 +57,9 @@ const GameState = {
   expeditionCount: 0,
   // v3.8.5: 圣眷风险追踪
   consecutiveHighEfTurns: 0,
-  favorCrashThisTurn: null
+  favorCrashThisTurn: null,
+  // v3.8.10: 锚点顺序强制控制——已完成的锚点ID列表
+  completedAnchors: []
 };
 
 // ========== LABELS ==========
