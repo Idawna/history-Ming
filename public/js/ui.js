@@ -134,10 +134,121 @@ function showFloatingChanges(changes) {
 // ========== APPLY STATE CHANGES ==========
 // v3.8.2: 新增跷跷板机制柔性化 + wisdom安全网 + ef正向收益
 function applyChanges(changes) {
+  // ========== P1-E: 单回合数值变化上限校验 ==========
+  // SP规定：普通变化±15，紧迫±25
+  if (changes.attributes) {
+    const MAX_NORMAL = 15;
+    const MAX_URGENT = 25;
+    const isUrgent = (GameState.pacing === '紧迫');
+    const maxDelta = isUrgent ? MAX_URGENT : MAX_NORMAL;
+    
+    for (const key of Object.keys(changes.attributes)) {
+      const val = changes.attributes[key];
+      if (val > maxDelta) {
+        changes.attributes[key] = maxDelta;
+        console.log(`[上限校验] ${key} 原值${val}，截断为${maxDelta}（${isUrgent ? '紧迫' : '普通'}模式）`);
+      } else if (val < -maxDelta) {
+        changes.attributes[key] = -maxDelta;
+        console.log(`[上限校验] ${key} 原值${val}，截断为${-maxDelta}（${isUrgent ? '紧迫' : '普通'}模式）`);
+      }
+    }
+  }
+  // 阵营变化上限：±10（紧迫±15）
+  if (changes.factions) {
+    const MAX_FACTION_NORMAL = 10;
+    const MAX_FACTION_URGENT = 15;
+    const isUrgent = (GameState.pacing === '紧迫');
+    const maxFactionDelta = isUrgent ? MAX_FACTION_URGENT : MAX_FACTION_NORMAL;
+    
+    for (const key of Object.keys(changes.factions)) {
+      const val = changes.factions[key];
+      if (val > maxFactionDelta) {
+        changes.factions[key] = maxFactionDelta;
+        console.log(`[上限校验] 阵营${key} 原值${val}，截断为${maxFactionDelta}`);
+      } else if (val < -maxFactionDelta) {
+        changes.factions[key] = -maxFactionDelta;
+        console.log(`[上限校验] 阵营${key} 原值${val}，截断为${-maxFactionDelta}`);
+      }
+    }
+  }
+  // 圣眷变化上限：±15（紧迫±20）
+  if (changes.emperor_feeling !== undefined) {
+    const MAX_EF_NORMAL = 15;
+    const MAX_EF_URGENT = 20;
+    const isUrgent = (GameState.pacing === '紧迫');
+    const maxEfDelta = isUrgent ? MAX_EF_URGENT : MAX_EF_NORMAL;
+    const efVal = changes.emperor_feeling;
+    
+    if (efVal > maxEfDelta) {
+      changes.emperor_feeling = maxEfDelta;
+      console.log(`[上限校验] 圣眷原值${efVal}，截断为${maxEfDelta}`);
+    } else if (efVal < -maxEfDelta) {
+      changes.emperor_feeling = -maxEfDelta;
+      console.log(`[上限校验] 圣眷原值${efVal}，截断为${-maxEfDelta}`);
+    }
+  }
+
+  // ========== 方案A：每回合代价检查 ==========
+  // 确保至少有一个负向属性变化（防止AI生成全正向选项）
+  if (changes.attributes) {
+    const attrValues = Object.values(changes.attributes);
+    const allNonNegative = attrValues.every(v => v >= 0);
+    const hasPositive = attrValues.some(v => v > 0);
+    
+    // 如果所有属性变化都是正向或零，且至少有一个正向，强制添加一个惩罚
+    if (allNonNegative && hasPositive) {
+      const attrKeys = Object.keys(changes.attributes);
+      const penaltyKey = attrKeys[Math.floor(Math.random() * attrKeys.length)];
+      const penalty = -(Math.floor(Math.random() * 3) + 1); // -1 到 -3
+      changes.attributes[penaltyKey] = penalty;
+      console.log(`[代价检查] 本回合全正向，强制添加惩罚: ${penaltyKey} ${penalty}`);
+    }
+  }
+
+  // ========== 应用属性变化 ==========
   if (changes.attributes) {
     for (const [key, delta] of Object.entries(changes.attributes)) {
       if (GameState.attributes[key] !== undefined) {
         GameState.attributes[key] = Math.max(0, Math.min(100, GameState.attributes[key] + delta));
+      }
+    }
+  }
+
+  // ========== 方案B：长期均衡约束 ==========
+  // 追踪每个属性的历史变化方向，连续5回合只升不降则触发回落
+  if (changes.attributes && GameState.attributeHistory) {
+    const MAX_HISTORY = 5;
+    const PENALTY_THRESHOLD = 5; // 连续5回合只升不降
+    const PENALTY_AMOUNT = 4; // 回落4点
+    
+    for (const key of Object.keys(GameState.attributes)) {
+      const delta = changes.attributes[key] || 0;
+      const direction = delta > 0 ? 1 : (delta < 0 ? -1 : 0);
+      
+      // 记录历史
+      if (!GameState.attributeHistory[key]) GameState.attributeHistory[key] = [];
+      GameState.attributeHistory[key].push(direction);
+      
+      // 只保留最近 MAX_HISTORY 条记录
+      if (GameState.attributeHistory[key].length > MAX_HISTORY) {
+        GameState.attributeHistory[key] = GameState.attributeHistory[key].slice(-MAX_HISTORY);
+      }
+      
+      // 检查是否连续5回合都是正向（1）
+      const history = GameState.attributeHistory[key];
+      if (history.length >= PENALTY_THRESHOLD) {
+        const recentHistory = history.slice(-PENALTY_THRESHOLD);
+        const allPositive = recentHistory.every(d => d === 1);
+        
+        if (allPositive) {
+          // 触发回落事件
+          const penalty = PENALTY_AMOUNT + Math.floor(Math.random() * 2); // 4-5点
+          GameState.attributes[key] = Math.max(0, GameState.attributes[key] - penalty);
+          console.log(`[均衡约束] ${key} 连续${PENALTY_THRESHOLD}回合上升，触发回落: -${penalty}`);
+          
+          // 重置历史，防止连续触发
+          GameState.attributeHistory[key] = [];
+        }
       }
     }
   }
@@ -163,10 +274,14 @@ function applyChanges(changes) {
     }
   }
 
-  // v3.8.2: wisdom安全网——30%概率额外扣1-3点（防止wisdom只升不降）
+  // v3.8.4: wisdom安全网增强——强度随wisdom值递增（防止wisdom只升不降）
   if (changes.attributes && changes.attributes.wisdom > 0) {
-    if (Math.random() < 0.3) {
-      const penalty = Math.floor(Math.random() * 3) + 1;
+    const w = GameState.attributes.wisdom;
+    let sapProb = 0.3, sapMin = 1, sapMax = 3;
+    if (w >= 80) { sapProb = 0.7; sapMin = 3; sapMax = 5; }
+    else if (w >= 60) { sapProb = 0.5; sapMin = 2; sapMax = 4; }
+    if (Math.random() < sapProb) {
+      const penalty = Math.floor(Math.random() * (sapMax - sapMin + 1)) + sapMin;
       GameState.attributes.wisdom = Math.max(0, GameState.attributes.wisdom - penalty);
     }
   }
@@ -208,3 +323,4 @@ function applyChanges(changes) {
   // ef加成单独飘字提示
   if (Object.keys(efBonus).length > 0) showFloatingChanges({ attributes: efBonus });
 }
+

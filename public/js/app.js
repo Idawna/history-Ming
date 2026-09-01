@@ -39,7 +39,9 @@ async function streamBotAPI(userMessage, streamTarget) {
       path_reminder: getBackgroundPathReminder(GameState.character.background, getNextTurn()),
       surveillance_hint: getSurveillanceHint(GameState.year, getNextTurn(), GameState.character.background),
       branch_focus: getBranchFocus(getNextTurn(), GameState.character.background),
-      death_warning: (function(){ var w = checkDeathWarning(); return w.length ? '【死亡预警】' + w.join('、') + '——命运已在悬崖边缘，叙事中必须埋下明显的危险信号' : ''; })()
+      death_warning: (function(){ var w = checkDeathWarning(); return w.length ? '【死亡预警】' + w.join('、') + '——命运已在悬崖边缘，叙事中必须埋下明显的危险信号' : ''; })(),
+      faction_decay: (function(){ return GameState.factionDecayThisTurn ? '【阵营衰减】上回合因阵营关系过度深入（绝对值>80），自然回落：' + GameState.factionDecayThisTurn + '。叙事中可体现"树大招风""功高遭忌后关系微妙疏远"等意象，但不可直接提及数值' : ''; })(),
+      favor_crash: (function(){ return GameState.favorCrashThisTurn ? '【圣眷暴跌】' + GameState.favorCrashThisTurn + '——朱元璋猜忌加深，圣眷骤降。叙事中必须体现"帝王心术""天威难测""昨日恩宠今日猜忌"等紧张意象，可描写朝臣态度转变、皇帝冷淡等细节' : ''; })()
     },
     player_action: userMessage
   };
@@ -167,7 +169,7 @@ async function processAITurn(userChoice) {
   } catch (err) {
     console.error('API error:', err);
     streamArea.remove();
-    showError(`墨史官执笔踟蹰……（${err.message}）`);
+    showError(`墨史官执笔踟蹰……（${err.message}）`, userChoice);
     return;
   }
 
@@ -175,7 +177,7 @@ async function processAITurn(userChoice) {
   streamArea.remove();
 
   if (!rawOutput || !rawOutput.trim()) {
-    showError('墨史官的回复为空，请重试。');
+    showError('墨史官的回复为空，请重试。', userChoice);
     return;
   }
 
@@ -183,7 +185,7 @@ async function processAITurn(userChoice) {
   const parsed = parseAIOutput(rawOutput);
 
   if (!parsed.narrative) {
-    showError('墨史官的回复格式有误，请重试。');
+    showError('墨史官的回复格式有误，请重试。', userChoice);
     return;
   }
 
@@ -255,10 +257,19 @@ async function processAITurn(userChoice) {
       if (deathIdx >= 0) {
         GameState.deathWarningCount++;
         autoSave();
-        showEnding(
-          { title: '【' + DEATH_NAMES[deathIdx] + '】', description: DEATH_DESCS[deathIdx] },
-          parsed.narrative
-        );
+        // v3.8.4b: 检查出身专属死亡结局（前朝余孽/殉道者）
+        var bgDeathEnding = getBackgroundDeathEnding(deathIdx);
+        if (bgDeathEnding) {
+          showEnding(
+            { title: '【' + bgDeathEnding.name + '】', description: bgDeathEnding.desc },
+            parsed.narrative
+          );
+        } else {
+          showEnding(
+            { title: '【' + DEATH_NAMES[deathIdx] + '】', description: DEATH_DESCS[deathIdx] },
+            parsed.narrative
+          );
+        }
         return;
       }
       autoSave();
@@ -321,13 +332,16 @@ async function processAITurn(userChoice) {
   scrollToBottom();
 }
 
-function showError(msg) {
+function showError(msg, retryChoice) {
   const div = document.createElement('div');
   div.className = 'input-screen';
+  const retryAttr = retryChoice != null
+    ? `onclick="this.closest('.input-screen').remove();processAITurn(${JSON.stringify(retryChoice).replace(/"/g,'&quot;')})"`
+    : `onclick="this.closest('.input-screen').remove()"`;
   div.innerHTML = `
     <h2>墨笔滞涩</h2>
     <p class="subtitle">${msg}</p>
-    <button class="confirm-btn" onclick="this.closest('.input-screen').remove();">再 试</button>
+    <button class="confirm-btn" ${retryAttr}>再 试</button>
   `;
   gameContainer.appendChild(div);
   scrollToBottom();
