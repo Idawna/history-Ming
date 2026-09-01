@@ -121,8 +121,9 @@ async function streamBotAPI(userMessage, streamTarget) {
       if (streamTarget) {
         // 检测 --- 分隔符，只显示分隔符之前的叙事文本
         let displayText = fullText;
-        const dividerIndex = fullText.indexOf('\n---\n');
-        if (dividerIndex !== -1) displayText = fullText.substring(0, dividerIndex);
+        const dividerRe = /\n[ \t]*(?:[-]{2,6}|[—]{2,6}|[-—]{2,6})[ \t]*\n/;
+        const dividerMatch = fullText.match(dividerRe);
+        if (dividerMatch) displayText = fullText.substring(0, dividerMatch.index);
         // 流式阶段也过滤掉可能出现的 JSON 代码块残影
         displayText = displayText
           .replace(/`{3,4}\s*(?:json)?\s*[\s\S]*?(?:`{3,4}|$)/gi, '')

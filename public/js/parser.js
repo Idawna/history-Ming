@@ -1,17 +1,11 @@
 // ========== JSON 鲁棒解析器 ==========
-// 从任意文本中尝试提取并解析最外层的 JSON 对象，兼容多种 AI 输出风格：
-// ① ```json ... ``` 代码块（含/不含 json 标签、含/不含多余反引号）
-// ② 直接以 { 开头的纯 JSON
-// ③ JSON 前后/中间混了文字、中文标点、空行等噪声
-// ④ 多层嵌套、跨多行、缩进不一
 function tryParseJSON(raw) {
   if (!raw) return null;
   const s = typeof raw === 'string' ? raw : String(raw);
 
-  // 策略1：找最外层 {} 块（从首个 { 到对应的 }）
+  // 策略1：找最外层 {} 块
   const start = s.indexOf('{');
   if (start >= 0) {
-    // 从 start 开始找匹配的 }，处理嵌套
     let depth = 0, end = -1;
     let inStr = false, esc = false;
     for (let i = start; i < s.length; i++) {
@@ -25,34 +19,29 @@ function tryParseJSON(raw) {
     }
     if (end > start) {
       let candidate = s.slice(start, end + 1);
-      // 清理常见 AI 噪声：中文引号→英文引号、全角冒号/逗号→半角、多余空白
       candidate = candidate
-        .replace(/\u201c/g, '"').replace(/\u201d/g, '"')  // 中文双引号
-        .replace(/\u2018/g, "'").replace(/\u2019/g, "'")  // 中文单引号
-        .replace(/\uff1a/g, ':')    // 全角冒号
-        .replace(/\uff0c/g, ',')    // 全角逗号
-        .replace(/\u3002/g, '.')    // 中文句号（字符串外不处理，但整体替换一般无害）
-        .replace(/\s+/g, ' ')       // 合并空白
-        .trim();
+        .replace(/\u201c/g, '"').replace(/\u201d/g, '"')
+        .replace(/\u2018/g, "'").replace(/\u2019/g, "'")
+        .replace(/\uff1a/g, ':').replace(/\uff0c/g, ',')
+        .replace(/\u3002/g, '.').replace(/\s+/g, ' ').trim();
       try {
         const obj = JSON.parse(candidate);
-        // 基本校验：必须包含 turn 或 pacing 等状态字段之一，否则可能是别的 JSON
         if (obj && typeof obj === 'object' &&
-            ('turn' in obj || 'pacing' in obj || 'year' in obj || 'changes' in obj)) {
+            ('turn' in obj || 'pacing' in obj || 'year' in obj || 'changes' in obj || 'initializing' in obj)) {
           return obj;
         }
-      } catch (_) { /* 继续尝试其他策略 */ }
+      } catch (_) {}
     }
   }
 
-  // 策略2：找 ``` 或 ```` 代码块，再从中提取 JSON
+  // 策略2：找代码块
   const codeRe = /`{3,4}\s*(?:json)?\s*([\s\S]*?)`{3,4}/i;
   const m = s.match(codeRe);
   if (m) {
     try {
       const obj = JSON.parse(m[1].trim());
       if (obj && typeof obj === 'object' &&
-          ('turn' in obj || 'pacing' in obj || 'year' in obj || 'changes' in obj)) {
+          ('turn' in obj || 'pacing' in obj || 'year' in obj || 'changes' in obj || 'initializing' in obj)) {
         return obj;
       }
     } catch (_) {}
@@ -61,98 +50,180 @@ function tryParseJSON(raw) {
   return null;
 }
 
+// ========== 分隔符检测 ==========
+// 匹配各种 --- 变体：纯短横、中文破折号、混合、前后有空行/空格
+// 返回分割后的 sections 数组
+function splitByDividers(text) {
+  // 先尝试标准 \n---\n
+  // 放宽：支持 2-6 个短横、中文破折号、前后允许空格和空行
+  const dividerRe = /\n[ \t]*(?:[-]{2,6}|[—]{2,6}|[-—]{2,6})[ \t]*\n/g;
+  const parts = text.split(dividerRe);
+  // 过滤空白段
+  return parts;
+}
+
 // ========== 叙事文本净化 ==========
-// AI 返回整段 text 中可能混入未解析的 JSON 块/代码块，从显示中剔除
 function sanitizeNarrative(raw) {
   if (!raw) return raw;
   let t = raw;
-  // 去掉 ```json ... ``` 代码块
+  // 1. 去掉 ```json ... ``` 代码块（多行）
   t = t.replace(/`{3,4}\s*(?:json)?\s*[\s\S]*?`{3,4}/gi, '');
-  // 去掉残留的 markdown 标记：```、`、```
+  // 2. 去掉残留的 markdown 反引号
   t = t.replace(/`{3,4}\s*/g, '').replace(/`{1,2}/g, '');
-  // 去掉孤立的 { ... } 块（未被解析器捕获的）
-  t = t.replace(/\{[\s\S]*?\}\s*$/gm, '');
-  // 清理首尾空白与连续空行
+  // 3. 去掉多行 JSON 块：从独立一行的 { 到独立一行的 }
+  t = t.replace(/^\s*\{[\s\S]*?\}\s*$/gm, '');
+  // 4. 去掉单行 { ... } 残余（如 { "turn": 2 }）
+  t = t.replace(/\{[^{}]{1,200}\}/g, function(match) {
+    // 只移除看起来像 JSON 的（含冒号或引号）
+    if (/["':]/.test(match)) return '';
+    return match;
+  });
+  // 5. 清理连续空行
   t = t.replace(/\n{3,}/g, '\n\n').trim();
   return t;
 }
 
+// ========== 选项行检测 ==========
+// 匹配各种选项格式：
+// 1. 「选项」 / 1.「选项」 / 1. 「选项」
+// 1、选项 / 1.选项
+// 甲、选项 / 甲.选项
+// 自由行动：xxx / 4. 自由行动：xxx
+function isChoiceLine(line) {
+  if (!line || !line.trim()) return false;
+  const t = line.trim();
+  // 数字编号：1. xxx / 1、xxx / 1.xxx（可选括号包裹）
+  if (/^\d+[\.、．\s]\s*[「『【（(]?\s*.+[」』】）)]?\s*$/.test(t)) return true;
+  // 中文编号：甲、乙、丙 / 甲. 乙.
+  if (/^[甲乙丙丁戊][\.、．\s]\s*[「『【（(]?.+[」』】）)]?\s*$/.test(t)) return true;
+  // 纯文字选项（含「」包裹，无编号）—— 仅在明确有括号时匹配
+  if (/^[「『【].+[」』】]\s*$/.test(t)) return true;
+  return false;
+}
+
+// ========== 从选项行提取文本 ==========
+function extractChoiceText(line) {
+  let t = line.trim();
+  // 去掉编号前缀：1. / 1、/ 甲、/ 甲. 等
+  t = t.replace(/^\d+[\.、．\s]\s*/, '');
+  t = t.replace(/^[甲乙丙丁戊][\.、．\s]\s*/, '');
+  // 去掉括号包裹
+  t = t.replace(/^[「『【（(]\s*/, '').replace(/\s*[」』】）)]$/, '');
+  return t.trim();
+}
+
 // ========== PARSE AI OUTPUT ==========
 function parseAIOutput(text) {
-  // Split by --- dividers
-  const sections = text.split(/\n---\n/);
+  if (!text || !text.trim()) return { narrative: '', choices: [], stateBlock: null };
 
   let narrative = '';
   let choices = [];
   let stateBlock = null;
 
+  // Step 1: 尝试用分隔符分割
+  const sections = splitByDividers(text);
+
   if (sections.length >= 3) {
+    // 标准三段式：叙事 / 选项 / 状态
     narrative = sanitizeNarrative(sections[0].trim());
     const choicesText = sections[1].trim();
-    const stateText = sections[2].trim();
+    const stateText = sections[sections.length - 1].trim();
 
-    // Parse choices
+    // 解析选项
     const choiceLines = choicesText.split('\n').filter(l => l.trim());
     choiceLines.forEach(line => {
-      const match = line.match(/^\d+\.\s*[「『]?(.+?)[」』]?\s*$/) ||
-                    line.match(/^\d+\.\s*(.+)$/);
-      if (match) {
-        let text = match[1].trim();
-        // Remove brackets if present
-        text = text.replace(/^[「『]/, '').replace(/[」』]$/, '');
-        choices.push(text);
+      if (isChoiceLine(line)) {
+        choices.push(extractChoiceText(line));
       }
     });
 
-    // Parse JSON state block：兼容多种代码块写法（```json、```、````、无代码块直接大括号开头）
+    // 解析 JSON
     stateBlock = tryParseJSON(stateText);
-  } else {
-    // Fallback: 没有正确分隔，尝试从全文（含JSON散落）中提取选项+状态
-    // 先尝试从整段 text 中提取 JSON（有些 AI 把 JSON 放在末尾不分割）
+  }
+
+  // Step 2: 如果分隔符失败或选项为空，走 fallback
+  if (choices.length === 0) {
+    // 先从全文提取 JSON
     stateBlock = tryParseJSON(text);
-    narrative = sanitizeNarrative(text.trim());
-    
-    // 尝试从叙事文本中提取选项（匹配 1. xxx 格式）
-    const lines = narrative.split('\n');
-    const narrativeLines = [];
-    const choiceLines = [];
+
+    // 从全文中移除 JSON 块（代码块 + 裸 JSON），得到"纯净"文本
+    let cleanText = text;
+    // 移除代码块
+    cleanText = cleanText.replace(/`{3,4}\s*(?:json)?\s*[\s\S]*?`{3,4}/gi, '');
+    // 移除多行 JSON（从 { 到匹配的最外层 }）
+    if (stateBlock) {
+      const jsonStr = JSON.stringify(stateBlock);
+      // 找到 JSON 在文本中的位置并移除
+      const jsonStart = cleanText.indexOf('{');
+      if (jsonStart >= 0) {
+        let depth = 0, jsonEnd = -1;
+        let inStr = false, esc = false;
+        for (let i = jsonStart; i < cleanText.length; i++) {
+          const ch = cleanText[i];
+          if (esc) { esc = false; continue; }
+          if (ch === '\\') { esc = true; continue; }
+          if (ch === '"' || ch === "'") { inStr = !inStr; continue; }
+          if (inStr) continue;
+          if (ch === '{') depth++;
+          else if (ch === '}') { depth--; if (depth === 0) { jsonEnd = i; break; } }
+        }
+        if (jsonEnd > jsonStart) {
+          cleanText = cleanText.slice(0, jsonStart) + cleanText.slice(jsonEnd + 1);
+        }
+      }
+    }
+    // 再移除可能残留的 { ... } 块
+    cleanText = cleanText.replace(/^\s*\{[^{}]*\}\s*$/gm, '');
+    cleanText = cleanText.replace(/\{[^{}]{1,200}\}/g, function(match) {
+      if (/["':]/.test(match)) return '';
+      return match;
+    });
+    cleanText = cleanText.replace(/`{3,4}\s*/g, '').replace(/`{1,2}/g, '');
+
+    // 从清理后的文本中提取选项
+    const lines = cleanText.split('\n');
+    const choiceLineIndices = [];
+
+    // 从末尾倒序查找连续选项行
     let inChoices = false;
-    
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i].trim();
-      if (!line) continue;
-      
-      // 检测是否是选项格式（1. xxx, 2. xxx 等）
-      const isChoice = /^\d+\.\s*[「『]?(.+?)[」』]?\s*$/.test(line) ||
-                      /^\d+\.\s*(.+)$/.test(line);
-      
-      if (isChoice && !inChoices) {
-        inChoices = true;
-      }
-      
-      if (inChoices && isChoice) {
-        choiceLines.unshift(line);
+      if (!line) continue; // 跳过空行
+
+      if (isChoiceLine(line)) {
+        if (!inChoices) inChoices = true;
+        choiceLineIndices.unshift(i);
       } else if (inChoices) {
-        // 遇到非选项行，停止提取
-        break;
+        break; // 遇到非选项行停止
       }
     }
-    
-    // 如果提取到选项，从叙事中移除（即使只有 1-2 个也保留，不强制要求 3 个）
-    if (choiceLines.length >= 1) {
-      choiceLines.forEach(line => {
-        const match = line.match(/^\d+\.\s*[「『]?(.+?)[」』]?\s*$/) ||
-                      line.match(/^\d+\.\s*(.+)$/);
-        if (match) {
-          let choiceText = match[1].trim();
-          choiceText = choiceText.replace(/^[「『]/, '').replace(/[」』]$/, '');
-          choices.push(choiceText);
-        }
-        // 从叙事中移除这一行
-        narrative = narrative.replace(line, '');
+
+    // 提取选项文本并从叙事中移除
+    if (choiceLineIndices.length >= 1) {
+      // 用 Set 标记要移除的行
+      const removeSet = new Set(choiceLineIndices);
+      choiceLineIndices.forEach(idx => {
+        choices.push(extractChoiceText(lines[idx]));
       });
-      narrative = narrative.trim();
+      // 重建叙事文本（移除选项行和相关提示行）
+      const narrativeLines = [];
+      for (let i = 0; i < lines.length; i++) {
+        if (removeSet.has(i)) continue;
+        // 也移除"你可以选择"之类的提示行
+        const t = lines[i].trim();
+        if (/^(你可以|请选择|你将|行动|选择)[：:：]?\s*$/.test(t)) continue;
+        narrativeLines.push(lines[i]);
+      }
+      narrative = narrativeLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    } else {
+      // 完全没找到选项
+      narrative = sanitizeNarrative(cleanText.trim());
     }
+  }
+
+  // Step 3: 最终兜底 —— 如果仍然没有叙事，用原文
+  if (!narrative && text) {
+    narrative = sanitizeNarrative(text.trim());
   }
 
   return { narrative, choices, stateBlock };
@@ -173,15 +244,14 @@ function renderNarrative(html, animate = true) {
   textDiv.innerHTML = html;
 
   div.appendChild(textDiv);
-  
-  // 兜底：强制触发重排并确保可见性（修复移动端动画偶尔不生效的问题）
+
   setTimeout(() => {
     if (window.getComputedStyle(textDiv).opacity === '0') {
       textDiv.style.opacity = '1';
       textDiv.style.transform = 'translateY(0)';
     }
   }, 100);
-  
+
   return div;
 }
 
@@ -211,10 +281,8 @@ function renderChoices(choices, callback) {
 
     btn.addEventListener('click', () => {
       if (isFree) {
-        // Show free action input
         showFreeActionInput(area, callback, choice);
       } else {
-        // Disable all buttons
         area.querySelectorAll('.choice-btn').forEach(b => {
           b.disabled = true;
           b.style.opacity = '0.4';
@@ -222,7 +290,6 @@ function renderChoices(choices, callback) {
         });
         btn.style.opacity = '1';
         btn.style.boxShadow = '-3px 0 0 var(--cinnabar)';
-        // Show "chosen" note
         const note = document.createElement('div');
         note.className = 'history-choice-made';
         note.textContent = `▸ ${choice}`;
@@ -261,7 +328,6 @@ function showFreeActionInput(area, callback, placeholder) {
     const val = input.value.trim();
     if (!val) return;
     inputArea.classList.remove('active');
-    // Disable all
     area.querySelectorAll('.choice-btn').forEach(b => {
       b.disabled = true;
       b.style.opacity = '0.4';
@@ -279,4 +345,3 @@ function showFreeActionInput(area, callback, placeholder) {
     if (e.key === 'Enter') submit();
   });
 }
-
