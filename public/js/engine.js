@@ -339,17 +339,17 @@ var DEATH_NAMES = [
   '蓝案牵连'
 ];
 var DEATH_DESCS = [
-  '满门抄斩，九族俱灭。你的名字从朝堂上被彻底抹去。',
-  '触怒龙颜，朱元璋亲自下旨处死。天威难测，一死谢罪。',
-  '胡惟庸案爆发，丞相党被清洗。锦衣卫拿着名单挨户拿人，你被牵连其中。',
-  '所属派系核心NPC被清洗，覆巢之下无完卵。',
-  '功盖天下而主不能容。韩信的下场，你也没能避开。',
-  '所有衙门都对你关上了门。没有人愿意为你说一句话。',
-  '贬谪圣旨到了。发配路上瘴气弥漫，你没能走到目的地。',
-  '你的文章被人断章取义，举报有「怨望」之意。文字惹了杀身祸。',
-  '深夜有人闯入了你的住处。你在黑暗中没能来得及反应。',
-  '连续数月操劳过度。太医说你脉象已绝，药石无灵。',
-  '蓝玉案爆发，淮西勋贵被连根拔起。锦衣卫拿着名簿挨个拿人，你没能逃脱。'
+  '洪武朝的刀，从来不只砍一个人的头。你的权力太大，你的靠山太危险——当锦衣卫的靴声在巷口响起时，你知道这一切终将到来。满门抄斩，九族俱灭。府邸被查封，族谱被焚毁，你的名字从朝堂上被彻底抹去，仿佛从未存在过。邻里噤若寒蝉，旧交纷纷断绝往来。但史书的空白处，自有后人读出你的故事。',
+  '朱元璋亲自下的旨。没有三法司会审，没有朝堂辩论，只有一句"着即处死"。天威难测，昨日还是肱股之臣，今日便是阶下之囚。你在诏狱中度过了最后几个时辰，回想这一生——从初入仕途到权倾一方，每一步都走得小心翼翼，却终究没能逃过帝王的猜忌。刑场上的风很冷，你最后望了一眼紫金山的方向。',
+  '洪武十三年，胡惟庸案爆发。丞相府被围，党羽被清洗，锦衣卫拿着名单挨户拿人。你与胡惟庸未必有多深的交情，但在洪武朝的棋盘上，"可能威胁到皇权"就是死罪。你的府邸被抄没，家眷被流放。朝中无人敢为你求情——他们自己的名字，或许也在那份名单的边缘。',
+  '你所依附的派系，核心人物倒了。覆巢之下无完卵。弹劾的奏章如雪片般飞来，曾经推杯换盏的同僚纷纷与你划清界限。朱元璋乐见其成——朝堂的派系清洗，从来都是帝王术的一部分。你的名字被从功臣榜上抹去，家族的命运随着派系的崩塌而终结。官场上再提起你，只是一声叹息。',
+  '你做得太多了。战功太赫，声望太高，百姓太爱戴你。这在大宋是美事，在洪武朝却是催命符。朱元璋看着你的眼神，从欣赏变成了忌惮，从忌惮变成了杀意。"功盖天下而主不能容"——古人的话，你终究没能躲过。赐死的旨意来得很平静，就像一杯御赐的茶。你饮下那杯酒时，终于明白了一个道理：在这个朝代，活下来才是最大的军功。',
+  '所有的门都对你关上了。淮西的旧交不敢认你，浙东的门生不敢提你，连家里的仆人都被锦衣卫带走问话。你写了奏疏，没人敢递。你托人说情，没人敢接。在这个庞大的帝国机器面前，你发现自己已经完全孤立——像一只被困在蛛网中的飞虫，越挣扎缠得越紧。最终的结局无人知晓，只知道某一天，你的名字从所有文书中消失了。',
+  '贬谪的圣旨来得很突然。从应天府到岭南，三千里流放路。瘴气、饥寒、疲惫，还有押送差役的冷眼。你没能走到目的地——在某个不知名的驿站，你倒下了。没有人在意一个流放犯的死亡。驿站老板草草将你葬在后山的坡上，连块墓碑都没有。你的故事，连同你的名字，消散在南方的烟雨里。',
+  '你写的那些文字，被人断章取义地呈到了御前。"怨望""诽谤""大不敬"——每一顶帽子都足以杀你一百次。也许你只是写了一首感怀的诗，也许你只是在一封家书里发了几句牢骚，但在洪武朝，文字就是罪证。锦衣卫的诏狱里，你被要求交代"幕后主使"。没有幕后主使，只有文字本身，和一颗被误解的心。你的案卷被归入文字狱的卷宗，与数百人并列。',
+  '深夜，有人闯入了你的住处。你可能甚至没来得及看清来人的脸。在这个朝堂上，想让你死的人太多了——也许是政敌，也许是知道你太多秘密的人，也许只是某个想拿你人头换功劳的锦衣卫。你的死被记录为"暴病而亡"，没人追问真相。丧事办得冷清，来吊唁的人寥寥无几——他们怕惹上麻烦。在这个时代，真相从来不是最重要的。',
+  '太医的脉案写得很含蓄："积劳成疾，脉象已绝。"但你知道真相：连续数月的高强度操劳，日夜不休的政务，加上洪武朝特有的精神压力，终于压垮了你的身体。你躺在病榻上，看着窗外的月亮，想着还有多少公文没有批阅，多少承诺没有兑现。药石无灵，你在一个安静的夜晚合上了眼。朝中只来了一个送花圈的官员，站了一刻钟便走了。',
+  '蓝玉案爆发，比胡惟庸案更加惨烈。淮西勋贵被连根拔起，一万五千余人被处死，朝堂为之一空。你或许与蓝玉并无深交，但"淮西"这个标签就是你的原罪。锦衣卫拿着名簿挨个拿人，你的府邸被围时，邻居们关紧了门户。你的名字也在那份名簿上——不是因为做了什么，而是因为你是谁。这场清洗之后，洪武朝的功臣几乎殆尽。'
 ];
 
 function maxFaction() {
@@ -617,27 +617,27 @@ function updateDeathTracking(narrative) {
 function getCommonEnding() {
   var a = GameState.attributes, f = GameState.factions, ef = GameState.emperor_feeling;
   var endings = [
-    {name:'\u9752\u53f2\u7559\u540d', desc:'\u540d\u5782\u5343\u53e4\uff0c\u4e07\u4e16\u6d41\u82b3\u3002\u4f60\u7684\u540d\u5b57\u88ab\u5199\u5165\u53f2\u518c\uff0c\u540e\u4e16\u6bcf\u4e00\u4e2a\u8bfb\u4e66\u4eba\u90fd\u4f1a\u8bfb\u5230\u4f60\u7684\u6545\u4e8b\u3002',
+    {name:'\u9752\u53f2\u7559\u540d', desc:'\u540d\u5782\u5343\u53e4\uff0c\u4e07\u4e16\u6d41\u82b3\u3002\u4f60\u7684\u540d\u5b57\u88ab\u5199\u5165\u300a\u660e\u53f2\u300b\uff0c\u540e\u4e16\u6bcf\u4e00\u4e2a\u8bfb\u4e66\u4eba\u90fd\u4f1a\u8bfb\u5230\u4f60\u7684\u6545\u4e8b\u3002\u4f60\u7684\u4e00\u751f\u662f\u4e00\u90e8\u6d53\u7f29\u7684\u6d2a\u6b66\u53f2\u2014\u2014\u4ece\u5c0f\u5c0f\u4eba\u7269\u5230\u540d\u52a8\u5929\u4e0b\uff0c\u6bcf\u4e00\u6b65\u90fd\u8e29\u5728\u4e86\u6b63\u786e\u7684\u4f4d\u7f6e\u3002\u767e\u5e74\u4e4b\u540e\uff0c\u5f53\u4eba\u4eec\u8c08\u8d77\u6d2a\u6b66\u671d\u7684\u98ce\u4e91\u4eba\u7269\uff0c\u4f60\u7684\u540d\u5b57\u59cb\u7ec8\u5728\u5176\u4e2d\u3002',
      check: function(){ return a.fame >= 85 && a.wisdom >= 70 && ef >= 0 && GameState.attributes.bond >= 60; }},
-    {name:'\u667a\u7edd\u5929\u4e0b', desc:'\u7b97\u65e0\u9057\u7b56\uff0c\u8c0b\u5b9a\u4e7e\u5764\u3002\u4f60\u7684\u667a\u8c0b\u8ba9\u6240\u6709\u4eba\u670d\u6c14\uff0c\u671d\u5803\u4e0a\u4e0b\u65e0\u4eba\u6562\u5c0f\u89d1\u4f60\u3002',
+    {name:'\u667a\u7edd\u5929\u4e0b', desc:'\u7b97\u65e0\u9057\u7b56\uff0c\u8c0b\u5b9a\u4e7e\u5764\u3002\u4f60\u7684\u667a\u8c0b\u8ba9\u6240\u6709\u4eba\u670d\u6c14\u2014\u2014\u671d\u5803\u4e0a\u4e0b\u65e0\u4eba\u6562\u5c0f\u89d8\u4f60\uff0c\u8fde\u6731\u5143\u7490\u90fd\u5bf9\u4f60\u7684\u5224\u65ad\u53e6\u773c\u76f8\u770b\u3002\u4f60\u7684\u6bcf\u4e00\u6b21\u8fdb\u8a00\u90fd\u88ab\u5370\u8bc1\u4e3a\u6b63\u786e\uff0c\u6bcf\u4e00\u6b21\u5e03\u5c40\u90fd\u5728\u6570\u5e74\u540e\u5f97\u5230\u9a8c\u8bc1\u3002\u540e\u4e16\u8bfb\u5230\u4f60\u7684\u6545\u4e8b\uff0c\u4f1a\u53f9\u606f\uff1a\u82e5\u6b64\u4eba\u751f\u4e8e\u592a\u5e73\u4e4b\u4e16\uff0c\u5f53\u4e3a\u4e00\u4ee3\u540d\u81e3\u3002',
      check: function(){ return a.wisdom >= 90 && a.fame >= 70 && a.power >= 40 && a.power <= 75; }},
-    {name:'\u6c11\u5fc3\u6240\u5411', desc:'\u767e\u59d3\u62e5\u6234\uff0c\u6c11\u671b\u5982\u5929\u3002\u4f60\u6df1\u5f97\u6c11\u5fc3\uff0c\u5373\u4fbf\u671d\u5803\u4e0a\u6709\u4eba\u5fcc\u5989\u4f60\uff0c\u767e\u59d3\u5374\u89c6\u4f60\u5982\u7236\u6bcd\u3002',
+    {name:'\u6c11\u5fc3\u6240\u5411', desc:'\u767e\u59d3\u62e5\u6234\uff0c\u6c11\u671b\u5982\u5929\u3002\u4f60\u6df1\u5f97\u6c11\u5fc3\uff0c\u5373\u4fbf\u671d\u5803\u4e0a\u6709\u4eba\u5fcc\u5989\u4f60\uff0c\u767e\u59d3\u5374\u89c6\u4f60\u5982\u7236\u6bcd\u3002\u4f60\u8d70\u8fc7\u7684\u6bcf\u4e00\u4e2a\u5730\u65b9\u90fd\u7559\u4e0b\u4e86\u53e3\u7891\u3002\u5373\u4fbf\u4f60\u79bb\u4efb\u6216\u79bb\u4e16\uff0c\u5f53\u5730\u767e\u59d3\u4f1a\u81ea\u53d1\u4e3a\u4f60\u8bbe\u7960\u796d\u7960\u3002\u8fd9\u4efd\u611f\u60c5\u4e0d\u662f\u6743\u4f4d\u80fd\u4e70\u7684\uff0c\u662f\u4f60\u4e00\u6b65\u4e00\u6b65\u8d70\u51fa\u6765\u7684\u3002\u5728\u6d2a\u6b66\u671d\u90a3\u6837\u4e00\u4e2a\u66b4\u529b\u7684\u65f6\u4ee3\uff0c\u8fd9\u662f\u6700\u7f55\u89c1\u7684\u6e29\u6696\u3002',
      check: function(){ return a.people >= 85 && a.fame >= 60 && a.power >= 30 && ef >= -10; }},
-    {name:'\u6743\u503e\u671d\u91ce', desc:'\u4e00\u4eba\u4e4b\u4e0b\uff0c\u4e07\u4eba\u4e4b\u4e0a\u3002\u4f60\u7684\u6743\u52bf\u5df2\u7ecf\u5230\u4e86\u4eba\u81e3\u7684\u9876\u5cf0\uff0c\u671d\u5803\u5927\u5c0f\u4e8b\u52a1\u7686\u7531\u4f60\u5b9a\u593a\u3002',
+    {name:'\u6743\u503e\u671d\u91ce', desc:'\u4e00\u4eba\u4e4b\u4e0b\uff0c\u4e07\u4eba\u4e4b\u4e0a\u3002\u4f60\u7684\u6743\u52bf\u5df2\u7ecf\u5230\u4e86\u4eba\u81e3\u7684\u9876\u5cf0\u2014\u2014\u671d\u5803\u5927\u5c0f\u4e8b\u52a1\u7686\u7531\u4f60\u5b9a\u593a\uff0c\u516d\u90e8\u5c1a\u4e66\u89c1\u4e86\u4f60\u8981\u7ed5\u8def\u8d70\u3002\u4f46\u4f60\u5fc3\u91cc\u6e05\u695a\uff0c\u8fd9\u4efd\u6743\u52bf\u6765\u81ea\u6731\u5143\u7490\u7684\u4fe1\u4efb\uff0c\u4e5f\u53ef\u80fd\u5728\u67d0\u4e00\u5929\u88ab\u6536\u56de\u3002\u4f60\u7ad9\u5728\u4e86\u4eba\u81e3\u7684\u6700\u9ad8\u5904\uff0c\u4e5f\u7ad9\u5728\u4e86\u60ac\u5d16\u7684\u6700\u8fb9\u7f18\u3002\u540e\u4e16\u53f2\u5bb6\u8bc4\u4f60\uff1a\u201c\u6743\u503e\u4e00\u65f6\uff0c\u800c\u4e0d\u80fd\u81ea\u4fdd\u3002\u201d',
      check: function(){ return a.power >= 85 && a.wisdom >= 60 && ef >= -20 && countFactionsGTE(30) >= 2; }},
-    {name:'\u906e\u81ed\u4e07\u5e74', desc:'\u4e07\u4eba\u5524\u9a82\uff0c\u5978\u4f5e\u4e4b\u540d\u3002\u4f60\u7684\u540d\u5b57\u6210\u4e86\u8d2a\u5b98\u6c61\u540f\u7684\u4ee3\u540d\u8bcd\uff0c\u7559\u4e0b\u5343\u53e4\u9a82\u540d\u3002',
+    {name:'\u906e\u81ed\u4e07\u5e74', desc:'\u4e07\u4eba\u5524\u9a82\uff0c\u5978\u4f5e\u4e4b\u540d\u3002\u4f60\u7684\u540d\u5b57\u6210\u4e86\u8d2a\u5b98\u6c61\u540f\u7684\u4ee3\u540d\u8bcd\uff0c\u7559\u4e0b\u5343\u53e4\u9a82\u540d\u3002\u4f60\u7684\u5e9c\u90b8\u91cc\u5806\u6ee1\u4e86\u94f6\u5b50\u548c\u7ee2\u7ef8\uff0c\u4f46\u6bcf\u4e2a\u4eba\u770b\u5230\u4f60\u90fd\u7ed5\u7740\u8d70\u3002\u4f60\u7684\u540d\u5b57\u88ab\u5199\u8fdb\u4e86\u300a\u59e5\u81e3\u4f20\u300b\uff0c\u4e0e\u5386\u4ee3\u5978\u81e3\u5e76\u5217\u3002\u540e\u4eba\u8bfb\u5230\u4f60\u7684\u6545\u4e8b\uff0c\u4f1a\u5578\u7136\u53d1\u7b11\uff0c\u7136\u540e\u8b66\u9192\u81ea\u5df1\u4e0d\u8981\u6210\u4e3a\u8fd9\u6837\u7684\u4eba\u3002',
      check: function(){ return a.fame <= 25 && a.power >= 50 && GameState.attributes.bond <= 25; }},
-    {name:'\u4e71\u4e16\u9690\u8005', desc:'\u5f52\u9690\u6797\u6cc9\uff0c\u4e0d\u95ee\u671d\u5803\u3002\u4f60\u653e\u5f03\u4e86\u529f\u540d\u5bcc\u8d35\uff0c\u5728\u5c71\u6c34\u95f4\u627e\u5230\u4e86\u5185\u5fc3\u7684\u5b81\u9759\u3002',
+    {name:'\u4e71\u4e16\u9690\u8005', desc:'\u5f52\u9690\u6797\u6cc9\uff0c\u4e0d\u95ee\u671d\u5803\u3002\u4f60\u653e\u5f03\u4e86\u529f\u540d\u5bcc\u8d35\uff0c\u5728\u5c71\u6c34\u95f4\u627e\u5230\u4e86\u5185\u5fc3\u7684\u5b81\u9759\u3002\u4f60\u7684\u5c0f\u5c4b\u5750\u843d\u5728\u5c71\u811a\u4e0b\uff0c\u95e8\u524d\u6709\u4e00\u4e1b\u7aff\u3001\u4e00\u5f20\u7434\u3002\u5076\u5c14\u6709\u8fc7\u8def\u7684\u6e14\u7fc1\u6765\u6263\u95e8\uff0c\u4f60\u4fbf\u4e0e\u4ed6\u5bf9\u996e\u51e0\u676f\u3002\u671d\u5802\u4e0a\u7684\u98ce\u4e91\u518d\u4e5f\u4e0e\u4f60\u65e0\u5173\u3002\u4f60\u662f\u6d2a\u6b66\u671d\u6700\u4e0d\u8d77\u773c\u7684\u4eba\uff0c\u4e5f\u662f\u552f\u4e00\u771f\u6b63\u81ea\u7531\u7684\u4eba\u3002',
      check: function(){ return a.power <= 20 && a.fame >= 40 && a.wisdom >= 55 && a.people >= 40; }},
     // v3.8.2: 新增fame中间地带结局（填补25-40与40-60之间的空白）
-    {name:'乡望素著', desc:'十里八乡，交口称颂。你虽未名动天下，却在乡里间留下了极好的名声。百姓记得你的善举，同僚记得你的为人。这份平凡的尊重，或许比庙堂上的功名更持久。',
+    {name:'乡望素著', desc:'十里八乡，交口称颂。你虽未名动天下，却在乡里间留下了极好的名声。百姓记得你的善举，同僚记得你的为人。你为官一任便造福一方，虽无惊天动地的功业，却在每一个到过的地方留下了温度。这份平凡的尊重，或许比庙堂上的功名更持久——因为功名会被遗忘，而人心的记忆最长。',
      check: function(){ return a.fame >= 25 && a.fame < 40 && a.people >= 45 && a.wisdom >= 35 && a.bond >= 30; }},
-    {name:'名满天下', desc:'天下士人谈及当世人物，无人不知你的名字。你未必权倾一时，却以才学与品行赢得了广泛的敬重。这份声望不靠权位维系，而是来自你走过的每一步。',
+    {name:'名满天下', desc:'天下士人谈及当世人物，无人不知你的名字。你未必权倾一时，却以才学与品行赢得了广泛的敬重。你的文章被人传抄，你的品行被人效仿，你的判断被人信赖。这份声望不靠权位维系，而是来自你走过的每一步、做过的每一个决定。百年之后，人们或许记不清洪武朝的宰相是谁，但会记得你的名字。',
      check: function(){ return a.fame >= 40 && a.fame < 60 && a.wisdom >= 50 && a.people >= 40 && a.bond >= 35; }},
-    {name:'\u5168\u8eab\u800c\u9000', desc:'\u5e73\u6de1\u662f\u798f\uff0c\u5584\u7ec8\u3002\u4f60\u6ca1\u6709\u5efa\u4e0b\u4e0d\u4e16\u529f\u4e1a\uff0c\u4f46\u5e73\u5e73\u5b89\u5b89\u5ea6\u8fc7\u4e86\u8fd9\u4e2a\u6ce1\u8840\u65f6\u4ee3\u3002\u8fd9\u672c\u8eab\u5c31\u662f\u6700\u5927\u7684\u80dc\u5229\u3002',
+    {name:'\u5168\u8eab\u800c\u9000', desc:'\u5e73\u6de1\u662f\u798f\uff0c\u5584\u7ec8\u3002\u4f60\u6ca1\u6709\u5efa\u4e0b\u4e0d\u4e16\u529f\u4e1a\uff0c\u4f46\u5e73\u5e73\u5b89\u5b89\u5ea6\u8fc7\u4e86\u8fd9\u4e2a\u6ce1\u8840\u65f6\u4ee3\u3002\u5728\u6d2a\u6b66\u671d\uff0c\u80fd\u6d3b\u7740\u79bb\u5f00\u5c31\u662f\u6700\u5927\u7684\u80dc\u5229\u3002\u4f60\u7684\u4e00\u751f\u6ca1\u6709\u60ca\u5929\u52a8\u5730\u7684\u4e8b\u8ff9\uff0c\u4f46\u4f60\u7684\u5b50\u5b59\u5b89\u5168\u3001\u5bb6\u65cf\u5ef6\u7eed\u3002\u591a\u5c11\u663e\u8d6b\u7684\u540d\u81e3\u6ca1\u80fd\u505a\u5230\u8fd9\u4e00\u70b9\u3002\u4f60\u7684\u6545\u4e8b\u4e0d\u4f1a\u88ab\u5199\u8fdb\u53f2\u518c\uff0c\u4f46\u4f60\u7684\u540e\u4eba\u4f1a\u8bb0\u5f97\u4f60\u3002',
      check: function(){ return a.power >= 30 && a.power <= 60 && ef >= -10 && allFactionsGTE(-30) && allFactionsLTE(40) && GameState.attributes.bond >= 50; }},
     // v3.8.1: 英年早逝——非暴力死亡，壮志未酬
-    {name:'英年早逝', desc:'壮志未酬，赍志而殁。你没能在这个波澜壮阔的时代留下自己的印记，便在默默无闻中走到了终点。',
+    {name:'英年早逝', desc:'壮志未酬，赍志而殁。你没能在这个波澜壮阔的时代留下自己的印记，便在默默无闻中走到了终点。你的名字没有出现在任何重要的历史文件中，你的面孔没有被任何人画下。你活过、努力过、挣扎过，但这个时代太大了，大到足以吞没一个普通人的一切。你的故事，就是无数个没有故事的人的故事。',
      check: function(){ return a.power <= 15 && GameState.attributes.bond <= 20 && a.people <= 25 && a.fame <= 20; }}
   ];
   for (var i = 0; i < endings.length; i++) {
@@ -653,12 +653,12 @@ function getHiddenEnding() {
       a.power >= 40 && a.power <= 80 && a.people >= 40 && a.people <= 80 &&
       a.wisdom >= 65 && a.fame >= 40 && a.fame <= 80 && a.bond >= 40 && a.bond <= 80 &&
       ef >= 15 && ef <= 55 && GameState.deathWarningCount <= 2) {
-    return {name:'\u58a8\u53f2\u5f52\u4e00', desc:'\u5b8c\u7f8e\u5e73\u8861\uff0c\u4e07\u4e16\u592a\u5e73\u3002\u4f60\u5728\u6d2a\u6b66\u671d\u7684\u6bcf\u4e00\u6b65\u90fd\u8e29\u5728\u4e86\u6700\u5999\u7684\u4f4d\u7f6e\u2014\u2014\u4e0d\u5351\u4e0d\u4ea2\uff0c\u4e0d\u5371\u4e0d\u6024\u3002\u8fd9\u662f\u6700\u96be\u8fbe\u6210\u7684\u7ed3\u5c40\uff0c\u4e5f\u662f\u6700\u5b8c\u7f8e\u7684\u4e00\u4e2a\u3002'};
+    return {name:'\u58a8\u53f2\u5f52\u4e00', desc:'\u5b8c\u7f8e\u5e73\u8861\uff0c\u4e07\u4e16\u592a\u5e73\u3002\u4f60\u5728\u6d2a\u6b66\u671d\u7684\u6bcf\u4e00\u6b65\u90fd\u8e29\u5728\u4e86\u6700\u5999\u7684\u4f4d\u7f6e\u2014\u2014\u4e0d\u5351\u4e0d\u4ea2\uff0c\u4e0d\u5371\u4e0d\u6024\u3002\u4f60\u4e0d\u662f\u6700\u6709\u6743\u7684\u4eba\uff0c\u4e0d\u662f\u6700\u6709\u540d\u7684\u4eba\uff0c\u4e0d\u662f\u6700\u53d7\u5ba0\u7684\u4eba\u2014\u2014\u4f46\u4f60\u662f\u552f\u4e00\u5728\u6bcf\u4e00\u4e2a\u7ef4\u5ea6\u4e0a\u90fd\u627e\u5230\u4e86\u5e73\u8861\u7684\u4eba\u3002\u6d2a\u6b66\u671d\u7684\u6bcf\u4e00\u573a\u98ce\u66b4\u90fd\u6ca1\u80fd\u51b2\u8d70\u4f60\uff0c\u56e0\u4e3a\u4f60\u4ece\u4e0d\u7ad9\u5728\u4efb\u4f55\u4e00\u4e2a\u6781\u7aef\u3002\u8fd9\u662f\u6700\u96be\u8fbe\u6210\u7684\u7ed3\u5c40\uff0c\u4e5f\u662f\u6700\u5b8c\u7f8e\u7684\u4e00\u4e2a\u2014\u2014\u5b83\u8bc1\u660e\u4e86\uff1a\u5728\u66b4\u529b\u7684\u65f6\u4ee3\uff0c\u6e29\u548c\u4e5f\u662f\u4e00\u79cd\u529b\u91cf\u3002'};
   }
   // 靖难先声: 诸王线 (书生除外)
   if (f.zhuwang >= 60 && a.power >= 55 && a.wisdom >= 75 && ef <= 20 &&
       GameState.character.background !== '\u6d59\u4e1c\u5bd2\u95e8\u4e66\u751f') {
-    return {name:'\u9756\u96be\u5148\u58f0', desc:'\u9884\u89c1\u672a\u6765\u3002\u4f60\u4e0e\u71d5\u738b\u6731\u68e3\u7684\u5173\u7cfb\u65e5\u76ca\u6df1\u539a\uff0c\u4f60\u9690\u7ea6\u611f\u5230\u4e00\u573a\u66f4\u5927\u7684\u98ce\u66b4\u6b63\u5728\u915d\u917f\u3002\u5efa\u6587\u5e1d\u7684\u524a\u85e9\u4e4b\u8bae\uff0c\u5c06\u5f15\u53d1\u4e00\u573a\u6539\u671d\u6362\u4ee3\u7684\u6218\u4e89\u2014\u2014\u800c\u4f60\uff0c\u5df2\u7ecf\u7ad9\u5728\u4e86\u6b63\u786e\u7684\u4e00\u8fb9\u3002'};
+    return {name:'\u9756\u96be\u5148\u58f0', desc:'\u9884\u89c1\u672a\u6765\u3002\u4f60\u4e0e\u71d5\u738b\u6731\u68e3\u7684\u5173\u7cfb\u65e5\u76ca\u6df1\u539a\uff0c\u4f60\u9690\u7ea6\u611f\u5230\u4e00\u573a\u66f4\u5927\u7684\u98ce\u66b4\u6b63\u5728\u915d\u917f\u3002\u6731\u5143\u7490\u9a7e\u5d29\u540e\uff0c\u5efa\u6587\u5e1d\u5fc5\u5c06\u524a\u85e9\uff0c\u71d5\u738b\u5fc5\u5c06\u53cd\u6297\uff0c\u4e00\u573a\u6539\u671d\u6362\u4ee3\u7684\u6218\u4e89\u5df2\u7ecf\u65e0\u6cd5\u907f\u514d\u2014\u2014\u800c\u4f60\uff0c\u5df2\u7ecf\u7ad9\u5728\u4e86\u6b63\u786e\u7684\u4e00\u8fb9\u3002\u5f53\u9756\u96be\u4e4b\u5f79\u7684\u6218\u9f13\u6572\u54cd\u65f6\uff0c\u4f60\u4f1a\u662f\u7b2c\u4e00\u4e2a\u62e5\u7acb\u7684\u4eba\u3002\u4f60\u7684\u540d\u5b57\uff0c\u5c06\u88ab\u5199\u5728\u6c38\u4e50\u5927\u5e1d\u7684\u5f00\u56fd\u529f\u81e3\u540d\u5355\u4e0a\u3002'};
   }
   return null;
 }
@@ -672,12 +672,12 @@ function getBackgroundDeathEnding(deathIdx) {
   var a = GameState.attributes, f = GameState.factions;
   // 前朝余孽：前元出身 + 族灭死(P1,idx=0) 或 党争死(P4,idx=3)
   if (bg === '落魄前元官员之后' && (deathIdx === 0 || deathIdx === 3)) {
-    return { name: '前朝余孽', desc: '宿命难逃，因果循环。你终究没能逃脱身份的诅咒，前朝的阴影如影随形，最终将你吞没。但你的故事成为了一个时代的注脚——关于身份、关于选择、关于命运。' };
+    return { name: '前朝余孽', desc: '宿命难逃，因果循环。你终究没能逃脱身份的诅咒——前元的阴影如影随形，无论你怎么努力证明自己的忠诚，那个出身始终是悬在你头顶的刀。当清洗来临，你是最先被点名的人。你的故事成为了一个时代的注脚：关于身份如何决定命运，关于选择如何在历史的巨轮前显得无力。后人读到你的故事，会为你的不幸而叹息。' };
   }
   // 殉道者：浙东书生 + 文字狱死(P8,idx=7) 或 党争死(P4,idx=3) + 属性条件
   if (bg === '浙东寒门书生' && (deathIdx === 7 || deathIdx === 3)) {
     if (a.fame >= 75 && a.wisdom >= 55 && a.bond >= 70 && f.zhedong >= 60) {
-      return { name: '殉道者', desc: '以死明志，千秋凛然。你因坚持自己的政治理念而遭难，但你的死激发了整个士大夫群体的觉醒。后世提起你的名字，都会肃然起敬。' };
+      return { name: '殉道者', desc: '以死明志，千秋凛然。你因坚持自己的政治理念而遭难——也许是因为一封直言不讳的奏疏，也许是因为一首被曲解的诗，也许只是因为你不肯在权力面前低头。你的死激发了整个士大夫群体的觉醒。行刑那天，万人送行。后世提起你的名字，都会肃然起敬——你用生命证明了这个时代还有不屈的脊梁。' };
     }
   }
   return null;
@@ -690,34 +690,34 @@ function getBackgroundEnding() {
 
   if (bg === '淮西武将之后') {
     endings = [
-      {name:'封狼居胥', desc:'战功赫赫，威震边陲。你率军北伐，将蒙元残余势力彻底逐出塞外。朝廷为你勒石记功，百姓夹道相迎。你的威名，将成为大明百年的边防基石。',
+      {name:'封狼居胥', desc:'战功赫赫，威震边陲。你率军北伐，将蒙元残余势力彻底逐出塞外。大漠黄沙中，你的旗帜飘扬在长城之外。朝廷为你勒石记功，百姓夹道相迎。当你凯旋应天时，朱元璋亲自出城迎接——这是洪武朝武将能获得的最高荣耀。你的威名，将成为大明百年的边防基石。后世提起北伐名将，必以你为首。',
        check: function(){ return a.power >= 70 && a.people >= 50 && f.huaixi >= 30 && ef >= -10 && a.fame >= 60 && GameState.expeditionCount >= 2; }},
-      {name:'卸甲归田', desc:'解甲还乡，田园终老。你看透了朝堂的刀光剑影，选择在壮年时急流勇退。凤阳老家的几亩薄田，成了你最后的归宿。',
+      {name:'卸甲归田', desc:'解甲还乡，田园终老。你看透了朝堂的刀光剑影，选择在壮年时急流勇退。凤阳老家的几亩薄田，成了你最后的归宿。你每日荷锄而出、戴月而归，偶尔与村中老者对弈品茶。曾经并肩作战的弟兄们，有些成了功臣，有些成了阶下囚。而你，在田间安然老去。这是你一生中最明智的决定。',
        check: function(){ return a.power <= 30 && a.people >= 45 && ef >= 20 && a.bond >= 40; }},
-      {name:'武圣传人', desc:'以武入道，德艺双馨。你不仅是一员猛将，更将武学修为提升到了哲理的高度。后世武人尊你为宗师，你的武学思想影响了整个明朝的军事训练体系。',
+      {name:'武圣传人', desc:'以武入道，德艺双馨。你不仅是一员猛将，更将武学修为提升到了哲理的高度。你写的兵法被收入武库，你的武艺被编入操典，你的弟子遍布军中。后世武人尊你为宗师，你的武学思想影响了整个明朝的军事训练体系。你不只是会打仗的将军，更是会教人打仗的师傅。',
        check: function(){ return a.wisdom >= 65 && a.fame >= 60 && a.power >= 30 && a.power <= 55; }}
     ];
   } else if (bg === '浙东寒门书生') {
     endings = [
-      {name:'一代大儒', desc:'文坛宗师，万世师表。你的学说开创了新的儒学流派，门生遍布天下。百年之后，你的牌位被请进了孔庙配殿。',
+      {name:'一代大儒', desc:'文坛宗师，万世师表。你的学说开创了新的儒学流派，门生遍布天下。你的著作被后世学子奉为经典，你的思想影响了整个明代的学术走向。百年之后，你的牌位被请进了孔庙配殿——这是读书人能获得的最高荣誉。你证明了：在洪武朝这样的时代，笔比刀更持久。',
        check: function(){ return a.wisdom >= 80 && a.fame >= 80 && a.power <= 40 && f.zhedong >= 50 && a.bond >= 65; }},
-      {name:'帝师', desc:'天子之师，辅弼良臣。你教导太子治国之道，你的政治理念通过太子影响了整个建文朝。虽然后来靖难再起，但你的思想已经深深嵌入了这个王朝的基因。',
+      {name:'帝师', desc:'天子之师，辅弼良臣。你教导太子治国之道，你的政治理念通过太子影响了整个建文朝。太子对你执弟子礼甚恭，朝臣敬你如泰山北斗。虽然后来靖难再起，但你的思想已经深深嵌入了这个王朝的基因。你没能改变历史的走向，但你改变了历史的底色。后世论及建文之治，必以你为源。',
        check: function(){ return f.donggong >= 70 && a.wisdom >= 70 && ef >= 10 && a.fame >= 60 && a.bond >= 55; }},
     ];
   } else if (bg === '应天府商贾之子') {
     endings = [
-      {name:'富甲一方', desc:'商道至尊，富可敌国。你建立了庞大的商业网络，从江南到塞外，从东海到南洋，处处都有你的商号。你的财富传奇，成为后世商人的教科书。',
+      {name:'富甲一方', desc:'商道至尊，富可敌国。你建立了庞大的商业网络，从江南到塞外，从东海到南洋，处处都有你的商号。你的船队航行在海上丝绸之路，你的驼队穿越大漠戈壁。朱元璋虽然重农抑商，但你的财富实在太大了——大到连朝廷都不得不与你合作。你的财富传奇，成为后世商人的教科书。',
        check: function(){ return a.power <= 25 && a.people >= 50 && a.fame >= 40 && a.bond >= 35; }},
-      {name:'财政名臣', desc:'理财高手，国用丰足。你主持的财政改革让大明国库充盈，百姓安居乐业。你的税法制度被后世沿用百年。',
+      {name:'财政名臣', desc:'理财高手，国用丰足。你主持的财政改革让大明国库充盈，百姓安居乐业。你设计的税法制度精密而务实，既照顾了朝廷的用度，又减轻了百姓的负担。朱元璋对你的才干赞不绝口，称你为国之管萧。你的税法制度被后世沿用百年，成为明代财政体系的基石。',
        check: function(){ return a.power >= 55 && a.people >= 55 && a.fame >= 60 && ef >= 20; }},
-      {name:'两面三刀', desc:'灰色生存，左右逢源。你在各方势力之间游走，既不得罪权贵，也不放弃利益。你没有留下美名，但你活了下来——在这个时代，这本身就是一种胜利。',
+      {name:'两面三刀', desc:'灰色生存，左右逢源。你在各方势力之间游走，既不得罪权贵，也不放弃利益。你是朝堂上最滑溜的人——每一方都觉得你是他们的人，但没有人能真正抓住你的把柄。你没有留下美名，但你活了下来。在洪武朝，当多少名臣名将身首异处时，你安然善终——这本身就是一种胜利，虽然不是什么光彩的胜利。',
        check: function(){ return a.power >= 50 && countFactionsGTE(40) >= 2 && a.bond <= 35 && a.fame >= 30 && a.fame <= 55 && a.people <= 40; }}
     ];
   } else if (bg === '落魄前元官员之后') {
     endings = [
-      {name:'天子近臣', desc:'孤独权臣，宠冠一时。你以过人的才干赢得了朱元璋的绝对信任，成为他最倚重的近臣。但这份信任也意味着孤独——朝中无人敢与你交往，身后无人为你说话。',
+      {name:'天子近臣', desc:'孤独权臣，宠冠一时。你以过人的才干赢得了朱元璋的绝对信任，成为他最倚重的近臣。奏章先经你手，决策先问你的意见。但这份信任也意味着孤独——朝中无人敢与你交往，身后无人为你说话。你是朱元璋手里最锋利的刀，但刀是没有朋友的。你的结局取决于皇帝的心情，而皇帝的心情，从来没有人能预测。',
        check: function(){ return a.power >= 70 && f.jinchen >= 60 && ef >= 20 && a.wisdom >= 65 && a.bond <= 40 && f.huaixi <= 10 && f.zhedong <= 10 && f.donggong <= 10 && f.zhuwang <= 10; }},
-      {name:'洗心革面', desc:'以绩洗名，脱胎换骨。你用实实在在的政绩证明了自己的价值，彻底洗刷了前朝旧臣的阴影。百姓爱戴你，同僚尊敬你，连天子也对你刮目相看。',
+      {name:'洗心革面', desc:'以绩洗名，脱胎换骨。你用实实在在的政绩证明了自己的价值，彻底洗刷了前朝旧臣的阴影。百姓爱戴你，同僚尊敬你，连天子也对你刮目相看。你证明了：出身不能决定命运，忠诚可以跨越朝代。当有人再提起你是前元旧臣之后时，人们会说：那是他祖先的事，他自己的功业，比多少洪武朝的元老都要扎实。',
        check: function(){ return a.people >= 80 && a.fame >= 70 && ef >= 30 && a.bond >= 60; }}
     ];
   }
@@ -738,6 +738,48 @@ function resolveFinaleEnding() {
   var common = getCommonEnding();
   if (common) return { title: common.name, description: common.desc };
   return null;
+}
+
+// v3.8.6: 预判定结局——在终局回合发送给AI之前，用当前GameState预跑一遍结局判定
+// 用于注入finale_hint，让AI写出与结局基调匹配的叙事
+function predictFinaleEnding() {
+  var ending = resolveFinaleEnding();
+  if (ending) return ending;
+  // 如果当前状态未命中任何结局，返回最接近的结局提示
+  var a = GameState.attributes, f = GameState.factions, ef = GameState.emperor_feeling;
+  // 简单启发式：根据最高属性/阵营给出倾向
+  var hints = [];
+  if (a.fame >= 70) hints.push('名望较高，可能走向"青史留名"或"名满天下"');
+  if (a.wisdom >= 75) hints.push('智慧突出，可能走向"智绝天下"或"帝师"');
+  if (a.power >= 70) hints.push('权势显赫，可能走向"权倾朝野"或"封狼居胥"');
+  if (a.people >= 70) hints.push('人脉深厚，可能走向"民心所向"或"富甲一方"');
+  if (ef >= 40) hints.push('圣眷正隆，帝王恩宠未衰');
+  if (ef <= -10) hints.push('圣眷衰微，帝王猜忌日深');
+  if (hints.length > 0) return { title: '未定', description: '', hint: hints.join('；') };
+  return { title: '未定', description: '', hint: '前路未明，一切皆有可能' };
+}
+
+// v3.8.6: 终局提示注入——生成给AI的finale_hint文本
+function getFinaleHint() {
+  var turn = GameState.turn;
+  var year = GameState.year;
+  // 在终局窗口（回合>=55 或 年份>=1393）注入提示
+  if (turn >= 55 || year >= 1393) {
+    var pred = predictFinaleEnding();
+    if (pred.title && pred.title !== '未定') {
+      return '【终局将至】游戏即将进入最终回合。根据玩家当前状态，最可能的结局是「' + pred.title + '」。你的终局叙事必须以这一结局为基调收束全文：写 outcome 场景、回顾一生抉择、给出历史评价。严禁脱离这一基调。';
+    } else if (pred.hint) {
+      return '【终局将至】游戏即将进入最终回合。' + pred.hint + '。你的终局叙事应根据这些倾向收束全文。';
+    }
+  }
+  // 死亡倒计时最后一轮：强化死亡叙事指令
+  if (GameState.deathCountdown === 1 && GameState.deathCountdownType > 0) {
+    var deathTypeIdx = GameState.deathCountdownType - 1;
+    if (deathTypeIdx >= 0 && deathTypeIdx < DEATH_NAMES.length) {
+      return '【命悬一线】死亡已不可避免——最可能的结局是「' + DEATH_NAMES[deathTypeIdx] + '」。本回合叙事必须写出大厦将倾、无力回天的紧迫感和绝望感。玩家可以做最后的挣扎，但命运的齿轮已经转动。';
+    }
+  }
+  return '';
 }
 // ========== v3.8 END ==========
 

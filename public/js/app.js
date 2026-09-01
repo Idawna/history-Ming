@@ -42,6 +42,8 @@ async function streamBotAPI(userMessage, streamTarget) {
       death_warning: (function(){ var w = checkDeathWarning(); return w.length ? '【死亡预警】' + w.join('、') + '——命运已在悬崖边缘，叙事中必须埋下明显的危险信号' : ''; })(),
       faction_decay: (function(){ return GameState.factionDecayThisTurn ? '【阵营衰减】上回合因阵营关系过度深入（绝对值>80），自然回落：' + GameState.factionDecayThisTurn + '。叙事中可体现"树大招风""功高遭忌后关系微妙疏远"等意象，但不可直接提及数值' : ''; })(),
       favor_crash: (function(){ return GameState.favorCrashThisTurn ? '【圣眷暴跌】' + GameState.favorCrashThisTurn + '——朱元璋猜忌加深，圣眷骤降。叙事中必须体现"帝王心术""天威难测""昨日恩宠今日猜忌"等紧张意象，可描写朝臣态度转变、皇帝冷淡等细节' : ''; })(),
+      // v3.8.6: 终局/死亡叙事提示注入
+      finale_hint: getFinaleHint(),
       origin_lock: (function(){
         if (GameState.turn > 5) return '';
         var of = ORIGIN_FACTION_MAP[GameState.character.background];
@@ -364,11 +366,32 @@ function showError(msg, retryChoice) {
 function showEnding(ending, narrative) {
   const div = document.createElement('div');
   div.className = 'input-screen';
+  // v3.8.6: 结局卡片展示AI叙事 + 代码评价
+  const narrativeHtml = narrative
+    ? `<div class="ending-narrative">${narrative.replace(/\n/g, '<br>')}</div>`
+    : '';
   div.innerHTML = `
-    <h2>${ending.title || '终章'}</h2>
-    <p class="subtitle">${ending.description || '你的故事到此结束。'}</p>
+    <h2 class="ending-title">${ending.title || '终章'}</h2>
+    ${narrativeHtml}
+    <p class="ending-verdict">${ending.description || '你的故事到此结束。'}</p>
     <button class="confirm-btn" onclick="location.reload()">重新开始</button>
   `;
+  // Add styles for ending display
+  const style = document.createElement('style');
+  style.textContent = `
+    .ending-title { font-size: 1.6em; margin-bottom: 0.5em; color: #d4a574; text-align: center; }
+    .ending-narrative {
+      max-height: 40vh; overflow-y: auto; padding: 1em;
+      background: rgba(255,255,255,0.05); border-radius: 8px;
+      margin: 0.8em 0; font-size: 0.95em; line-height: 1.8;
+      color: #ccc; text-align: left; white-space: pre-wrap;
+    }
+    .ending-verdict {
+      font-style: italic; color: #a89070; text-align: center;
+      margin: 1em 0; padding: 0 1em; line-height: 1.6;
+    }
+  `;
+  div.appendChild(style);
   gameContainer.appendChild(div);
   scrollToBottom();
 }
