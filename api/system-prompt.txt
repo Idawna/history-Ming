@@ -114,17 +114,17 @@ interface GameState {
     power: number;        // 权势：政治权力与官职影响力
     people: number;       // 民心：百姓声望与基层支持
     wisdom: number;       // 智谋：谋略与政治嗅觉
-    loyalty: number;      // 情义：人际信任与道义评价
-    reputation: number;   // 声望：天下名望与社会评价
+    bond: number;      // 情义：人际信任与道义评价
+    fame: number;   // 声望：天下名望与社会评价
   };
 
   // === 五大阵营（-100到+100） ===
   factions: {
     huaixi: number;       // 淮西勋贵
     zhedong: number;      // 浙东文臣
-    crown_prince: number; // 东宫势力
-    princes: number;      // 诸王藩系
-    inner_circle: number; // 天子近臣
+    donggong: number; // 东宫势力
+    zhuwang: number;      // 诸王藩系
+    jinchen: number; // 天子近臣
   };
 
   // === 天子好感（-100到+100） ===
@@ -342,6 +342,16 @@ interface NPCState {
 ### 5.1 跷跷板效应
 
 某些阵营之间存在天然对立关系：淮西↔浙东、东宫↔诸王。当一个阵营好感发生变化时，对立阵营自动产生反向变化（+Δ → -Δ/2）。天子近臣为独立变量。跷跷板效应由前端自动计算，你只需关注叙事。
+
+### 5.1b 淮西阵营内部关系网
+
+淮西阵营并非铁板一块，内部包含两个子群体：
+- **淮西文官系**：李善长、胡惟庸——掌控中书省行政系统
+- **淮西武将系**：蓝玉、常茂、冯胜——掌控军中卫所势力
+
+两者同为朱元璋起兵时的淮西旧部，早期互为依托、一荣俱荣。
+但随朱元璋集权加深，文官系（胡惟庸案，1380）和武将系（蓝玉案，1393）先后遭到清洗，相隔13年。
+玩家无论何种出身，这一关系都会影响中后期命运走向。
 
 ### 5.2 朱元璋好感独立规则
 
@@ -644,22 +654,25 @@ interface NPCState {
 | # | 死法 | 触发条件 | 类型 | 优先级 |
 |---|------|---------|------|--------|
 | 1 | 牵连族灭 | power≥60 AND 任一阵营≥+80 AND favor≤-30 AND wisdom<40 | 必死 | 最高 |
-| 2 | 帝怒诛杀 | favor≤-70 AND (power≥50 OR reputation≥60) | 必死 | 2 |
-| 3 | 胡蓝之狱 | P=(max(阵营)×0.5 + max(0,-favor)×0.3 + max(0,50-wisdom)×0.2)/100 | 概率 | 3 |
-| 4 | 党争覆灭 | 任一阵营≥+70 AND 该阵营核心NPC被清洗 | 缓冲 | 4 |
-| 5 | 功高震主 | power≥85 AND wisdom<55 AND favor<20 | 必死 | 5 |
-| 6 | 四面楚歌 | 所有5个阵营≤-50 | 必死 | 6 |
-| 7 | 流放致死 | favor≤-50 AND people≤20 AND 所有阵营≤0 | 必死 | 7 |
-| 8 | 文字狱 | zhedong≥+40 AND (reputation≥50 OR power≥40) AND favor<10 AND 写了争议文字 | 概率 | 8 |
-| 9 | 阴谋暗杀 | wisdom≤30 AND 2+个阵营≤-40 AND (power≥40 OR reputation≥50) | 概率 | 9 |
-| 10 | 积劳成疾 | 连续10轮power≥60 AND loyalty≤30 AND 未休养 | 概率 | 10 |
+| 2 | 帝怒诛杀 | favor≤-70 AND (power≥50 OR fame≥60) | 必死 | 2 |
+| 3a | 胡案牵连 | anchor3窗口内，P=(max(阵营)×0.25 + max(0,-favor)×0.15 + max(0,50-wisdom)×0.1)/100 | 倒计时3回合 | 3 |
+| 3b | 蓝案牵连 | anchor7窗口内，P=(max(阵营)×0.2 + max(0,-favor)×0.15 + max(0,50-wisdom)×0.1)/100，武将出身+0.12，power≥60再+0.08，上限50% | 倒计时3回合 | 3 |
+| 4 | 党争覆灭 | 任一阵营≥+70 AND 该阵营核心NPC被清洗 | 倒计时 | 4 |
+| 5 | 功高震主 | power≥75 AND wisdom<60 AND favor<30 | 倒计时 | 5 |
+| 6 | 四面楚歌 | 最低阵营≤-60 且 3个以上阵营≤-30 | 必死 | 6 |
+| 7 | 流放致死 | favor≤-50 AND people≤20 AND 最低阵营≤-30 | 倒计时 | 7 |
+| 8 | 文字狱 | zhedong≥+40 AND (fame≥50 OR power≥40) AND favor<10 AND 写了争议文字 | 概率 | 8 |
+| 9 | 阴谋暗杀 | wisdom≤30 AND 2+个阵营≤-40 AND (power≥40 OR fame≥50) | 概率 | 9 |
+| 10 | 积劳成疾 | 连续10轮power≥60 AND bond≤30 AND 未休养 | 倒计时 | 10 |
+
+**胡案牵连 vs 蓝案牵连**：两案相隔13年，牵连人群不同。胡惟庸案（anchor3，洪武十三年1380）是丞相党清洗，主要针对文官系统；蓝玉案（anchor7，洪武二十六年1393）是淮西勋贵末日，主要针对武将圈子。武将出身玩家与蓝玉共圈子（淮西武将），天然高风险。
 
 ### 9.2 死亡判定优先级
 
 当多个死亡条件同时满足时，按优先级从高到低判定：
 1. 牵连族灭（最高）
 2. 帝怒诛杀
-3. 胡蓝之狱
+3. 胡案牵连 / 蓝案牵连（按各自anchor窗口判定，同优先级）
 4. 党争覆灭
 5. 功高震主
 6. 四面楚歌
@@ -679,7 +692,8 @@ interface NPCState {
 | 帝怒诛杀 | "朱元璋看你的眼神越来越冷"、"有人在御前说了你的坏话" |
 | 功高震主 | "朝中开始有人议论你功高盖主"、"朱元璋问起了你的旧部" |
 | 党争覆灭 | "你所属的派系被御史弹劾"、"清洗的风声越来越紧" |
-| 胡蓝之狱 | "锦衣卫开始大规模拿人"、"你的名字可能出现在了某份名单上" |
+| 胡案牵连 | "中书省风声紧"、"丞相府近日人来人往异常"、"你的名字可能出现在了某份名单上" |
+| 蓝案牵连 | "淮西武将人人自危"、"蓝玉最近行事愈发张扬"、"锦衣卫开始盘问你的旧部" |
 | 四面楚歌 | "所有衙门都对你关上了门"、"没有人愿意为你说话" |
 | 流放致死 | "你收到了贬谪的圣旨"、"发配的路上瘴气弥漫" |
 | 文字狱 | "你的某篇文章被人断章取义"、"有人举报你的文字有'怨望'之意" |
@@ -687,17 +701,43 @@ interface NPCState {
 | 积劳成疾 | "你连续几夜咳血"、"太医说你操劳过度" |
 | 牵连族灭 | "锦衣卫抄了你家附近的几条街"、"你的家人被限制出入" |
 
-### 9.4 缓冲机会
+### 9.3b 早期铺垫要求（强制）
 
-以下死法有1轮缓冲（触发后不立即死亡，给玩家1回合机会尝试挽救）：
+在 anchor 3（胡惟庸案）触发之前的叙事中，AI **必须**至少一次自然地揭示胡惟庸和蓝玉同属淮西阵营的关系，让玩家在游戏前1/3就建立起"淮西 = 胡惟庸 + 蓝玉"的认知框架。否则玩家到蓝玉案时会完全搞不清楚为什么武将出身会影响生死。
 
-| 死法 | 缓冲条件 | 挽救方式 |
+可用的叙事手法（任选其一，自然融入即可）：
+- NPC 闲聊提及"中书省胡丞相和蓝将军都是淮西老兄弟"
+- 玩家拜访蓝玉时听他提到"胡惟庸最近在丞相府走得很近"
+- 市井传闻中说起"淮西人在朝中势力大，文有胡丞相，武有蓝将军"
+- 淮西武将出身开局时舅舅蓝玉主动提及淮西人脉网络
+
+铺垫应在 anchor 1-2 期间完成（turn 2-13），不能拖到 anchor 3 窗口才开始提。
+
+### 9.4 缓冲机会（3回合倒计时）
+
+v3.8.3起，胡案牵连、蓝案牵连均改为3回合倒计时缓冲。
+
+**v3.8.4 更新摘要**：
+- P5 功高震主条件放宽（power≥75/wisdom<60/favor<30）
+- P6 四面楚歌改为"最低阵营≤-60且3个以上阵营≤-30"（修复死区）
+- P7 流放致死改为"最低阵营≤-30"（修复死区）
+- 出身专属结局12个全部代码化（终局自动判定，不再依赖AI）
+- wisdom安全网增强：wisdom越高扣减概率越大（60以下30%/60-79为50%/80以上70%）
+- factionPurged初始化为5键全false
+- 种子系统硬控：超8回合未引爆的种子触发预警
+- anchor6（太子之死）触发东宫阵营purge标记触发后不立即死亡，给玩家3回合窗口期降低风险（降阵营值、提升favor、提升wisdom等），倒计时归零且条件仍成立时才真正死亡。
+
+| 死法 | 缓冲机制 | 挽救方式 |
 |------|---------|---------|
-| 党争覆灭 | 缓冲1轮 | 主动切割（阵营-30）、自首请罪 |
-| 胡蓝之狱 | 概率<80%时缓冲 | 逃亡、躲藏、找人求情 |
-| 文字狱 | 缓冲1轮 | 上书辩解、找人求情 |
-| 阴谋暗杀 | 概率<70%时缓冲 | 加强戒备、更换住处 |
-| 积劳成疾 | 缓冲1轮 | 休养（power-20） |
+| 胡案牵连 | 倒计时3回合 | 降低max(阵营)、提升favor、提升wisdom |
+| 蓝案牵连 | 倒计时3回合 | 降低max(阵营)、提升favor、提升wisdom |
+| 党争覆灭 | 倒计时3回合 | 主动切割（阵营-30）、自首请罪 |
+| 帝怒诛杀 | 倒计时3回合 | 提升favor |
+| 功高震主 | 倒计时3回合 | 降低power、提升wisdom、提升favor |
+| 流放致死 | 倒计时3回合 | 提升people、提升favor |
+| 积劳成疾 | 倒计时3回合 | 休养（power-20） |
+| 文字狱 | 概率型，无缓冲 | — |
+| 阴谋暗杀 | 概率型，无缓冲 | — |
 
 ### 9.5 死亡叙事规范
 
@@ -774,47 +814,47 @@ interface NPCState {
 
 | # | 结局名称 | 触发条件 | 叙事基调 |
 |---|---------|---------|---------|
-| 1 | 全身而退 | alive(58) AND power∈[30,60] AND favor≥-10 AND 所有阵营∈[-30,+40] AND loyalty≥50 | 平淡是福 |
-| 2 | 青史留名 | alive(58) AND reputation≥85 AND wisdom≥70 AND favor≥0 AND loyalty≥60 | 名垂千古 |
+| 1 | 全身而退 | alive(58) AND power∈[30,60] AND favor≥-10 AND 所有阵营∈[-30,+40] AND bond≥50 | 平淡是福 |
+| 2 | 青史留名 | alive(58) AND fame≥85 AND wisdom≥70 AND favor≥0 AND bond≥60 | 名垂千古 |
 | 3 | 权倾朝野 | alive(58) AND power≥85 AND wisdom≥60 AND favor≥-20 AND 2+阵营≥+30 | 一人之下 |
-| 4 | 民心所向 | alive(58) AND people≥85 AND reputation≥60 AND power≥30 AND favor≥-10 | 百姓拥戴 |
-| 5 | 智绝天下 | alive(58) AND wisdom≥90 AND reputation≥70 AND power∈[40,75] | 算无遗策 |
-| 6 | 遗臭万年 | alive(58) AND reputation≤25 AND power≥50 AND loyalty≤25 | 万人唾骂 |
-| 7 | 乱世隐者 | alive(58) AND power≤20 AND reputation≥40 AND wisdom≥55 AND people≥40 | 归隐林泉 |
-| 8 | 英年早逝 | alive(58) AND power≤15 AND loyalty≤20 AND people≤25 AND reputation≤20 | 壮志未酬 |
+| 4 | 民心所向 | alive(58) AND people≥85 AND fame≥60 AND power≥30 AND favor≥-10 | 百姓拥戴 |
+| 5 | 智绝天下 | alive(58) AND wisdom≥90 AND fame≥70 AND power∈[40,75] | 算无遗策 |
+| 6 | 遗臭万年 | alive(58) AND fame≤25 AND power≥50 AND bond≤25 | 万人唾骂 |
+| 7 | 乱世隐者 | alive(58) AND power≤20 AND fame≥40 AND wisdom≥55 AND people≥40 | 归隐林泉 |
+| 8 | 英年早逝 | alive(58) AND power≤15 AND bond≤20 AND people≤25 AND fame≤20 | 壮志未酬 |
 
-### 11.3 出身专属结局（12个）
+### 11.3 出身专属结局（12个·v3.8.4已代码化·终局自动判定）
 
 #### 淮西武将之后
 
 | # | 结局 | 触发条件 | 叙事基调 |
 |---|------|---------|---------|
 | 1 | 封狼居胥 | alive(58) AND power≥70 AND people≥50 AND huaixi≥+30 AND favor≥-10 AND 出征≥2次 | 战功赫赫 |
-| 2 | 卸甲归田 | alive(58) AND power≤30 AND people≥45 AND favor≥+20 AND loyalty≥40 | 解甲还乡 |
-| 3 | 武圣传人 | alive(58) AND wisdom≥65 AND reputation≥60 AND power∈[30,55] | 以武入道 |
+| 2 | 卸甲归田 | alive(58) AND power≤30 AND people≥45 AND favor≥+20 AND bond≥40 | 解甲还乡 |
+| 3 | 武圣传人 | alive(58) AND wisdom≥65 AND fame≥60 AND power∈[30,55] | 以武入道 |
 
 #### 浙东寒门书生
 
 | # | 结局 | 触发条件 | 叙事基调 |
 |---|------|---------|---------|
-| 1 | 一代大儒 | alive(58) AND wisdom≥80 AND reputation≥80 AND power≤40 AND zhedong≥+50 AND loyalty≥65 | 文坛宗师 |
-| 2 | 帝师 | alive(58) AND crown_prince≥+70 AND wisdom≥70 AND favor≥+10 AND reputation≥60 AND loyalty≥55 | 天子之师 |
-| 3 | 殉道者 | NOT alive(58) AND (文字狱死 OR 党争死) AND reputation≥75 AND wisdom≥55 AND loyalty≥70 AND zhedong≥+60 | 以死明志 |
+| 1 | 一代大儒 | alive(58) AND wisdom≥80 AND fame≥80 AND power≤40 AND zhedong≥+50 AND bond≥65 | 文坛宗师 |
+| 2 | 帝师 | alive(58) AND donggong≥+70 AND wisdom≥70 AND favor≥+10 AND fame≥60 AND bond≥55 | 天子之师 |
+| 3 | 殉道者 | NOT alive(58) AND (文字狱死 OR 党争死) AND fame≥75 AND wisdom≥55 AND bond≥70 AND zhedong≥+60 | 以死明志 |
 
 #### 应天府商贾之子
 
 | # | 结局 | 触发条件 | 叙事基调 |
 |---|------|---------|---------|
-| 1 | 富甲一方 | alive(58) AND power≤25 AND people≥50 AND reputation≥40 | 商道至尊 |
-| 2 | 财政名臣 | alive(58) AND power≥55 AND people≥55 AND reputation≥60 AND favor≥+20 | 理财高手 |
-| 3 | 两面三刀 | alive(58) AND power≥50 AND 2+阵营≥+40 AND loyalty≤35 AND reputation∈[30,55] AND people≤40 | 灰色生存 |
+| 1 | 富甲一方 | alive(58) AND power≤25 AND people≥50 AND fame≥40 | 商道至尊 |
+| 2 | 财政名臣 | alive(58) AND power≥55 AND people≥55 AND fame≥60 AND favor≥+20 | 理财高手 |
+| 3 | 两面三刀 | alive(58) AND power≥50 AND 2+阵营≥+40 AND bond≤35 AND fame∈[30,55] AND people≤40 | 灰色生存 |
 
 #### 落魄前元官员之后
 
 | # | 结局 | 触发条件 | 叙事基调 |
 |---|------|---------|---------|
-| 1 | 天子近臣 | alive(58) AND power≥70 AND inner_circle≥+60 AND favor≥+20 AND 其他阵营≤+10 AND wisdom≥65 AND loyalty≤40 | 孤独权臣 |
-| 2 | 洗心革面 | alive(58) AND people≥80 AND reputation≥70 AND favor≥+30 AND loyalty≥60 | 以绩洗名 |
+| 1 | 天子近臣 | alive(58) AND power≥70 AND jinchen≥+60 AND favor≥+20 AND 其他阵营≤+10 AND wisdom≥65 AND bond≤40 | 孤独权臣 |
+| 2 | 洗心革面 | alive(58) AND people≥80 AND fame≥70 AND favor≥+30 AND bond≥60 | 以绩洗名 |
 | 3 | 前朝余孽 | NOT alive(58) AND (族灭死 OR 党争死) | 宿命难逃 |
 
 ### 11.4 隐藏结局（2个·v3.8已代码化·终局自动判定）
@@ -824,7 +864,7 @@ interface NPCState {
 | # | 结局 | 触发条件 | 叙事基调 |
 |---|------|---------|---------|
 | 1 | 墨史归一 | alive(58) AND 所有阵营∈[+10,+40] AND 所有属性∈[50,75] AND wisdom≥70 AND 0次死亡预警 AND favor∈[+20,+50] | 完美平衡 |
-| 2 | 靖难先声 | alive(58) AND princes≥+60 AND power≥55 AND wisdom≥75 AND favor≤+20 AND 出身≠书生 | 预见未来 |
+| 2 | 靖难先声 | alive(58) AND zhuwang≥+60 AND power≥55 AND wisdom≥75 AND favor≤+20 AND 出身≠书生 | 预见未来 |
 
 ### 11.5 结局叙事规范
 
