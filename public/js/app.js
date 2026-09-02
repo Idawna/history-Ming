@@ -1025,6 +1025,8 @@ function applySnapshot(save) {
   GameState.seeds_triggered = [...gs.seeds_triggered];
   // v3.8.10: 恢复已完成锚点列表（兼容旧存档）
   GameState.completedAnchors = Array.isArray(gs.completedAnchors) ? [...gs.completedAnchors] : [];
+  // v3.9.1: 恢复待选选项（修复"继续前行"重做后读档选项丢失）
+  GameState.pendingChoices = Array.isArray(gs.pendingChoices) ? [...gs.pendingChoices] : [];
 
   updateStatusPanel();
   clearContainer();
