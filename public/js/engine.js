@@ -66,11 +66,19 @@ const NPC_BIRTH_DEATH = {
 };
 
 // 1. 获取当前在世NPC列表（v3.8.14：同时注入已故黑名单）
+// v3.8.15修正：刘伯温之死是锚点事件1，必须等锚点完成后才算死亡
 function getAliveNPCs(year) {
   const alive = [];
   const dead = [];
   for (const [name, info] of Object.entries(NPC_BIRTH_DEATH)) {
-    if (year < info.death) {
+    var isDead = year >= info.death;
+    // 特殊处理：刘伯温之死是锚点事件1，必须等锚点完成后才算死亡
+    if (name === '刘伯温' || name === '刘基') {
+      if (!GameState.completedAnchors || !GameState.completedAnchors.includes(1)) {
+        isDead = false; // 锚点1未完成，刘伯温不算死亡
+      }
+    }
+    if (!isDead) {
       const age = info.birth ? year - info.birth : null;
       const ageStr = age ? `${age}岁` : '年龄不详';
       alive.push(`${name}(${ageStr}，${info.personality})`);
@@ -86,11 +94,19 @@ function getAliveNPCs(year) {
 }
 
 // v3.8.14: 获取当前已故NPC列表（用于输出校验）
+// v3.8.15修正：刘伯温之死是锚点事件1，必须等锚点完成后才算死亡
 function getDeadNPCs(year) {
   var dead = [];
   for (var name in NPC_BIRTH_DEATH) {
     var info = NPC_BIRTH_DEATH[name];
-    if (year >= info.death) {
+    var isDead = year >= info.death;
+    // 特殊处理：刘伯温之死是锚点事件1，必须等锚点完成后才算死亡
+    if (name === '刘伯温' || name === '刘基') {
+      if (!GameState.completedAnchors || !GameState.completedAnchors.includes(1)) {
+        isDead = false; // 锚点1未完成，刘伯温不算死亡
+      }
+    }
+    if (isDead) {
       dead.push({ name: name, deathYear: info.death });
     }
   }
