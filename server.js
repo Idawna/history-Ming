@@ -45,9 +45,16 @@ app.post('/api/chat', async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  const API_KEY = process.env.LLM_API_KEY;
-  const API_BASE = process.env.LLM_API_BASE || 'https://api.deepseek.com';
-  const MODEL = process.env.LLM_MODEL || 'deepseek-chat';
+  // 模型切换：设置 LLM_PROVIDER=deepseek|qwen 即可一键切换
+  const PROVIDER = process.env.LLM_PROVIDER || 'deepseek';
+  const PROVIDERS = {
+    deepseek: { apiBase: 'https://api.deepseek.com', model: 'deepseek-chat' },
+    qwen:     { apiBase: 'https://dashscope.aliyuncs.com/compatible-mode', model: 'qwen-plus' },
+  };
+  const cfg = PROVIDERS[PROVIDER] || PROVIDERS.deepseek;
+  const API_KEY = process.env[`${PROVIDER.toUpperCase()}_API_KEY`] || process.env.LLM_API_KEY;
+  const API_BASE = process.env.LLM_API_BASE || cfg.apiBase;
+  const MODEL = process.env.LLM_MODEL || cfg.model;
 
   if (!API_KEY) {
     return res.status(500).json({ error: '服务器未配置 LLM_API_KEY' });
