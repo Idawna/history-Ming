@@ -1,3 +1,6 @@
+/* ========== FONT IMPORTS ========== */
+@import url('https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&family=Noto+Serif+SC:wght@300;400;500;600;700&family=ZCOOL+QingKe+HuangYou&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 /* ========== RESET & BASE ========== */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -20,12 +23,23 @@
   --scroll-bg:   #ede8dd;
   --shadow:      rgba(44, 44, 44, 0.08);
   --transition:  0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Font layers */
+  --font-display: 'ZCOOL XiaoWei', 'Songti SC', 'STSong', serif;
+  --font-body:    'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+  --font-ui:      'ZCOOL QingKe HuangYou', 'PingFang SC', sans-serif;
+  --font-mono:    'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
 }
 
-html { font-size: 16px; scroll-behavior: smooth; }
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-faint) transparent;
+}
 
 body {
-  font-family: 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+  font-family: var(--font-body);
   background-color: var(--paper);
   /* subtle rice-paper texture */
   background-image:
@@ -36,6 +50,7 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
   overscroll-behavior: none;
@@ -67,15 +82,18 @@ body {
 }
 
 .header-title {
-  font-size: 2rem;
+  font-family: var(--font-display);
+  font-size: 2.2rem;
   font-weight: 700;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.4em;
   color: var(--ink);
   margin-bottom: 4px;
+  text-shadow: 0 1px 2px rgba(44,44,44,0.08);
 }
 
 .header-subtitle {
-  font-size: 0.85rem;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
   font-weight: 300;
   color: var(--ink-faint);
   letter-spacing: 0.15em;
@@ -142,14 +160,18 @@ body {
 }
 
 .narrative-text {
-  font-size: 1.05rem;
+  font-family: var(--font-body);
+  font-size: 1.08rem;
   font-weight: 400;
-  line-height: 2;
+  line-height: 1.95;
+  letter-spacing: 0.02em;
   text-align: justify;
   color: var(--ink);
   opacity: 0;
   transform: translateY(12px);
   animation: fadeInUp 0.8s ease forwards;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .narrative-text p {
@@ -161,12 +183,24 @@ body {
   text-indent: 0;
 }
 
+/* First-letter drop cap for ancient book feel */
+.narrative-text p:first-child::first-letter {
+  font-size: 1.6em;
+  float: left;
+  line-height: 1;
+  margin-right: 0.08em;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 500;
+}
+
 .narrative-text .year-mark {
   display: block;
   text-align: center;
-  font-size: 0.85rem;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
   color: var(--ink-faint);
-  letter-spacing: 0.2em;
+  letter-spacing: 0.25em;
   margin-bottom: 1.5em;
 }
 
@@ -185,6 +219,7 @@ body {
   content: '此路不通';
   display: block;
   font-style: normal;
+  font-family: var(--font-ui);
   font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0.3em;
@@ -203,11 +238,20 @@ body {
   text-indent: 0;
 }
 
+.narrative-text.rejected p:first-child::first-letter {
+  font-size: inherit;
+  float: none;
+  margin-right: 0;
+  font-family: inherit;
+  font-weight: inherit;
+}
+
 /* 驳回回合的选项区域提示 */
 .choices-area.rejected-hint::before {
   content: '请重新斟酌你的行动';
   display: block;
   text-align: center;
+  font-family: var(--font-ui);
   font-size: 0.8rem;
   color: var(--ink-faint);
   letter-spacing: 0.15em;
@@ -222,13 +266,16 @@ body {
 }
 
 .stream-text {
-  font-size: 1.05rem;
+  font-family: var(--font-body);
+  font-size: 1.08rem;
   font-weight: 400;
-  line-height: 2;
+  line-height: 1.95;
+  letter-spacing: 0.02em;
   text-align: justify;
   color: var(--ink);
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: break-word;
   opacity: 0;
   animation: fadeInUp 0.4s ease forwards;
 }
@@ -279,12 +326,13 @@ body {
 }
 
 .ink-divider::after {
-  content: '◆';
+  content: '●';
   position: absolute;
-  font-size: 8px;
+  font-size: 6px;
   color: var(--ink-faint);
   background: var(--paper);
   padding: 0 12px;
+  line-height: 20px;
 }
 
 /* ========== CHOICES AREA ========== */
@@ -295,22 +343,24 @@ body {
 .choice-btn {
   display: block;
   width: 100%;
-  padding: 16px 24px;
+  padding: 18px 20px;
   margin-bottom: 12px;
   background: var(--scroll-bg);
   border: 1px solid rgba(44, 44, 44, 0.12);
+  border-left: 3px solid transparent;
   border-radius: 4px;
-  font-family: 'Noto Serif SC', serif;
+  font-family: var(--font-ui);
   font-size: 0.95rem;
   font-weight: 400;
   color: var(--ink);
   cursor: pointer;
   text-align: left;
   position: relative;
-  transition: all var(--transition);
+  transition: all 0.25s ease;
   opacity: 0;
   transform: translateX(-10px);
   line-height: 1.6;
+  min-height: 52px;
   /* bamboo scroll texture */
   background-image: linear-gradient(
     90deg,
@@ -334,13 +384,16 @@ body {
 .choice-btn:hover {
   background-color: #e8e0d2;
   border-color: rgba(44, 44, 44, 0.25);
+  border-left-color: var(--cinnabar);
   transform: translateX(4px);
-  box-shadow: -3px 0 0 var(--cinnabar);
+  box-shadow: none;
 }
 
 .choice-btn:active {
-  transform: translateX(2px);
-  background-color: #ddd5c5;
+  background-color: #e8e0d2;
+  border-left-color: var(--cinnabar);
+  transform: scale(0.98);
+  box-shadow: none;
 }
 
 .choice-btn .choice-index {
@@ -356,6 +409,7 @@ body {
   font-weight: 600;
   margin-right: 12px;
   flex-shrink: 0;
+  font-family: var(--font-mono);
 }
 
 .choice-btn .choice-text {
@@ -364,6 +418,7 @@ body {
 
 .choice-btn.free-action {
   border-style: dashed;
+  border-left-style: dashed;
   background: transparent;
   color: var(--ink-light);
   font-style: italic;
@@ -372,8 +427,9 @@ body {
 .choice-btn.free-action:hover {
   background: rgba(192, 57, 43, 0.04);
   border-color: var(--cinnabar);
+  border-left-color: var(--cinnabar);
   color: var(--cinnabar);
-  box-shadow: -3px 0 0 var(--cinnabar);
+  box-shadow: none;
 }
 
 /* ========== FREE ACTION INPUT ========== */
@@ -395,11 +451,12 @@ body {
   border: 1px solid rgba(44, 44, 44, 0.2);
   border-radius: 4px;
   background: var(--paper-light);
-  font-family: 'Noto Serif SC', serif;
-  font-size: 0.95rem;
+  font-family: var(--font-body);
+  font-size: 1rem;
   color: var(--ink);
   outline: none;
   transition: border-color var(--transition);
+  min-height: 48px;
 }
 
 .free-action-input:focus {
@@ -418,11 +475,12 @@ body {
   color: var(--paper);
   border: none;
   border-radius: 4px;
-  font-family: 'Noto Serif SC', serif;
+  font-family: var(--font-ui);
   font-size: 0.9rem;
   cursor: pointer;
   transition: all var(--transition);
   white-space: nowrap;
+  min-height: 48px;
 }
 
 .send-btn:hover {
@@ -439,6 +497,7 @@ body {
   max-width: 720px;
   z-index: 100;
   transition: all 0.4s ease;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .status-summary {
@@ -448,7 +507,9 @@ body {
   padding: 10px 20px;
   background: rgba(44, 44, 44, 0.92);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--paper);
+  font-family: var(--font-ui);
   font-size: 0.82rem;
   letter-spacing: 0.05em;
   cursor: pointer;
@@ -486,6 +547,7 @@ body {
 .status-detail {
   background: rgba(44, 44, 44, 0.95);
   backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   padding: 0 20px;
   max-height: 0;
   overflow: hidden;
@@ -508,10 +570,11 @@ body {
 }
 
 .status-section-title {
+  font-family: var(--font-ui);
   font-size: 0.72rem;
   font-weight: 300;
   color: rgba(245, 240, 232, 0.5);
-  letter-spacing: 0.2em;
+  letter-spacing: 0.25em;
   margin-bottom: 8px;
   text-transform: uppercase;
 }
@@ -528,9 +591,20 @@ body {
   width: 48px;
   flex-shrink: 0;
   font-weight: 400;
+  font-family: var(--font-ui);
 }
 
-.attr-bar-wrap, .faction-bar-wrap {
+.attr-bar-wrap {
+  flex: 1;
+  height: 8px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+  margin: 0 10px;
+  overflow: hidden;
+  position: relative;
+}
+
+.faction-bar-wrap {
   flex: 1;
   height: 6px;
   background: rgba(255,255,255,0.08);
@@ -542,9 +616,19 @@ body {
 
 .attr-bar {
   height: 100%;
-  border-radius: 3px;
+  border-radius: 4px;
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  overflow: hidden;
+}
+
+.attr-bar::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 50%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.2), transparent);
+  border-radius: 4px 4px 0 0;
 }
 
 .attr-bar.power   { background: linear-gradient(90deg, #e74c3c, #c0392b); }
@@ -554,8 +638,9 @@ body {
 .attr-bar.fame    { background: linear-gradient(90deg, #9b59b6, #8e44ad); }
 
 .attr-value {
-  width: 28px;
+  width: 32px;
   text-align: right;
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
@@ -564,9 +649,9 @@ body {
 /* Faction bar - dual direction */
 .faction-bar-container {
   flex: 1;
-  height: 6px;
+  height: 8px;
   background: rgba(255,255,255,0.08);
-  border-radius: 3px;
+  border-radius: 4px;
   margin: 0 10px;
   position: relative;
   overflow: visible;
@@ -577,22 +662,24 @@ body {
   left: 50%;
   top: 0;
   bottom: 0;
-  width: 1px;
-  background: rgba(255,255,255,0.2);
+  width: 2px;
+  background: rgba(255,255,255,0.35);
   z-index: 1;
+  transform: translateX(-0.5px);
 }
 
 .faction-bar-fill {
   position: absolute;
   top: 0;
   height: 100%;
-  border-radius: 3px;
+  border-radius: 4px;
   transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .faction-value {
-  width: 32px;
+  width: 36px;
   text-align: right;
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
@@ -609,6 +696,7 @@ body {
 }
 
 .emperor-label {
+  font-family: var(--font-ui);
   font-size: 0.85rem;
   color: var(--gold);
   margin-right: 12px;
@@ -629,9 +717,10 @@ body {
   left: 50%;
   top: 0;
   bottom: 0;
-  width: 1px;
-  background: rgba(255,255,255,0.2);
+  width: 2px;
+  background: rgba(255,255,255,0.35);
   z-index: 1;
+  transform: translateX(-0.5px);
 }
 
 .emperor-bar-fill {
@@ -644,8 +733,9 @@ body {
 }
 
 .emperor-value {
-  width: 36px;
+  width: 40px;
   text-align: right;
+  font-family: var(--font-mono);
   font-size: 0.82rem;
   font-weight: 600;
   color: var(--gold);
@@ -655,24 +745,26 @@ body {
 /* ========== FLOATING CHANGE NOTIFICATIONS ========== */
 .floating-changes {
   position: fixed;
-  top: 80px;
+  top: 70px;
   right: 20px;
   z-index: 200;
   display: flex;
   flex-direction: column;
   gap: 8px;
   pointer-events: none;
+  max-width: 200px;
 }
 
 .float-notify {
   padding: 6px 14px;
   border-radius: 4px;
+  font-family: var(--font-ui);
   font-size: 0.82rem;
   font-weight: 500;
-  font-family: 'Noto Serif SC', serif;
   background: rgba(44, 44, 44, 0.88);
   color: var(--paper);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   opacity: 0;
   transform: translateY(-10px) translateX(10px);
   animation: floatIn 0.4s ease forwards, floatOut 0.4s 2s ease forwards;
@@ -698,28 +790,32 @@ body {
 }
 
 .input-screen h2 {
-  font-size: 1.2rem;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
   font-weight: 500;
   margin-bottom: 8px;
   color: var(--ink);
+  letter-spacing: 0.1em;
 }
 
 .input-screen .subtitle {
+  font-family: var(--font-body);
   font-size: 0.88rem;
   color: var(--ink-light);
   margin-bottom: 28px;
   font-weight: 300;
+  line-height: 1.7;
 }
 
 .name-input {
   display: block;
-  width: 240px;
+  width: min(280px, 80vw);
   margin: 0 auto 16px;
   padding: 12px 20px;
   border: none;
   border-bottom: 2px solid var(--ink);
   background: transparent;
-  font-family: 'Noto Serif SC', serif;
+  font-family: var(--font-display);
   font-size: 1.3rem;
   text-align: center;
   color: var(--ink);
@@ -746,11 +842,12 @@ body {
   color: var(--paper);
   border: none;
   border-radius: 3px;
-  font-family: 'Noto Serif SC', serif;
+  font-family: var(--font-ui);
   font-size: 0.95rem;
   cursor: pointer;
   transition: all var(--transition);
   letter-spacing: 0.1em;
+  min-height: 44px;
 }
 
 .confirm-btn:hover {
@@ -765,11 +862,12 @@ body {
   color: var(--ink-light);
   border: 1px solid var(--ink-faint);
   border-radius: 3px;
-  font-family: 'Noto Serif SC', serif;
+  font-family: var(--font-ui);
   font-size: 0.9rem;
   cursor: pointer;
   transition: all var(--transition);
   letter-spacing: 0.08em;
+  min-height: 44px;
 }
 
 .random-btn:hover {
@@ -816,6 +914,7 @@ body {
   border: 1px solid var(--ink-faint);
   background: rgba(245, 240, 232, 0.9);
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   color: var(--ink-light);
   font-size: 1rem;
   cursor: pointer;
@@ -823,7 +922,7 @@ body {
   align-items: center;
   justify-content: center;
   transition: all var(--transition);
-  font-family: 'Noto Serif SC', serif;
+  font-family: var(--font-ui);
 }
 
 .menu-btn:hover {
@@ -870,7 +969,8 @@ body {
 }
 
 .modal-title {
-  font-size: 1.2rem;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
   font-weight: 600;
   text-align: center;
   letter-spacing: 0.2em;
@@ -879,6 +979,7 @@ body {
 }
 
 .modal-subtitle {
+  font-family: var(--font-ui);
   text-align: center;
   font-size: 0.8rem;
   color: var(--ink-faint);
@@ -921,17 +1022,21 @@ body {
   font-size: 1rem;
   color: var(--cinnabar);
   letter-spacing: 0.1em;
+  font-family: var(--font-ui);
 }
 
 .slot-time {
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
 }
 
 .slot-info {
   font-size: 0.85rem;
   color: var(--ink-light);
   line-height: 1.7;
+  font-family: var(--font-body);
 }
 
 .slot-info span {
@@ -950,10 +1055,11 @@ body {
   background: transparent;
   color: var(--ink-light);
   border-radius: 3px;
-  font-family: 'Noto Serif SC', serif;
+  font-family: var(--font-ui);
   font-size: 0.8rem;
   cursor: pointer;
   transition: all var(--transition);
+  min-height: 32px;
 }
 
 .slot-btn:hover {
@@ -974,10 +1080,11 @@ body {
   color: var(--paper);
   border: none;
   border-radius: 3px;
-  font-family: 'Noto Serif SC', serif;
+  font-family: var(--font-ui);
   font-size: 0.9rem;
   cursor: pointer;
   transition: background var(--transition);
+  min-height: 44px;
 }
 
 .modal-close:hover {
@@ -1004,47 +1111,12 @@ body {
 /* ========== TURN INFO ========== */
 .turn-info {
   text-align: center;
-  font-size: 0.78rem;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
   color: var(--ink-faint);
-  letter-spacing: 0.15em;
+  letter-spacing: 0.2em;
   padding: 12px 0 4px;
   font-weight: 300;
-}
-
-/* ========== RESPONSIVE ========== */
-@media (max-width: 480px) {
-  #app { padding: max(16px, env(safe-area-inset-top)) 14px max(80px, env(safe-area-inset-bottom)); }
-  .header { padding: 24px 0 20px; }
-  .header-title { font-size: 1.5rem; letter-spacing: 0.15em; }
-  .header-subtitle { font-size: 0.75rem; }
-  .narrative-text { font-size: 0.95rem; line-height: 1.85; }
-  .choice-btn {
-    padding: 14px 16px;
-    font-size: 0.88rem;
-    min-height: 48px;
-  }
-  .floating-changes { right: 8px; top: max(60px, env(safe-area-inset-top)); }
-  .float-notify { font-size: 0.75rem; padding: 4px 8px; }
-  .status-detail { padding-left: 10px; padding-right: 10px; }
-  .status-panel.expanded .status-detail { max-height: 360px; }
-  .menu-btn {
-    width: 42px;
-    height: 42px;
-    font-size: 1.1rem;
-  }
-  .menu-buttons {
-    top: max(12px, env(safe-area-inset-top));
-    right: 10px;
-  }
-  .modal-content { width: 92vw; max-height: 80vh; max-height: 80dvh; }
-  .turn-info { font-size: 0.78rem; }
-  .attr-bar { height: 8px; }
-  .faction-bar { height: 6px; }
-  .loading-text { font-size: 0.9rem; }
-  .free-input { font-size: 0.9rem; padding: 12px; }
-  .confirm-btn { min-height: 48px; font-size: 0.95rem; }
-  .input-screen h2 { font-size: 1.4rem; }
-  .input-screen .subtitle { font-size: 0.85rem; }
 }
 
 /* ========== HISTORY LOG ========== */
@@ -1060,6 +1132,7 @@ body {
 }
 
 .history-choice-made {
+  font-family: var(--font-ui);
   font-size: 0.8rem;
   color: var(--cinnabar);
   margin-top: 8px;
@@ -1078,6 +1151,150 @@ body {
   animation: blink 0.8s step-end infinite;
 }
 
-@keyframes blink {
-  50% { opacity: 0; }
+/* ========== RESPONSIVE — MOBILE ========== */
+@media (max-width: 480px) {
+  /* Layout */
+  #app { padding: max(16px, env(safe-area-inset-top)) 14px max(80px, env(safe-area-inset-bottom)); }
+
+  /* Hide scrollbar on mobile */
+  html { scrollbar-width: none; }
+  ::-webkit-scrollbar { display: none; }
+
+  /* Header */
+  .header { padding: 24px 0 20px; }
+  .header-title { font-size: 1.6rem; letter-spacing: 0.2em; }
+  .header-subtitle { font-size: 0.75rem; }
+
+  /* Narrative — tighter line-height for mobile */
+  .narrative-text {
+    font-size: 1rem;
+    line-height: 1.8;
+    letter-spacing: 0.01em;
+  }
+
+  /* Choices — bigger touch targets, left-border feedback */
+  .choice-btn {
+    padding: 16px 16px;
+    font-size: 0.92rem;
+    min-height: 52px;
+  }
+
+  /* Floating notifications — move above status panel */
+  .floating-changes {
+    top: auto;
+    bottom: 100px;
+    right: 8px;
+    left: auto;
+    max-width: 180px;
+  }
+  .float-notify { font-size: 0.75rem; padding: 4px 10px; }
+
+  /* Status panel */
+  .status-detail { padding-left: 12px; padding-right: 12px; }
+  .status-panel.expanded .status-detail { max-height: 50vh; }
+
+  /* Menu buttons — bigger touch targets */
+  .menu-btn {
+    width: 42px;
+    height: 42px;
+    font-size: 1.1rem;
+  }
+
+  /* Modal — bottom sheet on mobile */
+  .modal-overlay {
+    align-items: flex-end;
+  }
+  .modal-box {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 12px 12px 0 0;
+    max-height: 75vh;
+    max-height: 75dvh;
+    padding: 24px 16px;
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .modal-overlay.active .modal-box {
+    transform: translateY(0);
+  }
+  .modal-box::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 4px;
+    background: var(--ink-faint);
+    border-radius: 2px;
+    margin: 0 auto 16px;
+  }
+
+  /* Input area */
+  .free-action-input {
+    padding: 14px 14px;
+    font-size: 1rem;
+    min-height: 48px;
+  }
+  .send-btn {
+    padding: 14px 18px;
+    min-height: 48px;
+  }
+
+  /* Confirm buttons */
+  .confirm-btn { min-height: 48px; font-size: 0.95rem; }
+  .random-btn { min-height: 48px; }
+
+  /* Input screens */
+  .input-screen h2 { font-size: 1.2rem; }
+  .input-screen .subtitle { font-size: 0.85rem; }
+
+  /* Turn info */
+  .turn-info { font-size: 0.72rem; }
+
+  /* Status panel — small screen height adaptation */
+  .status-panel.expanded .status-detail { max-height: 45vh; }
+}
+
+/* Extra small screens (iPhone SE etc.) */
+@media (max-width: 375px) {
+  .header-title { font-size: 1.4rem; letter-spacing: 0.15em; }
+  .narrative-text { font-size: 0.95rem; line-height: 1.75; }
+  .choice-btn { font-size: 0.88rem; padding: 14px 14px; }
+  .status-summary { font-size: 0.78rem; padding: 8px 14px; }
+  .status-summary-left { gap: 8px; }
+}
+
+/* ========== SHORT VIEWPORT (landscape / small) ========== */
+@media (max-height: 600px) {
+  .status-panel.expanded .status-detail {
+    max-height: 45vh;
+  }
+  .header { padding: 20px 0 16px; }
+  .input-screen { padding: 20px 0; }
+}
+
+/* ========== HOVER CAPABILITY DETECTION ========== */
+@media (hover: none) {
+  /* No hover on touch devices — ensure active state is the primary feedback */
+  .choice-btn:hover {
+    background-color: var(--scroll-bg);
+    border-left-color: transparent;
+    transform: translateX(0);
+  }
+  .choice-btn:active {
+    background-color: #e8e0d2;
+    border-left-color: var(--cinnabar);
+    transform: scale(0.98);
+  }
+}
+
+/* ========== REDUCED MOTION ========== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .narrative-text { opacity: 1; transform: none; }
+  .choice-btn { opacity: 1; transform: none; }
+  .stream-text { opacity: 1; }
 }
