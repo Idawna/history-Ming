@@ -623,115 +623,366 @@ function allFactionsLTE(v) {
   return true;
 }
 
-// v3.8.2: 死亡倒计时机制（替代原1回合缓冲，改为3回合窗口期）
+// ========== P0-2: 死亡容错机制 — 数据表 ==========
+
+// 危机事件表（每种死法对应的危机描述）
+var CRISIS_EVENTS = {
+  // === 必死型预警 ===
+  1: { title: '满门之祸', desc: '锦衣卫在你府外徘徊，邻居们纷纷搬走。你知道，大难将至。', directive: '玩家面临满门抄斩的危机，需要立即采取行动：主动请辞、交出家产、或寻求宗室庇护。' },
+  6: { title: '众叛亲离', desc: '曾经的朋友都绕着你走，朝堂上无人敢与你搭话。你像一座孤岛。', directive: '玩家被所有派系抛弃，需要修复至少一个派系关系，或主动辞官避祸。' },
+  // === 概率直接死型预警 ===
+  8: { title: '文字之祸', desc: '你听说有人在御前提到你的诗文，语气不善。锦衣卫可能已经在查你了。', directive: '玩家可能因文字获罪，需要销毁争议文字、找人疏通、或主动请罪。' },
+  9: { title: '杀机暗藏', desc: '你感觉有人在跟踪你，深夜有异响。几个对你怀恨在心的人，可能已经动手了。', directive: '玩家面临暗杀威胁，需要加强戒备、远离险地、或主动示好化解仇恨。' },
+  // === 倒计时型 ===
+  2: { title: '天威震怒', desc: '陛下在朝堂上怒斥你的过失，目光如刀。你知道，这可能是最后的警告了。', directive: '玩家面临帝王震怒的危机，需要在3回合内通过某种方式挽回圣心，否则将被处死。' },
+  3: { title: '丞相府被围', desc: '胡惟庸的府邸被禁军包围，名单上有你认识的名字。你感到一阵寒意。', directive: '胡惟庸案爆发，玩家可能被牵连，需要通过打点关系或主动请辞来避祸。' },
+  4: { title: '覆巢之危', desc: '你所属的派系核心人物倒台了，弹劾的奏章如雪片般飞来。', directive: '玩家所属派系被清洗，需要划清界限或自请外放来保命。' },
+  5: { title: '兔死狗烹', desc: '有人在御前参你"功高不赏"，陛下的眼神变了。', directive: '玩家功高震主，需要主动交权或称病辞官来避祸。' },
+  7: { title: '贬谪之兆', desc: '御史弹劾你的奏折被留中了，这是不祥之兆。', directive: '玩家可能被流放，需要提升民心或找靠山来化解。' },
+  10: { title: '油尽灯枯', desc: '你已经连续数月没有睡过一个好觉，太医说你需要休养。', directive: '玩家身体濒临崩溃，需要减少操劳、休养身体。' },
+  11: { title: '淮西清洗', desc: '锦衣卫拿着名簿挨户拿人，你听到了邻居的惨叫。', directive: '蓝玉案爆发，淮西勋贵被清洗，玩家需要打点关系或主动请辞来避祸。' }
+};
+
+// 自救选项表（硬编码方向 + 属性阈值 + 效果）
+var RESCUE_OPTIONS = {
+  1: { directions: ['主动请辞交出权力', '寻求宗室庇护', '散尽家产表忠心'], threshold: { power: 30, wisdom: 50 }, effect: { power: -40, fame: -20, emperor_feeling: 15 }, failureDeath: true },
+  6: { directions: ['修复某派系关系', '主动辞官归隐', '离京避祸'], threshold: { bond: 40 }, effect: { bond: 20, people: 10 }, failureDeath: true },
+  8: { directions: ['销毁争议文字', '主动请罪', '找人疏通'], threshold: { wisdom: 45, fame: 40 }, effect: { fame: -15, wisdom: 5 }, failureDeath: true },
+  9: { directions: ['加强戒备', '远离险地', '主动示好化解仇恨'], threshold: { wisdom: 50, bond: 30 }, effect: { wisdom: 5, bond: -10 }, failureDeath: true },
+  2: { directions: ['上疏请罪', '托近臣说情', '称病避祸'], threshold: { emperor_feeling: -40 }, effect: { emperor_feeling: 25, fame: -10 }, failureDeath: true },
+  3: { directions: ['花钱打点', '主动请辞', '找靠山求情'], threshold: { power: 40, wisdom: 45 }, effect: { power: -20, wisdom: 5 }, failureDeath: true },
+  4: { directions: ['划清界限', '自请外放'], threshold: { power: 35 }, effect: { power: -25, bond: -15 }, failureDeath: true },
+  5: { directions: ['主动交权', '称病辞官'], threshold: { power: 40, emperor_feeling: -20 }, effect: { power: -35, emperor_feeling: 30 }, failureDeath: true },
+  7: { directions: ['提升民心', '找靠山'], threshold: { people: 35, emperor_feeling: -30 }, effect: { people: 15, emperor_feeling: 10 }, failureDeath: true },
+  10: { directions: ['减少操劳', '休养身体'], threshold: { bond: 35 }, effect: { bond: 15, power: -10 }, failureDeath: true },
+  11: { directions: ['花钱打点', '主动请辞', '找靠山求情'], threshold: { power: 40, wisdom: 45 }, effect: { power: -20, wisdom: 5 }, failureDeath: true }
+};
+
+// 降级条件表（满足条件才能降级而非死亡）
+var DOWNGRADE_CONDITIONS = {
+  2: { emperor_feeling: -50 },  // 帝怒：圣眷不是最低才可能降级
+  4: { power: 50 },             // 党争：权力不是最高才可能降级
+  5: { wisdom: 40 },            // 功高：智谋不太低才可能降级（懂得进退）
+  7: { people: 30 },            // 流放：民心不太低才可能降级（有人求情）
+  10: { bond: 40 }              // 积劳：情义不太低才可能降级（有人照顾）
+};
+
+// 降级结果表
+var DEGRADATION_TITLES = { 2: '贬为庶民', 4: '外放边远', 5: '削职为民', 7: '贬谪存活', 10: '病倒痊愈' };
+var DEGRADATION_EFFECTS = {
+  2: { power: -40, fame: -30, emperor_feeling: 10 },
+  4: { power: -30, fame: -20 },
+  5: { power: -50, emperor_feeling: 20 },
+  7: { power: -35, fame: -25, people: 10 },
+  10: { power: -20, bond: -15 }
+};
+var DEGRADATION_NARRATIVES = {
+  2: '天子震怒之下，你被夺去一切官职，贬为庶民。走出午门时，阳光刺眼——你已经很久没有以平民的身份站在这座城里了。但你活着。活着就还有机会。',
+  4: '风暴来得太快，你来不及分辨敌友。一纸调令，你被外放到帝国最偏远的角落。马车颠簸在泥泞的官道上，回望京城方向，那里已是云雾茫茫。',
+  5: '皇帝念你旧日功勋，没有赶尽杀绝——只是将你的权力尽数收回。你交出了印信，走出了府邸。身后的门缓缓关上，像是一个时代的终结。',
+  7: '岭南的瘴气没有杀死你。在偏远的小镇上，你安顿下来。日子清苦，但比流放路上好多了。至少，这里没有人想杀你。',
+  10: '你病倒了。太医说再撑几天就来不及了。卧床数月，药石不断，终于在某个清晨睁开了眼。窗外还是那轮月亮，但你感觉自己老了许多。'
+};
+var DEGRADATION_FOOTNOTES = [
+  '记住这次教训。',
+  '洪武朝的刀，从来不远。',
+  '活着，就是最大的胜利。',
+  '你捡回了一条命。下次未必。',
+  '大难不死，未必有福。'
+];
+
+// 降级后锚点触发系数（降级后仍可触发锚点，但概率降低）
+var DEGRADATION_ANCHOR_MOD = {
+  2: 0.3,   // 贬为庶民：远离权力中心
+  4: 0.5,   // 外放边远：仍在体制内但远离京城
+  5: 0.3,   // 削职为民：无职无权
+  7: 0.5,   // 贬谪存活：偏远之地
+  10: 0.8   // 病倒痊愈：仍在京城，影响较小
+};
+
+// P0-2: 缓冲属性修正（概率修正而非硬阈值）
+function getBufferModifier() {
+  var a = GameState.attributes;
+  var modifier = 0;
+  if (a.bond >= 80) modifier -= 0.15;       // 情义极高：朋友来救
+  else if (a.bond >= 60) modifier -= 0.10;
+  if (a.people >= 80) modifier -= 0.10;     // 人望极高：民心保护
+  else if (a.people >= 60) modifier -= 0.05;
+  return modifier; // 负值 = 降低死亡概率
+}
+
+// P0-2: 自救判定
+function attemptRescue(crisisType) {
+  var opt = RESCUE_OPTIONS[crisisType];
+  if (!opt) return { success: false, effects: {} };
+
+  // 30%概率直接失败（保持死亡威胁）
+  if (Math.random() < 0.3) {
+    return { success: false, effects: {}, reason: 'fate' };
+  }
+
+  // 属性阈值判定
+  var a = GameState.attributes;
+  var ef = GameState.emperor_feeling;
+  var threshold = opt.threshold;
+  for (var key in threshold) {
+    var val = (key === 'emperor_feeling') ? ef : a[key];
+    if (val === undefined) val = 0;
+    if (val < threshold[key]) {
+      return { success: false, effects: {}, reason: 'threshold' };
+    }
+  }
+
+  // 自救成功，应用效果
+  applyChanges(opt.effect);
+  return { success: true, effects: opt.effect };
+}
+
+// P0-2: 降级判定（自救失败后检查是否可降级）
+function attemptDowngrade(crisisType) {
+  var cond = DOWNGRADE_CONDITIONS[crisisType];
+  if (!cond) return { canDowngrade: false }; // 不可降级
+
+  var a = GameState.attributes;
+  var ef = GameState.emperor_feeling;
+
+  // 检查降级条件
+  for (var key in cond) {
+    var val = (key === 'emperor_feeling') ? ef : a[key];
+    if (val === undefined) val = 0;
+    if (val < cond[key]) {
+      return { canDowngrade: false }; // 条件不满足
+    }
+  }
+
+  // 可降级
+  return {
+    canDowngrade: true,
+    effects: DEGRADATION_EFFECTS[crisisType] || {},
+    title: DEGRADATION_TITLES[crisisType] || '劫后余生',
+    narrative: DEGRADATION_NARRATIVES[crisisType] || ''
+  };
+}
+
+// P0-2: 获取降级后锚点触发概率修正系数
+function getDegradationAnchorMod() {
+  if (!GameState.degradationActive || !GameState.degradationType) return 1.0;
+  return DEGRADATION_ANCHOR_MOD[GameState.degradationType] || 1.0;
+}
+
+// v3.8.2: 死亡倒计时机制（P0-2重写：优先级+预警+冷却+缓冲）
 function checkDeath() {
   var a = GameState.attributes, f = GameState.factions, ef = GameState.emperor_feeling;
   var mx = maxFaction(), mn = minFaction();
   var fk = Object.keys(f);
+  var buffer = getBufferModifier();  // P0-2: 缓冲属性修正
+  var degMod = getDegradationAnchorMod(); // P0-2: 降级后锚点概率修正
 
-  // === 必死（不缓冲，条件极端意味着已无力回天） ===
-  // P1: 牵连族灭 (必死)
-  if (a.power >= 60 && mx >= 80 && ef <= -30 && a.wisdom < 40) return 0;
+  // P0-2辅助：检查某死法类型是否在冷却中
+  function isCooling(type) { return GameState.deathCooldown && GameState.deathCooldown[type] > 0; }
+  // P0-2辅助：设置冷却期（5回合）
+  function setCooldown(type) { if (!GameState.deathCooldown) GameState.deathCooldown = {}; GameState.deathCooldown[type] = 5; }
+  // P0-2辅助：设置预警（必死型/概率直接死型首次触发时）
+  function setWarning(crisisType) {
+    if (GameState.deathWarning > 0) return -2; // 已有预警，下回合判定
+    GameState.deathWarning = 1;
+    GameState.deathWarningType = crisisType;
+    return -2; // 返回-2 = 预警，不是死亡
+  }
+  // P0-2辅助：优先级替换——新死法优先级高于当前倒计时则替换
+  // 优先级映射：crisisType → priority（数字越小优先级越高）
+  var PRIORITY = { 1:1, 6:2, 8:3, 9:4, 2:5, 5:6, 4:7, 3:8, 11:9, 7:10, 10:11 };
+  function shouldReplace(newType) {
+    if (!GameState.deathCountdown || GameState.deathCountdown <= 0) return true; // 当前无倒计时
+    var oldP = PRIORITY[GameState.deathCountdownType] || 99;
+    var newP = PRIORITY[newType] || 99;
+    return newP < oldP; // 新优先级更高（数字更小）则替换
+  }
 
-  // === 倒计时型死亡（v3.8.2: 3回合窗口期，替代原1回合缓冲） ===
+  // ========== 优先级1: 牵连族灭 (必死型，不可降级) ==========
+  if (a.power >= 60 && mx >= 80 && ef <= -30 && a.wisdom < 40) {
+    if (!isCooling(1)) {
+      if (GameState.deathWarningType === 1 && GameState.deathWarning > 0) return 0; // 预警期已过，真正死亡
+      setCooldown(1);
+      return setWarning(1); // 首次触发：1回合预警
+    }
+  }
 
-  // P2: 帝怒诛杀 (倒计时)
-  if (ef <= -70 && (a.power >= 50 || a.fame >= 60)) {
-    if (GameState.deathCountdownType === 2) {
-      if (GameState.deathCountdown === 0) return 1;
-    } else {
-      GameState.deathCountdown = 3; GameState.deathCountdownType = 2; return -1;
+  // ========== 优先级2: 四面楚歌 (必死型，不可降级) ==========
+  if (mn <= -60 && countFactionsLTE(-30) >= 3) {
+    if (!isCooling(6)) {
+      if (GameState.deathWarningType === 6 && GameState.deathWarning > 0) return 5;
+      setCooldown(6);
+      return setWarning(6);
     }
   }
-  // P3a: 胡案牵连 (anchor 2, v3.8.9修正：胡惟庸案现为id=2)
-  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
-    var an = HISTORY_ANCHORS[i];
-    if (an.id === 2 && GameState.turn >= an.start && GameState.turn <= an.end + 2) {
-      var p = (mx * 0.25 + Math.max(0, -ef) * 0.15 + Math.max(0, 50 - a.wisdom) * 0.1) / 100;
-      if (Math.random() < p) {
-        if (GameState.deathCountdownType === 3) {
-          if (GameState.deathCountdown === 0) return 2;
-        } else {
-          GameState.deathCountdown = 3; GameState.deathCountdownType = 3; return -1;
-        }
-      }
-      break;
-    }
-  }
-  // P3b: 蓝案牵连 (anchor 7, 倒计时, v3.8.3 降低概率, 武将出身加权)
-  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
-    var an = HISTORY_ANCHORS[i];
-    if (an.id === 7 && GameState.turn >= an.start && GameState.turn <= an.end + 2) {
-      var p = (mx * 0.2 + Math.max(0, -ef) * 0.15 + Math.max(0, 50 - a.wisdom) * 0.1) / 100;
-      // 武将出身：淮西勋贵圈子里的人，天然高风险
-      if (GameState.background === '淮西武将之后') p += 0.12;
-      // 军功显赫：power高说明你在武将圈子里地位高
-      if (a.power >= 60) p += 0.08;
-      // 蓝案上限封顶50%
-      p = Math.min(p, 0.5);
-      if (Math.random() < p) {
-        if (GameState.deathCountdownType === 11) {
-          if (GameState.deathCountdown === 0) return 10;
-        } else {
-          GameState.deathCountdown = 3; GameState.deathCountdownType = 11; return -1;
-        }
-      }
-      break;
-    }
-  }
-  // P4: 党争覆灭 (倒计时)
-  for (var j = 0; j < fk.length; j++) {
-    if (f[fk[j]] >= 70 && GameState.factionPurged && GameState.factionPurged[fk[j]]) {
-      if (GameState.deathCountdownType === 4) {
-        if (GameState.deathCountdown === 0) return 3;
-      } else {
-        GameState.deathCountdown = 3; GameState.deathCountdownType = 4; return -1;
-      }
-    }
-  }
-  // P5: 功高震主 (倒计时)
-  if (a.power >= 75 && a.wisdom < 60 && ef < 30) {
-    if (GameState.deathCountdownType === 5) {
-      if (GameState.deathCountdown === 0) return 4;
-    } else {
-      GameState.deathCountdown = 3; GameState.deathCountdownType = 5; return -1;
-    }
-  }
-  // P6: 四面楚歌 (必死)  // v3.8.4b: 移至P5之后，按SP优先级顺序排列
-  if (minFaction() <= -60 && countFactionsLTE(-30) >= 3) return 5;
-  // P7: 流放致死 (倒计时)
-  if (ef <= -50 && a.people <= 20 && minFaction() <= -30) {
-    if (GameState.deathCountdownType === 7) {
-      if (GameState.deathCountdown === 0) return 6;
-    } else {
-      GameState.deathCountdown = 3; GameState.deathCountdownType = 7; return -1;
-    }
-  }
-  // P8: 文字狱 (概率60%)
+
+  // ========== 优先级3: 文字狱 (概率60%直接死，不可降级) ==========
   if (f.zhedong >= 40 && (a.fame >= 50 || a.power >= 40) && ef < 10 && GameState.wroteControversialText) {
-    if (Math.random() < 0.6) return 7;
+    if (!isCooling(8)) {
+      var p8 = (0.6 + buffer) * degMod;
+      p8 = Math.max(0.05, Math.min(p8, 0.95));
+      if (GameState.deathWarningType === 8 && GameState.deathWarning > 0) {
+        // 预警期已过，roll概率死亡
+        if (Math.random() < p8) { setCooldown(8); return 7; }
+        else { GameState.deathWarning = 0; GameState.deathWarningType = 0; }
+      } else {
+        setCooldown(8);
+        return setWarning(8); // 首次触发：1回合预警
+      }
+    }
   }
-  // P9: 阴谋暗杀 (概率50%)
+
+  // ========== 优先级4: 阴谋暗杀 (概率50%直接死，不可降级) ==========
   if (a.wisdom <= 50) {
     var lowC = 0; for (var m = 0; m < fk.length; m++) if (f[fk[m]] <= -40) lowC++;
     if (lowC >= 2 && (a.power >= 40 || a.fame >= 50)) {
-      if (Math.random() < 0.5) return 8;
+      if (!isCooling(9)) {
+        var p9 = (0.5 + buffer) * degMod;
+        p9 = Math.max(0.05, Math.min(p9, 0.95));
+        if (GameState.deathWarningType === 9 && GameState.deathWarning > 0) {
+          if (Math.random() < p9) { setCooldown(9); return 8; }
+          else { GameState.deathWarning = 0; GameState.deathWarningType = 0; }
+        } else {
+          setCooldown(9);
+          return setWarning(9);
+        }
+      }
     }
   }
-  // P10: 积劳成疾 (倒计时)
+
+  // ========== 优先级5: 帝怒诛杀 (倒计时型，可降级) ==========
+  if (ef <= -70 && (a.power >= 50 || a.fame >= 60)) {
+    if (!isCooling(2)) {
+      if (GameState.deathCountdownType === 2) {
+        if (GameState.deathCountdown === 0) { setCooldown(2); return 1; }
+      } else if (shouldReplace(2)) {
+        GameState.deathCountdown = 3; GameState.deathCountdownType = 2; setCooldown(2);
+        GameState.rescueAttempted = false; GameState.rescueSucceeded = false;
+        return -1;
+      }
+    }
+  }
+
+  // ========== 优先级6: 功高震主 (倒计时型，可降级) ==========
+  if (a.power >= 75 && a.wisdom < 60 && ef < 30) {
+    if (!isCooling(5)) {
+      if (GameState.deathCountdownType === 5) {
+        if (GameState.deathCountdown === 0) { setCooldown(5); return 4; }
+      } else if (shouldReplace(5)) {
+        GameState.deathCountdown = 3; GameState.deathCountdownType = 5; setCooldown(5);
+        GameState.rescueAttempted = false; GameState.rescueSucceeded = false;
+        return -1;
+      }
+    }
+  }
+
+  // ========== 优先级7: 党争覆灭 (倒计时型，可降级) ==========
+  for (var j = 0; j < fk.length; j++) {
+    if (f[fk[j]] >= 70 && GameState.factionPurged && GameState.factionPurged[fk[j]]) {
+      if (!isCooling(4)) {
+        if (GameState.deathCountdownType === 4) {
+          if (GameState.deathCountdown === 0) { setCooldown(4); return 3; }
+        } else if (shouldReplace(4)) {
+          GameState.deathCountdown = 3; GameState.deathCountdownType = 4; setCooldown(4);
+          GameState.rescueAttempted = false; GameState.rescueSucceeded = false;
+          return -1;
+        }
+      }
+      break;
+    }
+  }
+
+  // ========== 优先级8: 胡案牵连 (anchor 2, 倒计时型, 不可降级) ==========
+  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+    var an = HISTORY_ANCHORS[i];
+    if (an.id === 2 && GameState.turn >= an.start && GameState.turn <= an.end + 2) {
+      if (!isCooling(3) && (!GameState.anchorTriggerCount || GameState.anchorTriggerCount[2] < 2)) {
+        var p3 = ((mx * 0.25 + Math.max(0, -ef) * 0.15 + Math.max(0, 50 - a.wisdom) * 0.1) / 100) * degMod;
+        p3 = Math.max(0.05, p3 + buffer);
+        if (GameState.deathCountdownType === 3) {
+          if (GameState.deathCountdown === 0) { setCooldown(3); if (!GameState.anchorTriggerCount) GameState.anchorTriggerCount = {}; GameState.anchorTriggerCount[2] = (GameState.anchorTriggerCount[2]||0)+1; return 2; }
+        } else if (Math.random() < p3) {
+          if (shouldReplace(3)) {
+            GameState.deathCountdown = 3; GameState.deathCountdownType = 3; setCooldown(3);
+            GameState.rescueAttempted = false; GameState.rescueSucceeded = false;
+            return -1;
+          }
+        }
+      }
+      break;
+    }
+  }
+
+  // ========== 优先级9: 蓝案牵连 (anchor 7, 倒计时型, 不可降级) ==========
+  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+    var an = HISTORY_ANCHORS[i];
+    if (an.id === 7 && GameState.turn >= an.start && GameState.turn <= an.end + 2) {
+      if (!isCooling(11) && (!GameState.anchorTriggerCount || GameState.anchorTriggerCount[7] < 2)) {
+        var p11 = ((mx * 0.2 + Math.max(0, -ef) * 0.15 + Math.max(0, 50 - a.wisdom) * 0.1) / 100) * degMod;
+        if (GameState.background === '淮西武将之后') p11 += 0.12;
+        if (a.power >= 60) p11 += 0.08;
+        p11 = Math.min(p11, 0.5);
+        p11 = Math.max(0.05, p11 + buffer);
+        if (GameState.deathCountdownType === 11) {
+          if (GameState.deathCountdown === 0) { setCooldown(11); if (!GameState.anchorTriggerCount) GameState.anchorTriggerCount = {}; GameState.anchorTriggerCount[7] = (GameState.anchorTriggerCount[7]||0)+1; return 10; }
+        } else if (Math.random() < p11) {
+          if (shouldReplace(11)) {
+            GameState.deathCountdown = 3; GameState.deathCountdownType = 11; setCooldown(11);
+            GameState.rescueAttempted = false; GameState.rescueSucceeded = false;
+            return -1;
+          }
+        }
+      }
+      break;
+    }
+  }
+
+  // ========== 优先级10: 流放致死 (倒计时型，可降级) ==========
+  if (ef <= -50 && a.people <= 20 && mn <= -30) {
+    if (!isCooling(7)) {
+      if (GameState.deathCountdownType === 7) {
+        if (GameState.deathCountdown === 0) { setCooldown(7); return 6; }
+      } else if (shouldReplace(7)) {
+        GameState.deathCountdown = 3; GameState.deathCountdownType = 7; setCooldown(7);
+        GameState.rescueAttempted = false; GameState.rescueSucceeded = false;
+        return -1;
+      }
+    }
+  }
+
+  // ========== 优先级11: 积劳成疾 (倒计时型，可降级) ==========
   if (GameState.consecutiveHighPowerTurns >= 6 && a.power >= 60 && a.bond <= 30) {
-    if (GameState.deathCountdownType === 10) {
-      if (GameState.deathCountdown === 0) return 9;
-    } else {
-      GameState.deathCountdown = 3; GameState.deathCountdownType = 10; return -1;
+    if (!isCooling(10)) {
+      if (GameState.deathCountdownType === 10) {
+        if (GameState.deathCountdown === 0) { setCooldown(10); return 9; }
+      } else if (shouldReplace(10)) {
+        GameState.deathCountdown = 3; GameState.deathCountdownType = 10; setCooldown(10);
+        GameState.rescueAttempted = false; GameState.rescueSucceeded = false;
+        return -1;
+      }
     }
   }
 
   return -1;
 }
 
-// v3.8.2: 死亡倒计时递减（在 applyChanges 中每回合调用）
+// v3.8.2: 死亡倒计时递减（P0-2: 增加冷却递减 + 预警递减）
 function tickDeathCountdown() {
+  // P0-2: 冷却期递减
+  if (GameState.deathCooldown) {
+    for (var ct in GameState.deathCooldown) {
+      GameState.deathCooldown[ct]--;
+      if (GameState.deathCooldown[ct] <= 0) delete GameState.deathCooldown[ct];
+    }
+  }
+  // P0-2: 预警递减（预警回合结束，下回合由checkDeath判定真正死亡）
+  if (GameState.deathWarning > 0) {
+    GameState.deathWarning--;
+  }
+  // P0-2: 缓冲属性标记重置
+  GameState.crisisBufferActive = false;
+
   if (GameState.deathCountdown > 0) {
     GameState.deathCountdown--;
     // 倒计时归零且条件不再成立→逃脱，清除倒计时
@@ -792,10 +1043,18 @@ function checkDeathWarning() {
   var mn2 = minFaction();
   if (mn2 <= -40) warns.push('派系倾轧');
   if (ef <= -40 && a.people <= 30) warns.push('流放之兆');
-  // v3.8.2: 死亡倒计时预警
+  // v3.8.2 + P0-2: 死亡倒计时预警 + 危机事件预警
+  if (GameState.deathWarning > 0 && GameState.deathWarningType > 0) {
+    var crisisEvt = CRISIS_EVENTS[GameState.deathWarningType];
+    warns.push('⚠ ' + (crisisEvt ? crisisEvt.title : '大祸临头') + '（最后警告）');
+  }
   if (GameState.deathCountdown > 0) {
-    if (GameState.deathCountdown === 1) warns.push('命悬一线');
-    else warns.push('死劫逼近（' + GameState.deathCountdown + '回合）');
+    var crisisEvt2 = CRISIS_EVENTS[GameState.deathCountdownType];
+    var label = crisisEvt2 ? crisisEvt2.title : '死劫';
+    if (GameState.deathCountdown === 1) warns.push('☠ ' + label + '（命悬一线）');
+    else warns.push('☠ ' + label + '（剩余' + GameState.deathCountdown + '回合）');
+    if (GameState.rescueAttempted) warns.push('  └ 已使用自救机会');
+    else warns.push('  └ 尚有自救机会');
   }
   // v3.8.1: 英年早逝预警
   if (a.power <= 20 && a.bond <= 25 && a.people <= 30 && a.fame <= 25) warns.push('壮志未酬');

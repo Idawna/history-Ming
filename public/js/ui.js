@@ -90,6 +90,112 @@ function updateStatusPanel() {
   empBar.style.left = empPositive ? '50%' : `${empPct}%`;
   empBar.style.width = `${Math.abs(empVal) / 2}%`;
   document.getElementById('emperorValue').textContent = `${empVal > 0 ? '+' : ''}${empVal}`;
+
+  // P0-2: 危机徽章更新
+  updateCrisisBadge();
+}
+
+// ========== P0-2: 危机徽章 ==========
+function updateCrisisBadge() {
+  var badge = document.getElementById('statusCrisis');
+  if (!badge) return;
+
+  // 优先级：预警 > 倒计时 > 缓冲提示 > 隐藏
+  if (GameState.deathWarning > 0 && GameState.deathWarningType > 0) {
+    var evt = (typeof CRISIS_EVENTS !== 'undefined') ? CRISIS_EVENTS[GameState.deathWarningType] : null;
+    badge.textContent = '\u26A0 ' + (evt ? evt.title : '危机') + '（警告）';
+    badge.className = 'status-crisis-badge crisis-warning';
+    badge.style.display = '';
+    return;
+  }
+
+  if (GameState.deathCountdown > 0 && GameState.deathCountdownType > 0) {
+    var evt2 = (typeof CRISIS_EVENTS !== 'undefined') ? CRISIS_EVENTS[GameState.deathCountdownType] : null;
+    var remaining = GameState.deathCountdown;
+    var label = remaining === 1 ? '命悬一线' : '剩余' + remaining + '回合';
+    badge.textContent = '\u2620 ' + (evt2 ? evt2.title : '死劫') + '（' + label + '）';
+    badge.className = 'status-crisis-badge crisis-countdown';
+    badge.style.display = '';
+    return;
+  }
+
+  if (GameState.crisisBufferActive) {
+    badge.textContent = '\uD83D\uDEE1 有人暗中相救';
+    badge.className = 'status-crisis-badge crisis-buffer';
+    badge.style.display = '';
+    return;
+  }
+
+  badge.style.display = 'none';
+}
+
+// ========== P0-2: 自救判定动画 ==========
+function showRescueJudgment(success) {
+  var overlay = document.createElement('div');
+  overlay.className = 'rescue-judgment-overlay';
+
+  var phrases = success
+    ? ['天不绝你', '绝处逢生', '命不该绝', '峰回路转']
+    : ['大势已去', '天意难违', '在劫难逃', '无力回天'];
+  var text = phrases[Math.floor(Math.random() * phrases.length)];
+
+  overlay.innerHTML =
+    '<div class="rescue-judgment-text">' + text + '</div>' +
+    '<div class="rescue-judgment-result ' + (success ? 'rescue-success' : 'rescue-failure') + '">' +
+      (success ? '▸ 自救成功' : '▸ 自救失败') +
+    '</div>';
+
+  document.body.appendChild(overlay);
+
+  setTimeout(function() {
+    overlay.style.opacity = '0';
+    overlay.style.transition = 'opacity 0.5s ease';
+    setTimeout(function() { overlay.remove(); }, 500);
+  }, 2200);
+}
+
+// ========== P0-2: 降级警告弹窗 ==========
+function showDegradationWarning(downgradeResult) {
+  var crisisType = GameState.degradationType || GameState.deathCountdownType || GameState.deathWarningType;
+  var title = (typeof DEGRADATION_TITLES !== 'undefined' && DEGRADATION_TITLES[crisisType]) ? DEGRADATION_TITLES[crisisType] : '劫后余生';
+  var narrative = (typeof DEGRADATION_NARRATIVES !== 'undefined' && DEGRADATION_NARRATIVES[crisisType]) ? DEGRADATION_NARRATIVES[crisisType] : '你侥幸逃过一劫，但代价惨重。';
+  var footnotes = (typeof DEGRADATION_FOOTNOTES !== 'undefined') ? DEGRADATION_FOOTNOTES : ['活着，就是最大的胜利。'];
+  var footnote = footnotes[Math.floor(Math.random() * footnotes.length)];
+
+  // 属性变化列表
+  var effectsHtml = '';
+  if (downgradeResult.effects) {
+    var eff = downgradeResult.effects;
+    effectsHtml = '<div class="degradation-effects">';
+    for (var key in eff) {
+      var val = eff[key];
+      if (val === 0) continue;
+      var isEF = (key === 'emperor_feeling');
+      var label = isEF ? '圣眷' : ((typeof ATTR_LABELS !== 'undefined' && ATTR_LABELS[key]) || key);
+      var cls = val > 0 ? 'positive' : 'negative';
+      var sign = val > 0 ? '+' : '';
+      effectsHtml += '<div class="degradation-effect-item">' +
+        '<span>' + label + '</span>' +
+        '<span class="effect-value ' + cls + '">' + sign + val + '</span>' +
+        '</div>';
+    }
+    effectsHtml += '</div>';
+  }
+
+  var overlay = document.createElement('div');
+  overlay.className = 'degradation-overlay';
+  overlay.innerHTML =
+    '<div class="degradation-warning-title">你差点死了</div>' +
+    '<div class="degradation-subtitle">—— ' + title + ' ——</div>' +
+    '<div class="degradation-card">' +
+      '<div class="degradation-card-title">' + title + '</div>' +
+      '<div class="degradation-card-desc">' + narrative + '</div>' +
+      effectsHtml +
+    '</div>' +
+    '<button class="degradation-continue-btn" onclick="this.parentElement.remove()">继续前行</button>' +
+    '<div class="degradation-footnote">' + footnote + '</div>';
+
+  document.body.appendChild(overlay);
 }
 
 // ========== PACING VISUAL ==========

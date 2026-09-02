@@ -1335,3 +1335,369 @@ body {
   .choice-btn { opacity: 1; transform: none; }
   .stream-text { opacity: 1; }
 }
+
+/* ==========================================================
+   P0-2: 死亡容错机制 — 危机徽章 / 自救选项 / 判定动画 / 降级弹窗
+   ========================================================== */
+
+/* === 危机徽章 === */
+.status-crisis-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 3px;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  background: rgba(192, 57, 43, 0.25);
+  color: #ff6b5a;
+  border: 1px solid rgba(192, 57, 43, 0.4);
+  animation: crisisBreath 2s ease-in-out infinite;
+}
+
+@keyframes crisisBreath {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* 预警型（金黄） */
+.status-crisis-badge.crisis-warning {
+  background: rgba(184, 134, 11, 0.25);
+  color: #e6b422;
+  border-color: rgba(184, 134, 11, 0.4);
+}
+
+/* 缓冲触发型（绿色） */
+.status-crisis-badge.crisis-buffer {
+  background: rgba(39, 135, 74, 0.20);
+  color: #5cb85c;
+  border-color: rgba(39, 135, 74, 0.35);
+}
+
+/* === 危机详情卡片 === */
+.crisis-detail-card {
+  padding: 12px 14px;
+  border-radius: 4px;
+  border: 1px solid;
+  font-family: var(--font-body);
+}
+
+.crisis-detail-card.crisis-is-warning {
+  background: rgba(184, 134, 11, 0.08);
+  border-color: rgba(184, 134, 11, 0.3);
+}
+
+.crisis-detail-card.crisis-is-countdown {
+  background: rgba(192, 57, 43, 0.08);
+  border-color: rgba(192, 57, 43, 0.3);
+}
+
+.crisis-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.crisis-detail-icon {
+  font-size: 1.1rem;
+}
+
+.crisis-detail-title {
+  flex: 1;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  color: var(--paper);
+  letter-spacing: 0.1em;
+}
+
+.crisis-detail-remaining {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: rgba(245, 240, 232, 0.7);
+  white-space: nowrap;
+}
+
+.crisis-detail-desc {
+  font-size: 0.82rem;
+  line-height: 1.7;
+  color: rgba(245, 240, 232, 0.65);
+  margin-bottom: 8px;
+}
+
+.crisis-rescue-status {
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  padding-top: 6px;
+  border-top: 1px solid rgba(245, 240, 232, 0.1);
+}
+
+.crisis-rescue-status.rescue-available {
+  color: #5cb85c;
+}
+
+.crisis-rescue-status.rescue-used {
+  color: rgba(245, 240, 232, 0.4);
+}
+
+/* === 自救选项区域 === */
+.rescue-choices-area {
+  padding: 16px 0 24px;
+  position: relative;
+}
+
+.rescue-choices-area::before {
+  content: '';
+  display: block;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  letter-spacing: 0.3em;
+  color: var(--cinnabar);
+  padding: 12px 0 16px;
+  border-top: 1px solid rgba(192, 57, 43, 0.2);
+  border-bottom: 1px solid rgba(192, 57, 43, 0.2);
+  margin-bottom: 16px;
+}
+
+.rescue-choices-area.crisis-active::before {
+  content: '⚠ 危 机 ⚠';
+  color: var(--cinnabar);
+  animation: crisisTextPulse 1.5s ease-in-out infinite;
+}
+
+.rescue-choices-area.crisis-warning-active::before {
+  content: '⚠ 最 后 警 告 ⚠';
+  color: var(--gold);
+  animation: crisisTextPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes crisisTextPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* 自救选项按钮 */
+.choice-btn.rescue-btn {
+  border-left: 3px solid var(--cinnabar);
+  background: linear-gradient(
+    90deg,
+    rgba(192, 57, 43, 0.06) 0%,
+    var(--scroll-bg) 30%
+  );
+}
+
+.choice-btn.rescue-btn:hover {
+  border-left-color: var(--cinnabar);
+  background-color: rgba(192, 57, 43, 0.08);
+  box-shadow: inset 0 0 20px rgba(192, 57, 43, 0.05);
+}
+
+.choice-btn.rescue-btn .choice-index {
+  background: var(--cinnabar);
+  color: var(--paper);
+}
+
+/* 倒计时条 */
+.rescue-countdown-bar {
+  text-align: center;
+  padding: 8px 0;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--cinnabar);
+  letter-spacing: 0.15em;
+  opacity: 0.8;
+}
+
+.rescue-countdown-bar .countdown-number {
+  display: inline-block;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--cinnabar);
+  margin: 0 4px;
+  text-shadow: 0 0 8px rgba(192, 57, 43, 0.3);
+}
+
+/* === 自救判定动画 === */
+.rescue-judgment-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(44, 44, 44, 0.85);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease forwards;
+}
+
+.rescue-judgment-text {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  letter-spacing: 0.3em;
+  color: var(--paper);
+  animation: judgmentReveal 1.5s ease forwards;
+}
+
+@keyframes judgmentReveal {
+  0% { opacity: 0; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.05); }
+  60% { transform: scale(1); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.rescue-judgment-result {
+  margin-top: 24px;
+  font-family: var(--font-body);
+  font-size: 1.1rem;
+  letter-spacing: 0.15em;
+  opacity: 0;
+  animation: fadeInUp 0.6s 1.2s ease forwards;
+}
+
+.rescue-judgment-result.rescue-success {
+  color: #5cb85c;
+}
+
+.rescue-judgment-result.rescue-failure {
+  color: var(--cinnabar);
+}
+
+/* === 降级警告弹窗 === */
+.degradation-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(20, 15, 10, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: fadeIn 0.5s ease forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.degradation-warning-title {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  font-weight: 700;
+  letter-spacing: 0.4em;
+  color: var(--cinnabar);
+  text-shadow: 0 0 30px rgba(192, 57, 43, 0.4);
+  margin-bottom: 8px;
+  text-align: center;
+  animation: degradationPulse 2s ease-in-out infinite;
+}
+
+@keyframes degradationPulse {
+  0%, 100% { text-shadow: 0 0 30px rgba(192, 57, 43, 0.4); }
+  50% { text-shadow: 0 0 50px rgba(192, 57, 43, 0.6); }
+}
+
+.degradation-subtitle {
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+  color: rgba(245, 240, 232, 0.5);
+  letter-spacing: 0.2em;
+  margin-bottom: 32px;
+}
+
+.degradation-card {
+  max-width: 400px;
+  width: 100%;
+  background: linear-gradient(135deg, rgba(60, 45, 30, 0.6), rgba(40, 30, 20, 0.8));
+  border: 1px solid rgba(196, 168, 130, 0.3);
+  border-radius: 6px;
+  padding: 24px;
+  box-shadow:
+    inset 0 0 30px rgba(0, 0, 0, 0.3),
+    0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.degradation-card-title {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  color: #d4a574;
+  letter-spacing: 0.15em;
+  text-align: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(196, 168, 130, 0.2);
+}
+
+.degradation-card-desc {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  line-height: 1.9;
+  color: rgba(245, 240, 232, 0.75);
+  text-align: justify;
+  margin-bottom: 20px;
+}
+
+.degradation-effects {
+  padding: 12px 0;
+  border-top: 1px solid rgba(196, 168, 130, 0.15);
+}
+
+.degradation-effect-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  color: rgba(245, 240, 232, 0.6);
+}
+
+.degradation-effect-item .effect-value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.degradation-effect-item .effect-value.negative {
+  color: #e74c3c;
+}
+
+.degradation-effect-item .effect-value.positive {
+  color: #5cb85c;
+}
+
+.degradation-continue-btn {
+  margin-top: 24px;
+  padding: 12px 40px;
+  background: transparent;
+  border: 1px solid rgba(196, 168, 130, 0.4);
+  border-radius: 3px;
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  color: rgba(245, 240, 232, 0.7);
+  letter-spacing: 0.15em;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-height: 48px;
+}
+
+.degradation-continue-btn:hover {
+  border-color: #d4a574;
+  color: #d4a574;
+  background: rgba(212, 165, 116, 0.08);
+}
+
+.degradation-footnote {
+  margin-top: 16px;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: rgba(245, 240, 232, 0.3);
+  letter-spacing: 0.1em;
+  font-style: italic;
+  text-align: center;
+}

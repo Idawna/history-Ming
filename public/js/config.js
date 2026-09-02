@@ -65,7 +65,17 @@ const GameState = {
   pendingChoices: null,
   // P0-1: 近臣事件追踪
   jinchenEvents: {},    // 已触发的近臣事件 { 'jc_1': 'A', 'jc_2': 'C', ... }
-  jinchenFlags: {}      // 近臣特殊标记 { jinchenCap: 30 /* 事件8选A后锁死上限 */ }
+  jinchenFlags: {},     // 近臣特殊标记 { jinchenCap: 30 /* 事件8选A后锁死上限 */ }
+  // P0-2: 死亡容错机制
+  deathWarning: 0,              // 必死/概率直接死型预警倒计时（1回合）
+  deathWarningType: 0,          // 预警类型（对应CRISIS_EVENTS key）
+  deathCooldown: {},            // 死法冷却期 { deathType: remainingTurns }
+  anchorTriggerCount: { 2: 0, 7: 0 }, // 锚点触发计数（胡案/蓝案各最多2次）
+  rescueAttempted: false,       // 当前危机是否已尝试自救
+  rescueSucceeded: false,       // 自救是否成功
+  degradationActive: false,     // 降级过渡回合标记
+  degradationType: 0,           // 降级类型（对应死法type）
+  crisisBufferActive: false     // 缓冲属性本回合是否生效
 };
 
 // ========== LABELS ==========

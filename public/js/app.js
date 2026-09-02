@@ -44,6 +44,27 @@ async function streamBotAPI(userMessage, streamTarget, options) {
       // v3.9: 动态硬禁令——明确列出本回合严禁描写的具体人物+事件
       hard_forbidden: (typeof getHardForbiddenList === 'function') ? getHardForbiddenList() : '',
       death_warning: (function(){ var w = checkDeathWarning(); return w.length ? '【死亡预警】' + w.join('、') + '——命运已在悬崖边缘，叙事中必须埋下明显的危险信号' : ''; })(),
+      // P0-2: 危机事件注入
+      crisis: (function(){
+        var cType = 0, countdown = 0, type = '';
+        if (GameState.deathWarning > 0 && GameState.deathWarningType > 0) { cType = GameState.deathWarningType; countdown = 1; type = 'warning'; }
+        else if (GameState.deathCountdown > 0 && GameState.deathCountdownType > 0) { cType = GameState.deathCountdownType; countdown = GameState.deathCountdown; type = 'countdown'; }
+        if (cType === 0 || typeof CRISIS_EVENTS === 'undefined' || !CRISIS_EVENTS[cType]) return undefined;
+        var evt = CRISIS_EVENTS[cType];
+        var rescue = (typeof RESCUE_OPTIONS !== 'undefined') ? RESCUE_OPTIONS[cType] : null;
+        return {
+          active: true,
+          type: type,
+          title: evt.title,
+          description: evt.desc,
+          remaining: countdown,
+          directive: evt.directive,
+          rescueDirections: rescue ? rescue.directions : []
+        };
+      })(),
+      // P0-2: 降级后叙事标记
+      degradationActive: GameState.degradationActive || false,
+      degradationType: GameState.degradationType || 0,
       faction_decay: (function(){ return GameState.factionDecayThisTurn ? '【阵营衰减】上回合因阵营关系过度深入（绝对值>80），自然回落：' + GameState.factionDecayThisTurn + '。叙事中可体现"树大招风""功高遭忌后关系微妙疏远"等意象，但不可直接提及数值' : ''; })(),
       favor_crash: (function(){ return GameState.favorCrashThisTurn ? '【圣眷暴跌】' + GameState.favorCrashThisTurn + '——朱元璋猜忌加深，圣眷骤降。叙事中必须体现"帝王心术""天威难测""昨日恩宠今日猜忌"等紧张意象，可描写朝臣态度转变、皇帝冷淡等细节' : ''; })(),
       // v3.8.6: 终局/死亡叙事提示注入
@@ -462,6 +483,76 @@ async function processAITurn(userChoice) {
 
   // v3.8.11: 存档当前选项用于断点恢复
   GameState.pendingChoices = choices.slice();
+
+  // P0-2: 危机回合——替换为自救选项
+  var isRescueTurn = (GameState.deathCountdown > 0 || GameState.deathWarning > 0)
+                     && !GameState.rescueAttempted
+                     && (GameState.deathCountdownType > 0 || GameState.deathWarningType > 0);
+  var crisisType = GameState.deathCountdownType || GameState.deathWarningType;
+
+  if (isRescueTurn && parsed.stateBlock && parsed.stateBlock.rescueOptions && parsed.stateBlock.rescueOptions.length > 0) {
+    choices = parsed.stateBlock.rescueOptions.slice(0, 3);
+    GameState.pendingChoices = choices.slice();
+
+    const choicesArea = renderChoices(choices, (choice, idx) => {
+      addDivider();
+      var note = document.createElement('div');
+      note.className = 'history-choice-made';
+      note.textContent = '\u25B8 ' + choice;
+      gameContainer.appendChild(note);
+
+      // 标记已尝试自救
+      GameState.rescueAttempted = true;
+
+      // 执行自救判定
+      var rescueResult = attemptRescue(crisisType);
+
+      if (rescueResult.success) {
+        // 自救成功：清除危机
+        GameState.deathCountdown = 0;
+        GameState.deathCountdownType = 0;
+        GameState.deathWarning = 0;
+        GameState.deathWarningType = 0;
+        GameState.rescueSucceeded = true;
+        showRescueJudgment(true);
+      } else {
+        // 自救失败
+        showRescueJudgment(false);
+        var downgradeResult = attemptDowngrade(crisisType);
+        if (downgradeResult.canDowngrade) {
+          // 降级而非死亡
+          GameState.degradationActive = true;
+          GameState.degradationType = crisisType;
+          // 应用降级效果
+          if (downgradeResult.effects) applyChanges(downgradeResult.effects);
+          // 清除危机
+          GameState.deathCountdown = 0;
+          GameState.deathCountdownType = 0;
+          GameState.deathWarning = 0;
+          GameState.deathWarningType = 0;
+          // 延迟显示降级弹窗（等判定动画播完）
+          setTimeout(function() { showDegradationWarning(downgradeResult); }, 2500);
+        } else {
+          // 真正的死亡——下一回合checkDeath会触发
+          // 清除预警，让下一回合的checkDeath返回真正的死亡
+          GameState.deathWarning = 0;
+          GameState.deathWarningType = 0;
+        }
+      }
+
+      processAITurn(choice);
+    });
+
+    // 添加危机横幅样式
+    choicesArea.classList.add(GameState.deathWarning > 0 ? 'crisis-warning-active' : 'crisis-active');
+    choicesArea.classList.add('rescue-choices-area');
+    // 给每个按钮加上rescue-btn样式
+    choicesArea.querySelectorAll('.choice-btn').forEach(function(btn) { btn.classList.add('rescue-btn'); });
+
+    gameContainer.appendChild(choicesArea);
+    scrollToBottom();
+    return; // 不走常规选项渲染
+  }
 
   const choicesArea = renderChoices(choices, (choice) => {
     addDivider();
