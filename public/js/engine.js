@@ -62,7 +62,10 @@ const NPC_BIRTH_DEATH = {
   '胡惟庸': { birth: null, death: 1380, personality: '中书省丞相、精明强干、野心勃勃。文官自称「下官/臣」' },
   '刘基':   { birth: 1311, death: 1375, personality: '浙东文臣、含蓄深沉、算无遗策。文官自称「下官/臣」' },
   '汤和':   { birth: 1326, death: 1395, personality: '淮西老将、谨慎低调、明哲保身。武将自称「末将」' },
-  '郭桓':   { birth: null, death: 1385, personality: '户部侍郎、贪腐案发。文官自称「下官/臣」' }
+  '郭桓':   { birth: null, death: 1385, personality: '户部侍郎、贪腐案发。文官自称「下官/臣」' },
+  // P0-1: 近臣NPC新增
+  '宋濂':   { birth: 1310, death: 1381, personality: '翰林学士承旨、太子师、"开国文臣之首"。温厚儒雅、学识渊博。文官自称「下官/臣」' },
+  '毛骧':   { birth: null, death: 1390, personality: '锦衣卫首任指挥使、凤阳定远人。阴鸷精明、对皇帝绝对忠诚。武官自称「末将/卑职」' }
 };
 
 // v3.9: NPC↔锚点绑定表——哪个NPC的命运与哪个未来锚点挂钩
@@ -74,7 +77,10 @@ const NPC_ANCHOR_LINK = {
   '李善长': { boundAnchor: 5, boundEvent: '李善长案' },
   '朱标':   { boundAnchor: 6, boundEvent: '太子之死' },
   '蓝玉':   { boundAnchor: 7, boundEvent: '蓝玉案' },
-  '朱元璋': { boundAnchor: 9, boundEvent: '朱元璋驾崩' }
+  '朱元璋': { boundAnchor: 9, boundEvent: '朱元璋驾崩' },
+  // P0-1: 近臣NPC锚点绑定
+  '宋濂':   { boundAnchor: 2, boundEvent: '胡惟庸案（因长孙宋慎牵连）' },
+  '毛骧':   { boundAnchor: 5, boundEvent: '李善长案（以"胡党"被杀）' }
 };
 
 // 1. 获取当前在世NPC列表（v3.9：信息隔离——对绑定未来锚点的NPC附加禁止指令）
@@ -89,6 +95,10 @@ function getAliveNPCs(year) {
       if (!GameState.completedAnchors || !GameState.completedAnchors.includes(1)) {
         isDead = false; // 锚点1未完成，刘伯温不算死亡
       }
+    }
+    // P0-1: 毛骧特殊处理——1382年前锦衣卫不存在，毛骧不出场
+    if (name === '毛骧' && year < 1382) {
+      isDead = true; // 未出场，不显示
     }
     if (!isDead) {
       const age = info.birth ? year - info.birth : null;
@@ -151,6 +161,92 @@ function getAllowedInstitutions(year) {
     hint += `；【严禁使用】${forbidden.join('、')}（尚未设立）`;
   }
   return hint;
+}
+
+// ========== P0-1: 近臣事件系统 ==========
+// 近臣阵营独有事件表——8个事件，分两阶段（宋濂线+毛骧线）
+// 每个事件有触发窗口、jinchen门槛、NPC代言人
+const JINCHEN_EVENTS = [
+  // 第一阶段：宋濂线（1375-1381，turn 2-16）
+  { id: 'jc_1', name: '经筵问对',   window: [5, 7],   yearRange: [1375, 1381], minJinchen: -999, npc: '宋濂' },
+  { id: 'jc_2', name: '诗会风波',   window: [8, 10],  yearRange: [1375, 1381], minJinchen: 5,     npc: '宋濂' },
+  { id: 'jc_3', name: '太子宴',     window: [10, 11], yearRange: [1375, 1381], minJinchen: -999,  npc: '宋濂' },
+  { id: 'jc_4', name: '宋濂之劫',   window: [12, 15], yearRange: [1375, 1381], minJinchen: 10,    npc: '宋濂', anchorBind: 2 },
+  // 第二阶段：毛骧线（1382-1398，turn 17+）
+  { id: 'jc_5', name: '锦衣卫约谈', window: [23, 25], yearRange: [1382, 1398], minJinchen: -999,  npc: '毛骧' },
+  { id: 'jc_6', name: '暗桩交易',   window: [27, 30], yearRange: [1382, 1398], minJinchen: 0,     npc: '毛骧' },
+  { id: 'jc_7', name: '诏狱惊魂',   window: [35, 37], yearRange: [1382, 1398], minJinchen: -999,  npc: '毛骧' },
+  { id: 'jc_8', name: '毛骧之死',   window: [38, 40], yearRange: [1382, 1398], minJinchen: -999,  npc: '毛骧', anchorBind: 5 }
+];
+
+// 检查当前回合是否有近臣事件需要触发
+function checkJinchenEvents(turn, jinchen, year) {
+  const triggered = [];
+  for (const evt of JINCHEN_EVENTS) {
+    // 已触发则跳过
+    if (GameState.jinchenEvents && GameState.jinchenEvents[evt.id]) continue;
+    // 回合窗口检查
+    if (turn < evt.window[0] || turn > evt.window[1]) continue;
+    // 年份范围检查
+    if (year < evt.yearRange[0] || year > evt.yearRange[1]) continue;
+    // jinchen最低值检查
+    if (jinchen < evt.minJinchen) continue;
+    // 锚点绑定检查（如果有anchorBind，需要当前锚点窗口内）
+    if (evt.anchorBind) {
+      const anchor = HISTORY_ANCHORS.find(a => a.id === evt.anchorBind);
+      if (!anchor || turn < anchor.start || turn > anchor.end) continue;
+    }
+    triggered.push(evt);
+  }
+  return triggered;
+}
+
+// 生成近臣事件的叙事指令（注入AI directive）
+function getJinchenEventDirective(turn, jinchen, year) {
+  const events = checkJinchenEvents(turn, jinchen, year);
+  if (events.length === 0) return '';
+  
+  const evt = events[0]; // 每回合最多触发一个近臣事件
+  let directive = `\n【近臣事件·${evt.name}】本回合必须包含此事件场景。`;
+  
+  // 根据事件ID给出场景描述和选项提示
+  switch(evt.id) {
+    case 'jc_1':
+      directive += `\n场景：经筵上，翰林学士宋濂以"《春秋》微言大义"为题考问在场官员，目光转向你。`;
+      directive += `\n选项提示：A.以经义应对请教学问(jinchen+8,zhedong+5) B.沉默不语(jinchen+2) C.以实务反驳经学空谈(jinchen-3,power+5)`;
+      break;
+    case 'jc_2':
+      directive += `\n场景：宋濂即将告老还乡，同僚们在城外别业设宴送行。有人悄悄提醒："宋学士圣眷正衰，此时沾边，恐非善策。"`;
+      directive += `\n选项提示：A.公开赴宴为宋濂赋诗送行(jinchen+10,fame+5) B.不赴宴私下赠礼(jinchen+5) C.不去划清界限(jinchen-5)`;
+      break;
+    case 'jc_3':
+      directive += `\n场景：太子朱标在东宫设小宴，邀了几位旧日文臣叙旧。宋濂也在场。席间朱标问起你对当前朝局的看法。`;
+      directive += `\n选项提示：A.直言进谏指出隐患(donggong+8,jinchen+5) B.只谈风月不涉及政事(jinchen+3) C.暗中替朱元璋说话(favor+10,donggong-8)`;
+      break;
+    case 'jc_4':
+      directive += `\n场景：胡惟庸案爆发，宋濂长孙宋慎被查出是"胡党"。有人提议连你一起查办，因为你曾与宋濂有诗文往来。`;
+      directive += `\n选项提示：A.上书力保宋濂(jinchen+15,fame+8,favor-12) B.联合数人私下求情(jinchen+8,favor-5) C.断绝来往自保(jinchen-12) D.暗中送盘缠(jinchen+5,favor-8)`;
+      break;
+    case 'jc_5':
+      directive += `\n场景：两个穿飞鱼服的人找到你，请你去锦衣卫衙门"喝茶"。毛骧亲自主持——他翻开一本册子，上面记着你近三年的行踪。`;
+      directive += `\n选项提示：A.如实回答所有问题(jinchen+10,bond-8) B.巧妙周旋滴水不漏(jinchen+3) C.断然拒绝拂袖而去(jinchen-15)`;
+      break;
+    case 'jc_6':
+      directive += `\n场景：毛骧派人送来密信，要你帮忙留意某位同僚的行迹，"为本卫最大的帮助"。`;
+      directive += `\n选项提示：A.答应做暗桩提供情报(jinchen+12,bond-12) B.将情报提前告知同僚(jinchen-10,bond+10) C.销毁密信装作没收到(jinchen-5) D.模糊回应两边下注(jinchen+3)`;
+      break;
+    case 'jc_7':
+      directive += `\n场景：你因公务经过锦衣卫诏狱，认出了其中一张脸——你的同年进士。他挣扎着喊了你的名字。锦衣卫校尉转头看向你。`;
+      directive += `\n选项提示：A.上前询问试图帮忙(jinchen-8,bond+5) B.别过脸去快步走过(jinchen+3) C.暗中记下被捕者名单(jinchen+5,bond+8)`;
+      break;
+    case 'jc_8':
+      directive += `\n场景：锦衣卫指挥使毛骧被下诏狱，罪名是"胡党余孽"。他办了一辈子案，最后自己也成了案中人。`;
+      directive += `\n选项提示：A.主动揭发毛骧以表忠心(jinchen-10,favor+10,fame-8) B.沉默不言(jinchen+5) C.暗中保全毛骧家人(jinchen-5,bond+10)`;
+      break;
+  }
+  
+  directive += `\n（选择后请调用 GameState.jinchenEvents['${evt.id}'] = 选项字母 记录已触发）`;
+  return directive;
 }
 
 // 3. 获取锚点铺垫方向（只给方向不给名称，防止剧透）
@@ -709,6 +805,11 @@ function checkDeathWarning() {
   // v3.8.5: P1-D 圣眷预警
   if (ef >= 70) warns.push('宠极生厌（圣眷过高，帝王猜忌日深）');
   else if (ef >= 40 && GameState.consecutiveHighEfTurns >= 2) warns.push('天威难测（圣眷持续偏高，功高遭忌）');
+  // P0-1: 近臣信息预警
+  if (f.jinchen >= 40 && GameState.deathCountdown > 0) {
+    warns.push('暗中有人通风报信（近臣情报优势）');
+  }
+  if (f.jinchen <= -30) warns.push('你感到被注视（锦衣卫监控）');
   return warns;
 }
 
@@ -756,6 +857,21 @@ function updateDeathTracking(narrative) {
     GameState.consecutiveHighEfTurns = 0;
   }
   applyFavorRisk();
+  // P0-1: 近臣监控压力——jinchen <= -60时每5回合种下"被盯上"种子
+  if (GameState.factions.jinchen <= -60 && turn % 5 === 0) {
+    var watchedSeed = {
+      id: '被盯上_' + turn,
+      type: '把柄暴露',
+      planted_turn: turn,
+      trigger_turn: turn + 4,
+      effect: { attributes: { power: -5, wisdom: -3 }, emperor_feeling: -8 }
+    };
+    // 避免重复种入
+    if (!GameState.seeds.some(function(s) { return s.id === watchedSeed.id; })) {
+      GameState.seeds.push(watchedSeed);
+      console.log('[近臣监控] 种下"被盯上"种子，回合', turn);
+    }
+  }
 }
 
 function getCommonEnding() {

@@ -1,5 +1,5 @@
 /* ========== FONT IMPORTS ========== */
-@import url('https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&family=Noto+Serif+SC:wght@300;400;500;600;700&family=ZCOOL+QingKe+HuangYou&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.cn/css2?family=LXGW+WenKai:wght@300;400;700&family=ZCOOL+XiaoWei&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 /* ========== RESET & BASE ========== */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -25,9 +25,9 @@
   --transition:  0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Font layers */
-  --font-display: 'ZCOOL XiaoWei', 'Songti SC', 'STSong', serif;
-  --font-body:    'Noto Serif SC', 'Songti SC', 'SimSun', serif;
-  --font-ui:      'ZCOOL QingKe HuangYou', 'PingFang SC', sans-serif;
+  --font-display: 'ZCOOL XiaoWei', 'LXGW WenKai', 'KaiTi', serif;
+  --font-body:    'LXGW WenKai', 'KaiTi', 'STKaiti', serif;
+  --font-ui:      'LXGW WenKai', 'KaiTi', 'STKaiti', serif;
   --font-mono:    'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
 }
 
@@ -93,8 +93,9 @@ body {
 
 .header-subtitle {
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.82rem;
-  font-weight: 300;
+  font-weight: 400;
   color: var(--ink-faint);
   letter-spacing: 0.15em;
 }
@@ -198,6 +199,7 @@ body {
   display: block;
   text-align: center;
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.82rem;
   color: var(--ink-faint);
   letter-spacing: 0.25em;
@@ -220,6 +222,7 @@ body {
   display: block;
   font-style: normal;
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0.3em;
@@ -252,6 +255,7 @@ body {
   display: block;
   text-align: center;
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.8rem;
   color: var(--ink-faint);
   letter-spacing: 0.15em;
@@ -350,6 +354,7 @@ body {
   border-left: 3px solid transparent;
   border-radius: 4px;
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.95rem;
   font-weight: 400;
   color: var(--ink);
@@ -476,6 +481,7 @@ body {
   border: none;
   border-radius: 4px;
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.9rem;
   cursor: pointer;
   transition: all var(--transition);
@@ -510,6 +516,7 @@ body {
   -webkit-backdrop-filter: blur(12px);
   color: var(--paper);
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.82rem;
   letter-spacing: 0.05em;
   cursor: pointer;
@@ -571,8 +578,9 @@ body {
 
 .status-section-title {
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.72rem;
-  font-weight: 300;
+  font-weight: 400;
   color: rgba(245, 240, 232, 0.5);
   letter-spacing: 0.25em;
   margin-bottom: 8px;
@@ -592,6 +600,7 @@ body {
   flex-shrink: 0;
   font-weight: 400;
   font-family: var(--font-ui);
+  font-weight: 500;
 }
 
 .attr-bar-wrap {
@@ -685,6 +694,23 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* ========== P0-1: 跷跷板阵营样式 ========== */
+.seesaw-row {
+  gap: 6px;
+}
+
+.seesaw-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  min-width: 32px;
+  text-align: center;
+}
+
+.seesaw-container {
+  position: relative;
+  flex: 1;
+}
+
 /* Emperor section */
 .emperor-section {
   display: flex;
@@ -697,6 +723,7 @@ body {
 
 .emperor-label {
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.85rem;
   color: var(--gold);
   margin-right: 12px;
@@ -759,6 +786,7 @@ body {
   padding: 6px 14px;
   border-radius: 4px;
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.82rem;
   font-weight: 500;
   background: rgba(44, 44, 44, 0.88);
@@ -803,7 +831,7 @@ body {
   font-size: 0.88rem;
   color: var(--ink-light);
   margin-bottom: 28px;
-  font-weight: 300;
+  font-weight: 400;
   line-height: 1.7;
 }
 
@@ -830,7 +858,7 @@ body {
 
 .name-input::placeholder {
   color: var(--ink-faint);
-  font-weight: 300;
+  font-weight: 400;
   letter-spacing: 0.15em;
 }
 
@@ -843,6 +871,7 @@ body {
   border: none;
   border-radius: 3px;
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.95rem;
   cursor: pointer;
   transition: all var(--transition);
@@ -863,6 +892,7 @@ body {
   border: 1px solid var(--ink-faint);
   border-radius: 3px;
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.9rem;
   cursor: pointer;
   transition: all var(--transition);
@@ -923,6 +953,7 @@ body {
   justify-content: center;
   transition: all var(--transition);
   font-family: var(--font-ui);
+  font-weight: 500;
 }
 
 .menu-btn:hover {
@@ -980,6 +1011,7 @@ body {
 
 .modal-subtitle {
   font-family: var(--font-ui);
+  font-weight: 500;
   text-align: center;
   font-size: 0.8rem;
   color: var(--ink-faint);
@@ -1023,6 +1055,7 @@ body {
   color: var(--cinnabar);
   letter-spacing: 0.1em;
   font-family: var(--font-ui);
+  font-weight: 500;
 }
 
 .slot-time {
@@ -1056,6 +1089,7 @@ body {
   color: var(--ink-light);
   border-radius: 3px;
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.8rem;
   cursor: pointer;
   transition: all var(--transition);
@@ -1081,6 +1115,7 @@ body {
   border: none;
   border-radius: 3px;
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.9rem;
   cursor: pointer;
   transition: background var(--transition);
@@ -1112,11 +1147,12 @@ body {
 .turn-info {
   text-align: center;
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.75rem;
   color: var(--ink-faint);
   letter-spacing: 0.2em;
   padding: 12px 0 4px;
-  font-weight: 300;
+  font-weight: 400;
 }
 
 /* ========== HISTORY LOG ========== */
@@ -1133,6 +1169,7 @@ body {
 
 .history-choice-made {
   font-family: var(--font-ui);
+  font-weight: 500;
   font-size: 0.8rem;
   color: var(--cinnabar);
   margin-top: 8px;

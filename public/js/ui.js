@@ -18,45 +18,69 @@ function updateStatusPanel() {
   document.getElementById('statusPacing').textContent = `${pacingIcon} ${GameState.pacing}`;
   document.getElementById('statusPosition').textContent = GameState.character.position;
 
-  // Attributes
+  // ========== P0-1: 属性区域改造（5条→2条复合指标） ==========
   const attrContainer = document.getElementById('attrRows');
   attrContainer.innerHTML = '';
-  for (const [key, label] of Object.entries(ATTR_LABELS)) {
-    const val = Math.max(0, Math.min(100, GameState.attributes[key]));
+  for (const display of DISPLAY_ATTRS) {
+    const val = Math.max(0, Math.min(100, display.formula(GameState.attributes)));
     const row = document.createElement('div');
     row.className = 'attr-row';
     row.innerHTML = `
-      <span class="attr-label">${label}</span>
+      <span class="attr-label">${display.label}</span>
       <div class="attr-bar-wrap">
-        <div class="attr-bar ${key}" style="width:${val}%"></div>
+        <div class="attr-bar ${display.key}" style="width:${val}%"></div>
       </div>
       <span class="attr-value">${val}</span>
     `;
     attrContainer.appendChild(row);
   }
+  // 智谋隐藏提示（仅当wisdom有变化时通过叙事体现，不显示数值）
 
-  // Factions
+  // ========== P0-1: 阵营区域改造（5条→2条跷跷板+近臣独立） ==========
   const factionContainer = document.getElementById('factionRows');
   factionContainer.innerHTML = '';
-  for (const [key, label] of Object.entries(FACTION_LABELS)) {
-    const val = Math.max(-100, Math.min(100, GameState.factions[key]));
-    const pct = (val + 100) / 2; // map -100~100 to 0~100
-    const color = FACTION_COLORS[key];
-    const isPositive = val >= 0;
-    const barLeft = isPositive ? '50%' : `${pct}%`;
-    const barWidth = `${Math.abs(val) / 2}%`;
+  
+  // 跷跷板阵营：朝堂格局 + 储位之争
+  for (const display of DISPLAY_FACTIONS) {
+    const leftVal = Math.max(-100, Math.min(100, GameState.factions[display.leftKey]));
+    const rightVal = Math.max(-100, Math.min(100, GameState.factions[display.rightKey]));
+    // 跷跷板值 = 左值 - 右值，归一化到 -100~100
+    const seeSaw = Math.max(-100, Math.min(100, leftVal - rightVal));
+    const pct = (seeSaw + 100) / 2; // 0~100
+    const isLeftDominant = seeSaw >= 0;
+    
     const row = document.createElement('div');
-    row.className = 'faction-row';
+    row.className = 'faction-row seesaw-row';
     row.innerHTML = `
-      <span class="faction-label">${label}</span>
-      <div class="faction-bar-container">
+      <span class="faction-label seesaw-label" style="color:${display.leftColor}">${display.leftLabel}</span>
+      <div class="faction-bar-container seesaw-container">
         <div class="faction-bar-center"></div>
-        <div class="faction-bar-fill" style="left:${barLeft};width:${barWidth};background:${color}"></div>
+        <div class="faction-bar-fill" style="left:${isLeftDominant ? '50%' : `${pct}%`};width:${Math.abs(seeSaw)/2}%;background:${isLeftDominant ? display.leftColor : display.rightColor}"></div>
       </div>
-      <span class="faction-value" style="color:${color}">${val > 0 ? '+' : ''}${val}</span>
+      <span class="faction-label seesaw-label" style="color:${display.rightColor}">${display.rightLabel}</span>
     `;
     factionContainer.appendChild(row);
   }
+  
+  // 近臣独立展示（根据年份判断代言人）
+  const jinchenRow = document.createElement('div');
+  jinchenRow.className = 'faction-row';
+  const jcVal = Math.max(-100, Math.min(100, GameState.factions.jinchen));
+  const jcPct = (jcVal + 100) / 2;
+  const jcPositive = jcVal >= 0;
+  // 根据年份判断代言人：1382年前=宋濂，1382年后=毛骧
+  const jinchenNPC = GameState.year >= 1382 ? '毛骧' : '宋濂';
+  const jcBarLeft = jcPositive ? '50%' : `${jcPct}%`;
+  const jcBarWidth = `${Math.abs(jcVal) / 2}%`;
+  jinchenRow.innerHTML = `
+    <span class="faction-label">${jinchenNPC}</span>
+    <div class="faction-bar-container">
+      <div class="faction-bar-center"></div>
+      <div class="faction-bar-fill" style="left:${jcBarLeft};width:${jcBarWidth};background:var(--jinchen)"></div>
+    </div>
+    <span class="faction-value" style="color:var(--jinchen)">${jcVal > 0 ? '+' : ''}${jcVal}</span>
+  `;
+  factionContainer.appendChild(jinchenRow);
 
   // Emperor
   const empVal = Math.max(-100, Math.min(100, GameState.emperor_feeling));
@@ -82,32 +106,68 @@ function applyPacing(pacing) {
 
 // ========== FLOATING NOTIFICATIONS ==========
 function showFloatingChanges(changes) {
+  console.log('[DEBUG] showFloatingChanges called with:', JSON.stringify(changes, null, 2));
   const container = floatingChanges;
   container.innerHTML = '';
 
   const items = [];
 
-  // Attribute changes
+  // ========== P0-1: 属性变化改造（加权转换后显示复合指标） ==========
   if (changes.attributes) {
-    for (const [key, delta] of Object.entries(changes.attributes)) {
-      if (delta !== 0) {
-        items.push({
-          text: `${delta > 0 ? '+' : ''}${delta} ${ATTR_LABELS[key] || key}`,
-          type: delta > 0 ? 'positive' : 'negative'
-        });
-      }
+    const attrs = changes.attributes;
+
+    // 官运变化 = power×0.6 + fame×0.4
+    const careerDelta = Math.round((attrs.power || 0) * 0.6 + (attrs.fame || 0) * 0.4);
+    if (careerDelta !== 0) {
+      items.push({
+        text: `${careerDelta > 0 ? '+' : ''}${careerDelta} 官运`,
+        type: careerDelta > 0 ? 'positive' : 'negative'
+      });
     }
+
+    // 人心变化 = people×0.5 + bond×0.5
+    const heartsDelta = Math.round((attrs.people || 0) * 0.5 + (attrs.bond || 0) * 0.5);
+    if (heartsDelta !== 0) {
+      items.push({
+        text: `${heartsDelta > 0 ? '+' : ''}${heartsDelta} 人心`,
+        type: heartsDelta > 0 ? 'positive' : 'negative'
+      });
+    }
+
+    // 智谋变化 → 不显示（由AI叙事体现）
+    // wisdom delta 被忽略，不生成浮动通知
   }
 
-  // Faction changes
+  // ========== P0-1: 阵营变化改造（跷跷板聚合显示） ==========
   if (changes.factions) {
-    for (const [key, delta] of Object.entries(changes.factions)) {
-      if (delta !== 0) {
-        items.push({
-          text: `${delta > 0 ? '+' : ''}${delta} ${FACTION_LABELS[key] || key}`,
-          type: delta > 0 ? 'positive' : 'negative'
-        });
-      }
+    const factions = changes.factions;
+
+    // 朝堂格局 = 淮西 - 浙东
+    const courtDelta = (factions.huaixi || 0) - (factions.zhedong || 0);
+    if (courtDelta !== 0) {
+      const label = courtDelta > 0 ? '淮西占优' : '浙东占优';
+      items.push({
+        text: `${courtDelta > 0 ? '+' : ''}${courtDelta} 朝堂·${label}`,
+        type: 'neutral'
+      });
+    }
+
+    // 储位之争 = 东宫 - 诸王
+    const successionDelta = (factions.donggong || 0) - (factions.zhuwang || 0);
+    if (successionDelta !== 0) {
+      const label = successionDelta > 0 ? '东宫占优' : '诸王占优';
+      items.push({
+        text: `${successionDelta > 0 ? '+' : ''}${successionDelta} 储位·${label}`,
+        type: 'neutral'
+      });
+    }
+
+    // 近臣单独显示
+    if (factions.jinchen && factions.jinchen !== 0) {
+      items.push({
+        text: `${factions.jinchen > 0 ? '+' : ''}${factions.jinchen} 近臣`,
+        type: factions.jinchen > 0 ? 'positive' : 'negative'
+      });
     }
   }
 
@@ -272,6 +332,7 @@ function _applySeedEffects(seeds) {
 // ========== APPLY STATE CHANGES ==========
 // v3.8.2: 新增跷跷板机制柔性化 + wisdom安全网 + ef正向收益
 function applyChanges(changes) {
+  console.log('[DEBUG] applyChanges received:', JSON.stringify(changes, null, 2));
   // ========== P1-E: 单回合数值变化上限校验 ==========
   // SP规定：普通变化±15，紧迫±25
   if (changes.attributes) {

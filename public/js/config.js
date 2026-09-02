@@ -62,7 +62,10 @@ const GameState = {
   completedAnchors: [],
   // v3.8.11: 结局终止标记 + 待处理选项存档
   gameOver: false,
-  pendingChoices: null
+  pendingChoices: null,
+  // P0-1: 近臣事件追踪
+  jinchenEvents: {},    // 已触发的近臣事件 { 'jc_1': 'A', 'jc_2': 'C', ... }
+  jinchenFlags: {}      // 近臣特殊标记 { jinchenCap: 30 /* 事件8选A后锁死上限 */ }
 };
 
 // ========== LABELS ==========
@@ -78,6 +81,48 @@ const FACTION_COLORS = {
   huaixi: 'var(--huaixi)', zhedong: 'var(--zhedong)',
   donggong: 'var(--donggong)', zhuwang: 'var(--zhuwang)', jinchen: 'var(--jinchen)'
 };
+
+// ========== P0-1: 展示层属性定义（UI精简） ==========
+// 复合公式：将5个原始属性映射为2个可见指标
+// 后端不变：AI输出仍然产出5个原始属性的delta，只在展示层做加权转换
+const DISPLAY_ATTRS = [
+  { 
+    key: 'career',       // 官运
+    label: '官运', 
+    formula: (attrs) => Math.round(attrs.power * 0.6 + attrs.fame * 0.4) 
+  },
+  { 
+    key: 'hearts',       // 人心
+    label: '人心', 
+    formula: (attrs) => Math.round(attrs.people * 0.5 + attrs.bond * 0.5) 
+  }
+  // wisdom 不显示（通过AI叙事视角体现）
+];
+
+// ========== P0-1: 展示层阵营定义（跷跷板） ==========
+// 将5个阵营映射为2条跷跷板 + 1条近臣独立展示
+const DISPLAY_FACTIONS = [
+  {
+    key: 'court',        // 朝堂格局
+    label: '朝堂格局',
+    leftLabel: '淮西',
+    rightLabel: '浙东',
+    leftKey: 'huaixi',
+    rightKey: 'zhedong',
+    leftColor: 'var(--huaixi)',
+    rightColor: 'var(--zhedong)'
+  },
+  {
+    key: 'succession',   // 储位之争
+    label: '储位之争',
+    leftLabel: '东宫',
+    rightLabel: '诸王',
+    leftKey: 'donggong',
+    rightKey: 'zhuwang',
+    leftColor: 'var(--donggong)',
+    rightColor: 'var(--zhuwang)'
+  }
+];
 
 // v3.8.5: P2-A 出身偏向阵营映射（方案C：前5回合变化减半，可通过"决裂"选项突破）
 const ORIGIN_FACTION_MAP = {
