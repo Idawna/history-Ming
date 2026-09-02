@@ -1,6 +1,8 @@
 // ========== STREAMING API CALL ==========
 // 调用后端代理，流式接收 AI 回复，逐字显示在 streamTarget 元素中
-async function streamBotAPI(userMessage, streamTarget) {
+// v3.9: 增加 buffered 参数，支持缓冲模式（不写入DOM，只累积文本）
+async function streamBotAPI(userMessage, streamTarget, options) {
+  var buffered = options && options.buffered; // 是否缓冲模式
   // 前端节奏引擎：按即将生成的回合号硬判节奏（历史锚点不再依赖AI自觉）
   const rhythm = getRhythmDirective(getNextTurn(), GameState.character.background);
   // 构造当前回合的上下文消息
@@ -39,6 +41,8 @@ async function streamBotAPI(userMessage, streamTarget) {
       path_reminder: getBackgroundPathReminder(GameState.character.background, getNextTurn()),
       surveillance_hint: getSurveillanceHint(GameState.year, getNextTurn(), GameState.character.background),
       branch_focus: getBranchFocus(getNextTurn(), GameState.character.background),
+      // v3.9: 动态硬禁令——明确列出本回合严禁描写的具体人物+事件
+      hard_forbidden: (typeof getHardForbiddenList === 'function') ? getHardForbiddenList() : '',
       death_warning: (function(){ var w = checkDeathWarning(); return w.length ? '【死亡预警】' + w.join('、') + '——命运已在悬崖边缘，叙事中必须埋下明显的危险信号' : ''; })(),
       faction_decay: (function(){ return GameState.factionDecayThisTurn ? '【阵营衰减】上回合因阵营关系过度深入（绝对值>80），自然回落：' + GameState.factionDecayThisTurn + '。叙事中可体现"树大招风""功高遭忌后关系微妙疏远"等意象，但不可直接提及数值' : ''; })(),
       favor_crash: (function(){ return GameState.favorCrashThisTurn ? '【圣眷暴跌】' + GameState.favorCrashThisTurn + '——朱元璋猜忌加深，圣眷骤降。叙事中必须体现"帝王心术""天威难测""昨日恩宠今日猜忌"等紧张意象，可描写朝臣态度转变、皇帝冷淡等细节' : ''; })(),
@@ -61,6 +65,14 @@ async function streamBotAPI(userMessage, streamTarget) {
     },
     player_action: userMessage
   };
+  
+  // v3.9: 如果有重试约束（上次违规信息），追加到上下文中
+  if (options && options.retry_constraint && options.retry_constraint.length > 0) {
+    contextPayload.retry_constraint = 
+      '【上次输出违规·必须修正】你上次的回复中包含了尚未发生的历史事件描写：' 
+      + options.retry_constraint.join('；') 
+      + '。本次回复必须严格避免上述内容。记住：这些事件在当前年份尚未发生，你只能描写当前的日常政务、人际关系和生活场景。';
+  }
 
   // 把当前玩家行动加入历史
   chatHistory.push({
@@ -117,8 +129,8 @@ async function streamBotAPI(userMessage, streamTarget) {
       const chunk = decoder.decode(value, { stream: true });
       fullText += chunk;
 
-      // 实时更新流式显示区域（过滤掉选项和状态数据，只显示叙事部分）
-      if (streamTarget) {
+      // 实时更新流式显示区域（缓冲模式下跳过DOM写入）
+      if (streamTarget && !buffered) {
         // 检测 --- 分隔符，只显示分隔符之前的叙事文本
         let displayText = fullText;
         const dividerRe = /\n[ \t]*(?:[-]{2,6}|[—]{2,6}|[-—]{2,6})[ \t]*\n/;
@@ -166,66 +178,104 @@ async function streamBotAPI(userMessage, streamTarget) {
 }
 
 // ========== TURN PROCESSOR ==========
+// v3.9: 增加自动重试机制——AI输出先缓冲，校验通过才展示给玩家
 async function processAITurn(userChoice) {
   // 前端节奏引擎：本回合目标节奏（在叙事上屏/回合推进前计算，回合号准确）
   const engineRhythm = getRhythmDirective(getNextTurn());
-  // 创建流式输出区域
-  const streamArea = document.createElement('div');
-  streamArea.className = 'stream-area';
-  const streamText = document.createElement('div');
-  streamText.className = 'stream-text';
-  streamText.innerHTML = '<span class="stream-cursor"></span>';
-  streamArea.appendChild(streamText);
-  gameContainer.appendChild(streamArea);
-  scrollToBottom();
-
-  // 流式接收 AI 回复
-  let rawOutput;
-  try {
-    rawOutput = await streamBotAPI(userChoice, streamText);
-  } catch (err) {
-    console.error('API error:', err);
-    streamArea.remove();
-    showError(`墨史官执笔踟蹰……（${err.message}）`, userChoice);
-    return;
-  }
-
-  // 流式结束，移除流式区域
-  streamArea.remove();
-
-  if (!rawOutput || !rawOutput.trim()) {
-    showError('墨史官的回复为空，请重试。', userChoice);
-    return;
-  }
-
-  // 解析完整输出
-  const parsed = parseAIOutput(rawOutput);
-
-  if (!parsed.narrative) {
-    showError('墨史官的回复格式有误，请重试。', userChoice);
-    return;
-  }
-
-  // v3.8.10: 锚点顺序校验——检测AI输出是否包含未允许锚点的关键词
-  if (typeof validateAnchorOrder === 'function') {
-    var anchorValidation = validateAnchorOrder(rawOutput);
-    if (!anchorValidation.valid) {
-      console.warn('[锚点顺序违规]', anchorValidation.violations);
-      // 强制驳回：创建 stateBlock 并设置 rejected=true
-      if (!parsed.stateBlock) parsed.stateBlock = {};
-      parsed.stateBlock.rejected = true;
-      parsed.stateBlock.rejected_reason = '锚点顺序违规：' + anchorValidation.violations.join('；');
+  
+  var MAX_RETRIES = 2;
+  var retryCount = 0;
+  var lastViolations = null;
+  var rawOutput = null;
+  var parsed = null;
+  
+  while (retryCount <= MAX_RETRIES) {
+    // 显示等待提示（首次显示"墨史官挥毫"，重试时显示"墨史官重新构思"）
+    var streamArea = document.createElement('div');
+    streamArea.className = 'stream-area';
+    const streamText = document.createElement('div');
+    streamText.className = 'stream-text';
+    
+    if (retryCount === 0) {
+      streamText.innerHTML = '<span class="stream-cursor"></span>';
+    } else {
+      var retryMessages = [
+        '墨史官搁笔沉思，似有不妥……',
+        '墨史官摇头叹气，重新铺纸……'
+      ];
+      streamText.textContent = retryMessages[Math.min(retryCount - 1, retryMessages.length - 1)];
     }
-  }
+    
+    streamArea.appendChild(streamText);
+    gameContainer.appendChild(streamArea);
+    scrollToBottom();
 
-  // v3.8.14: 死人出场校验——检测AI输出是否让已故NPC以活人身份出场
-  if (typeof validateDeadNPCs === 'function' && !parsed.stateBlock.rejected) {
-    var deadValidation = validateDeadNPCs(rawOutput, GameState.year);
+    // 缓冲模式调用AI（不写入DOM）
+    try {
+      var options = { buffered: true };
+      // 如果有上次违规信息，追加到上下文中
+      if (lastViolations && lastViolations.length > 0) {
+        options.retry_constraint = lastViolations;
+      }
+      rawOutput = await streamBotAPI(userChoice, streamText, options);
+    } catch (err) {
+      console.error('API error:', err);
+      streamArea.remove();
+      showError(`墨史官执笔踟蹰……（${err.message}）`, userChoice);
+      return;
+    }
+
+    // 移除等待提示
+    streamArea.remove();
+
+    if (!rawOutput || !rawOutput.trim()) {
+      showError('墨史官的回复为空，请重试。', userChoice);
+      return;
+    }
+
+    // 解析完整输出
+    parsed = parseAIOutput(rawOutput);
+
+    if (!parsed.narrative) {
+      showError('墨史官的回复格式有误，请重试。', userChoice);
+      return;
+    }
+
+    // v3.9: 锚点顺序校验（简化版——仅精确短语匹配）
+    var anchorValidation = { valid: true };
+    if (typeof validateAnchorOrder === 'function') {
+      anchorValidation = validateAnchorOrder(rawOutput);
+    }
+    
+    // v3.8.14: 死人出场校验
+    var deadValidation = { valid: true };
+    if (typeof validateDeadNPCs === 'function') {
+      deadValidation = validateDeadNPCs(rawOutput, GameState.year);
+    }
+
+    // 判断是否通过校验
+    if (anchorValidation.valid && deadValidation.valid) {
+      // ✅ 通过校验，跳出循环
+      break;
+    }
+    
+    // ❌ 校验失败
+    retryCount++;
+    lastViolations = [];
+    if (!anchorValidation.valid) {
+      console.warn('[锚点顺序违规·第' + retryCount + '次重试]', anchorValidation.violations);
+      lastViolations = lastViolations.concat(anchorValidation.violations);
+    }
     if (!deadValidation.valid) {
-      console.warn('[死人出场违规]', deadValidation.violations);
-      if (!parsed.stateBlock) parsed.stateBlock = {};
-      parsed.stateBlock.rejected = true;
-      parsed.stateBlock.rejected_reason = '死人出场违规：' + deadValidation.violations.join('；');
+      console.warn('[死人出场违规·第' + retryCount + '次重试]', deadValidation.violations);
+      lastViolations = lastViolations.concat(deadValidation.violations);
+    }
+    
+    if (retryCount > MAX_RETRIES) {
+      // 重试耗尽：显示降级提示
+      console.warn('[重试耗尽] 使用降级策略');
+      showRetryExhausted();
+      return;
     }
   }
 
@@ -445,6 +495,36 @@ function showError(msg, retryChoice) {
   `;
   gameContainer.appendChild(div);
   scrollToBottom();
+}
+
+// v3.9: 重试耗尽时的降级策略——显示"历史迷雾"过渡文字
+function showRetryExhausted() {
+  var fallbackTexts = [
+    '时局纷乱，消息真假难辨。你在衙署中埋首文书，外头的风声暂时平息了一些。',
+    '连日来案牍劳形，你难得清闲一日。街市上人来人往，似乎一切如常。',
+    '驿道上尘土飞扬，信使匆匆而过。你隐约感到朝中有些异动，但尚无确切消息。'
+  ];
+  var fallback = fallbackTexts[Math.floor(Math.random() * fallbackTexts.length)];
+  
+  // 创建叙事区域显示过渡文字
+  var narrativeArea = document.createElement('div');
+  narrativeArea.className = 'narrative-area';
+  var narrativeText = document.createElement('div');
+  narrativeText.className = 'narrative-text';
+  narrativeText.innerHTML = '<p>' + fallback + '</p>';
+  narrativeArea.appendChild(narrativeText);
+  gameContainer.appendChild(narrativeArea);
+  scrollToBottom();
+  
+  // 回合正常推进（但叙事内容是过渡文字）
+  GameState.turn++;
+  addTurnInfo(getYearName(GameState.year) + ' · 第' + GameState.turn + '回');
+  autoSave();
+  
+  // 显示选项
+  var DEFAULT_CHOICES = ['继续前行', '另作打算', '静观其变', '自由行动：（输入你想做的任何事）'];
+  var choices = DEFAULT_CHOICES.slice(0, 3);
+  renderChoices(choices);
 }
 
 // v3.8.11: 异步生成个性化墓志铭——确保所有结局路径都有完整墓志铭

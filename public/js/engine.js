@@ -65,7 +65,19 @@ const NPC_BIRTH_DEATH = {
   '郭桓':   { birth: null, death: 1385, personality: '户部侍郎、贪腐案发。文官自称「下官/臣」' }
 };
 
-// 1. 获取当前在世NPC列表（v3.8.14：同时注入已故黑名单）
+// v3.9: NPC↔锚点绑定表——哪个NPC的命运与哪个未来锚点挂钩
+// 用于信息隔离：当该锚点尚未发生时，在NPC描述中附加禁止指令
+const NPC_ANCHOR_LINK = {
+  '刘基':   { boundAnchor: 1, boundEvent: '刘伯温之死' },
+  '胡惟庸': { boundAnchor: 2, boundEvent: '胡惟庸案' },
+  '郭桓':   { boundAnchor: 4, boundEvent: '郭桓案' },
+  '李善长': { boundAnchor: 5, boundEvent: '李善长案' },
+  '朱标':   { boundAnchor: 6, boundEvent: '太子之死' },
+  '蓝玉':   { boundAnchor: 7, boundEvent: '蓝玉案' },
+  '朱元璋': { boundAnchor: 9, boundEvent: '朱元璋驾崩' }
+};
+
+// 1. 获取当前在世NPC列表（v3.9：信息隔离——对绑定未来锚点的NPC附加禁止指令）
 // v3.8.15修正：刘伯温之死是锚点事件1，必须等锚点完成后才算死亡
 function getAliveNPCs(year) {
   const alive = [];
@@ -81,7 +93,16 @@ function getAliveNPCs(year) {
     if (!isDead) {
       const age = info.birth ? year - info.birth : null;
       const ageStr = age ? `${age}岁` : '年龄不详';
-      alive.push(`${name}(${ageStr}，${info.personality})`);
+      var desc = info.personality;
+      
+      // v3.9: 信息隔离——如果此NPC绑定了尚未发生的锚点，附加禁止指令
+      var maxAllowed = (typeof getAllowedMaxAnchorId === 'function') ? getAllowedMaxAnchorId() : 999;
+      var link = NPC_ANCHOR_LINK[name];
+      if (link && link.boundAnchor > maxAllowed) {
+        desc += `。【叙事铁律·此人当前活跃在世】可描写其日常政务、人际交往、权力运作；严禁以任何方式描写其未来「${link.boundEvent}」相关情节（不得写其谋反/下狱/被诛/案发/赐死/牵连/病逝等结局，不得暗示其未来命运，不得以"日后""终将"等预言式笔法描写）。违反将导致本回合被驳回。`;
+      }
+      
+      alive.push(`${name}(${ageStr}，${desc})`);
     } else {
       dead.push(`${name}(卒于${info.death}年)`);
     }
@@ -179,10 +200,29 @@ function getAnchorHints(currentTurn) {
   if (forbiddenEvents.length) {
     hints.forbidden = `【严禁提及】${forbiddenEvents.join('、')}（尚未发生，不得作为已发生事件描写）`;
   }
-  // v3.8.10: 锚点顺序铁律——明确告诉AI当前允许的最大锚点
+  // v3.9: 正面引导替代负面禁止——告诉AI当前应该写什么
   var maxAllowedId = (typeof getAllowedMaxAnchorId === 'function') ? getAllowedMaxAnchorId() : HISTORY_ANCHORS[HISTORY_ANCHORS.length - 1].id;
   var maxAnchor = HISTORY_ANCHORS.find(function(a){ return a.id === maxAllowedId; });
-  hints.anchor_order_lock = '【锚点顺序铁律·最高优先级】当前允许触发的最大锚点为ID=' + maxAllowedId + '（' + (maxAnchor ? maxAnchor.name : '全部完成') + '）。严禁在叙事、选项、状态块中提到ID>' + maxAllowedId + '的任何锚点事件名称、关键词或暗示（如ID=7蓝玉案在ID=2胡惟庸案完成前严禁提及"蓝玉案""蓝玉被诛""蓝玉谋反"）。违反将导致整回合被驳回、数值不推进。';
+  var guide = '【时间线·当前焦点】叙事焦点应为「' + (maxAnchor ? maxAnchor.name : '日常政务') + '」及其相关人物的日常活动。';
+  if (maxAnchor) {
+    guide += '可以描写：' + maxAnchor.desc + '。';
+    // 列出与此锚点相关的NPC
+    var relatedNPCs = [];
+    for (var npcName in NPC_ANCHOR_LINK) {
+      if (NPC_ANCHOR_LINK[npcName].boundAnchor === maxAnchor.id) {
+        relatedNPCs.push(npcName);
+      }
+    }
+    if (relatedNPCs.length > 0) {
+      guide += '相关人物（' + relatedNPCs.join('、') + '）正处于命运转折的前夜。';
+    }
+  }
+  // 简洁的负面约束
+  var futureAnchors = HISTORY_ANCHORS.filter(function(a){ return a.id > maxAllowedId; });
+  if (futureAnchors.length > 0) {
+    guide += ' 严禁：' + futureAnchors.map(function(a){ return a.name; }).join('、') + ' 尚未发生，不得描写。';
+  }
+  hints.anchor_order_lock = guide;
   return hints;
 }
 
@@ -1022,39 +1062,28 @@ function applyFavorRisk() {
 }
 
 
-// ========== v3.8.10: 锚点顺序强制控制 ==========
+// ========== v3.9: 锚点顺序强制控制（简化版——仅精确短语匹配） ==========
 
-// 锚点关键词表（v3.8.14扩充：加入变体、错字、间接说法）
-function getAnchorKeywords(anchorId) {
-  var map = {
-    1: ['刘伯温之死', '刘伯温病逝', '刘基之死', '刘基病逝', '刘伯温被毒', '刘伯温遇害', '刘伯温薨'],
-    2: ['胡惟庸案', '胡惟庸被诛', '胡惟庸谋反', '胡案爆发', '胡惟庸事发', '胡惟庸被杀', '胡惟庸下狱', '胡案牵连'],
-    3: ['空印案', '空印案发', '空白盖印案发', '空印事发', '空白印信案'],
-    4: ['郭桓案', '郭桓贪腐', '郭桓被查', '郭桓案发', '郭恒案', '郭恒被查', '郭恒贪腐'],
-    5: ['李善长案', '李善长被赐死', '李善长赐死', '李善长案发', '李善长被杀', '李善长事败'],
-    6: ['太子之死', '朱标病逝', '太子病逝', '朱标之死', '太子薨逝', '太子驾崩', '朱标薨'],
-    7: ['蓝玉案', '蓝玉被诛', '蓝玉谋反', '蓝案爆发', '蓝玉被杀', '蓝玉下狱', '蓝玉事发'],
-    8: ['锦衣卫膨胀', '锦衣卫权力巅峰', '诏狱人满为患'],
-    9: ['朱元璋驾崩', '太祖驾崩', '朱元璋病逝', '太祖崩', '皇上驾崩']
-  };
-  return map[anchorId] || [];
-}
-
-// v3.8.14: 锚点关键人物表（用于第二层组合检测——人物名+案情词=间接提及）
-function getAnchorKeyFigures(anchorId) {
-  var map = {
-    1: { names: ['刘伯温', '刘基'], incidents: ['死', '病逝', '遇害', '被毒', '薨', '遇刺'] },
-    2: { names: ['胡惟庸'], incidents: ['谋反', '下狱', '事发', '牵连', '伏诛', '赐死', '诛杀', '案发', '罪行', '叛逆'] },
-    3: { names: ['空印'], incidents: ['事发', '查处', '追查', '案发', '舞弊', '伪造', '盖印'] },
-    4: { names: ['郭桓', '郭恒'], incidents: ['贪腐', '下狱', '事发', '牵连', '抄没', '诛杀', '查处', '罪行', '舞弊'] },
-    5: { names: ['李善长'], incidents: ['赐死', '事败', '株连', '诛杀', '谋反', '下狱', '案发', '罪行'] },
-    6: { names: ['朱标', '太子'], incidents: ['死', '病逝', '薨', '驾崩', '病故', '不治'] },
-    7: { names: ['蓝玉'], incidents: ['谋反', '下狱', '事发', '伏诛', '族灭', '诛杀', '赐死', '案发', '罪行'] },
-    8: { names: [], incidents: [] },
-    9: { names: ['朱元璋', '太祖', '皇上', '陛下'], incidents: ['驾崩', '崩', '病逝', '驾崩', '大行', '晏驾'] }
-  };
-  return map[anchorId] || { names: [], incidents: [] };
-}
+// v3.9精确短语表：每个锚点对应一组"不可能误判"的短语
+// 原则：短语必须足够特异，在正常叙事中不可能偶然出现
+var ANCHOR_EXACT_PHRASES = {
+  2: ['胡惟庸谋反', '胡惟庸被诛', '胡惟庸伏诛', '胡惟庸赐死',
+      '胡案爆发', '胡案牵连', '胡惟庸案发', '胡惟庸叛逆',
+      '胡惟庸下狱处死', '胡惟庸被杀'],
+  3: ['空印案发', '空印案爆发', '空印事发', '空白盖印案发',
+      '空白印信案', '空印案查处', '空印案追查'],
+  4: ['郭桓贪腐案', '郭桓案发', '郭桓案爆发', '郭桓贪腐被查',
+      '郭桓案牵连', '郭恒案', '郭恒贪腐案', '郭恒被查'],
+  5: ['李善长案爆发', '李善长被赐死', '李善长赐死', '李善长案发',
+      '李善长事败', '李善长案株连', '李善长被杀'],
+  6: ['太子病逝', '朱标病逝', '太子之死', '太子薨逝',
+      '朱标之死', '太子驾崩', '朱标薨', '太子病故不治'],
+  7: ['蓝玉谋反', '蓝玉被诛', '蓝玉伏诛', '蓝案爆发',
+      '蓝玉案发', '蓝玉案牵连', '蓝玉族灭', '蓝玉被杀', '蓝玉赐死'],
+  8: ['锦衣卫权力巅峰', '诏狱人满为患'],
+  9: ['朱元璋驾崩', '太祖驾崩', '太祖崩', '皇上驾崩',
+      '朱元璋病逝', '太祖晏驾']
+};
 
 // 获取当前允许的最大锚点ID（第一个未完成的锚点）
 function getAllowedMaxAnchorId() {
@@ -1082,7 +1111,7 @@ function checkAnchorCompletion() {
   }
 }
 
-// AI输出校验：检测是否包含未允许锚点的关键词（v3.8.14双层检测）
+// v3.9 AI输出校验：仅精确短语匹配，零误杀原则
 function validateAnchorOrder(rawOutput) {
   if (!GameState.completedAnchors) GameState.completedAnchors = [];
   var maxAllowedId = getAllowedMaxAnchorId();
@@ -1092,35 +1121,13 @@ function validateAnchorOrder(rawOutput) {
     var a = HISTORY_ANCHORS[i];
     if (a.id <= maxAllowedId) continue; // 已允许，跳过
     
-    // 第一层：精确关键词匹配
-    var keywords = getAnchorKeywords(a.id);
-    var found = false;
-    for (var k = 0; k < keywords.length; k++) {
-      if (rawOutput.includes(keywords[k])) {
-        violations.push('严禁提及「' + a.name + '」（关键词"' + keywords[k] + '"被检测到，该锚点尚未允许触发）');
-        found = true;
-        break;
-      }
-    }
-    if (found) continue; // 已捕获，跳过第二层
+    var phrases = ANCHOR_EXACT_PHRASES[a.id];
+    if (!phrases) continue;
     
-    // v3.8.14: 第二层——人物名+案情词组合检测（防止间接提及绕过）
-    var figures = getAnchorKeyFigures(a.id);
-    if (figures.names.length > 0 && figures.incidents.length > 0) {
-      var nameFound = null;
-      for (var n = 0; n < figures.names.length; n++) {
-        if (rawOutput.includes(figures.names[n])) {
-          nameFound = figures.names[n];
-          break;
-        }
-      }
-      if (nameFound) {
-        for (var inc = 0; inc < figures.incidents.length; inc++) {
-          if (rawOutput.includes(figures.incidents[inc])) {
-            violations.push('严禁提及「' + a.name + '」（检测到人物"' + nameFound + '"+案情词"' + figures.incidents[inc] + '"组合，该锚点尚未允许触发）');
-            break;
-          }
-        }
+    for (var p = 0; p < phrases.length; p++) {
+      if (rawOutput.includes(phrases[p])) {
+        violations.push('严禁提及「' + a.name + '」（检测到精确短语"' + phrases[p] + '"，该锚点尚未允许触发）');
+        break; // 同一锚点只报一次
       }
     }
   }
@@ -1130,7 +1137,38 @@ function validateAnchorOrder(rawOutput) {
     : { valid: true };
 }
 
-// ========== v3.8.10 END ==========
+// v3.9: 动态硬禁令——生成当前回合的具体禁止描写清单，注入 dynamic_rules
+function getHardForbiddenList() {
+  var maxAllowed = getAllowedMaxAnchorId();
+  var forbidden = [];
+  
+  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+    var a = HISTORY_ANCHORS[i];
+    if (a.id <= maxAllowed) continue; // 已允许，跳过
+    
+    // 查找绑定此锚点的NPC
+    var linkedNPCs = [];
+    for (var npcName in NPC_ANCHOR_LINK) {
+      if (NPC_ANCHOR_LINK[npcName].boundAnchor === a.id) {
+        linkedNPCs.push(npcName);
+      }
+    }
+    
+    if (linkedNPCs.length > 0) {
+      forbidden.push(
+        linkedNPCs.join('、') + '目前活跃在世，严禁描写其「' + a.name
+        + '」相关情节（不得写其谋反/被查/被诛/下狱/赐死/牵连/案发/病逝，不得暗示其未来命运，不得用预言式笔法）'
+      );
+    } else {
+      forbidden.push('严禁描写「' + a.name + '」事件（尚未发生）');
+    }
+  }
+  
+  if (!forbidden.length) return '';
+  return '【本回合硬禁令·最高优先级·违反即驳回】\n' + forbidden.join('\n');
+}
+
+// ========== v3.9 END ==========
 
 // ========== v3.8.14: 死人出场硬校验 ==========
 // NPC出场互动关键词——检测到已故NPC名字附近出现这些词，说明AI让死人"活"了
