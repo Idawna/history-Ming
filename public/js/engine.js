@@ -54,15 +54,15 @@ function getNextTurn() {
 
 // NPC生卒年表（硬编码，不再依赖AI判断）
 const NPC_BIRTH_DEATH = {
-  '朱元璋': { birth: 1328, death: 1398, personality: '多疑务实、痛恨贪腐、欣赏能臣' },
-  '朱标':   { birth: 1355, death: 1392, personality: '仁厚温和、太子、1392年病逝' },
-  '朱棣':   { birth: 1360, death: 1424, personality: '燕王、骁勇善战、野心勃勃' },
-  '蓝玉':   { birth: null, death: 1393, personality: '淮西勋贵、粗犷直接、骄横跋扈' },
-  '李善长': { birth: 1314, death: 1390, personality: '前朝旧臣、圆滑世故、优柔寡断' },
-  '胡惟庸': { birth: null, death: 1380, personality: '中书省丞相、精明强干、野心勃勃' },
-  '刘基':   { birth: 1311, death: 1375, personality: '浙东文臣、含蓄深沉、算无遗策' },
-  '汤和':   { birth: 1326, death: 1395, personality: '淮西老将、谨慎低调、明哲保身' },
-  '郭桓':   { birth: null, death: 1385, personality: '户部侍郎、贪腐案发' }
+  '朱元璋': { birth: 1328, death: 1398, personality: '多疑务实、痛恨贪腐、欣赏能臣。日常自称「咱」，朝堂自称「朕」' },
+  '朱标':   { birth: 1355, death: 1392, personality: '仁厚温和、太子、1392年病逝。自称「孤/本王」，严禁自称「朕」（朕为皇帝专属）' },
+  '朱棣':   { birth: 1360, death: 1424, personality: '燕王、骁勇善战、野心勃勃。自称「本王」' },
+  '蓝玉':   { birth: null, death: 1393, personality: '淮西勋贵、粗犷直接、骄横跋扈。武将自称「末将」' },
+  '李善长': { birth: 1314, death: 1390, personality: '前朝旧臣、圆滑世故、优柔寡断。文官自称「下官/臣」' },
+  '胡惟庸': { birth: null, death: 1380, personality: '中书省丞相、精明强干、野心勃勃。文官自称「下官/臣」' },
+  '刘基':   { birth: 1311, death: 1375, personality: '浙东文臣、含蓄深沉、算无遗策。文官自称「下官/臣」' },
+  '汤和':   { birth: 1326, death: 1395, personality: '淮西老将、谨慎低调、明哲保身。武将自称「末将」' },
+  '郭桓':   { birth: null, death: 1385, personality: '户部侍郎、贪腐案发。文官自称「下官/臣」' }
 };
 
 // 1. 获取当前在世NPC列表（代码硬控，杜绝死人复活）
@@ -836,16 +836,16 @@ function getFinaleHint() {
   if (turn >= 55 || year >= 1393) {
     var pred = predictFinaleEnding();
     if (pred.title && pred.title !== '未定') {
-      return '【终局将至】游戏即将进入最终回合。根据玩家当前状态，最可能的结局是「' + pred.title + '」。你的终局叙事必须以这一结局为基调收束全文：写 outcome 场景、回顾一生抉择、给出历史评价。严禁脱离这一基调。【墓志铭指令】请在叙事末尾另起一行写【墓志铭】后接2-3句续句，与代码提供的基础墓志铭合成完整墓志铭（总计不超过100字）。死亡结局写哀挽或定性，存活结局写一生总结或盖棺论定。';
+      return '【终局将至】游戏即将进入最终回合。最可能的结局是「' + pred.title + '」。终局叙事必须做到：(1)明确交代人物最终命运——若为死亡结局，必须写出具体死因与临终场景；若为存活结局，必须写出最终归宿与人生收束；(2)回顾本局关键抉择与转折；(3)在叙事最末尾另起一行写【墓志铭】后接2-3句对人物一生的个性化评价（系统会自动提取展示，不会混入叙事正文，总计不超过100字）。';
     } else if (pred.hint) {
-      return '【终局将至】游戏即将进入最终回合。' + pred.hint + '。你的终局叙事应根据这些倾向收束全文。';
+      return '【终局将至】游戏即将进入最终回合。' + pred.hint + '。终局叙事必须明确交代人物最终命运与归宿，并在叙事最末尾另起一行写【墓志铭】后接2-3句个性化总结（系统自动提取展示）。';
     }
   }
   // 死亡倒计时最后一轮：强化死亡叙事指令
   if (GameState.deathCountdown === 1 && GameState.deathCountdownType > 0) {
     var deathTypeIdx = GameState.deathCountdownType - 1;
     if (deathTypeIdx >= 0 && deathTypeIdx < DEATH_NAMES.length) {
-      return '【命悬一线】死亡已不可避免——最可能的结局是「' + DEATH_NAMES[deathTypeIdx] + '」。本回合叙事必须写出大厦将倾、无力回天的紧迫感和绝望感。玩家可以做最后的挣扎，但命运的齿轮已经转动。【墓志铭指令】请在叙事末尾另起一行写【墓志铭】后接2-3句续句，与代码提供的基础墓志铭合成完整墓志铭（总计不超过100字）。死亡结局写哀挽或定性，存活结局写一生总结或盖棺论定。';
+      return '【命悬一线】死亡已不可避免——最可能的结局是「' + DEATH_NAMES[deathTypeIdx] + '」。本回合叙事必须写出大厦将倾、无力回天的紧迫感和绝望感。玩家可以做最后的挣扎，但命运的齿轮已经转动。不要在叙事中写【墓志铭】标记——若角色确认死亡，系统会单独展示完整墓志铭。';
     }
   }
   return '';
@@ -926,6 +926,9 @@ function getRhythmDirective(turn, background) {
   r.directive += `①种子引爆：若本回合你判断 current_state.seeds 中某颗种子达到引爆时机，必须在JSON的 seeds_triggered 字段中写入该种子ID（如 "seeds_triggered": ["修撰日历"]），同时将节奏升级为反转并写出引爆后果及对应数值变化，种子引爆优先于历史节奏。种子存活超过8回合将自动引爆，超过5个则最早的自动引爆。`;
   r.directive += `②除此之外**必须严格按上述节奏执行，JSON 状态块中的 pacing 字段必须填写「${r.pacing}」，不可填写其他值**（前端会校验，填错则整个状态块被丢弃、数值回合全不推进）；`;
   r.directive += `③year/month 须与当前历史年份的推进逻辑一致（反转/紧迫回合参照正在发生或即将爆发的历史事件时间点；日常/沉淀回合只需保证年份单调递增，不得倒退）；`;
+  // v3.8.12: 显式告知AI当前年份，防止叙事文字中的年份与JSON状态块不一致
+  var currentYearName = getYearName(GameState.year) || ('洪武' + (GameState.year - 1367) + '年');
+  r.directive += `\n\n【⚠️年份硬控】当前回合为第${GameState.turn}回，当前年份为「${currentYearName}（${GameState.year}年）」${GameState.month ? '，当前月份为' + GameState.month + '月' : ''}。**叙事文字中提到的当前年份必须与JSON状态块的year字段完全一致**，不得出现叙事写"洪武十年"而JSON写1380这种不一致。`;
   r.directive += `④JSON 必须放在 \`{ ... }\` 代码块内，且紧跟在三个选项之后，用 \`---\` 分隔。`;
   return r;
 }

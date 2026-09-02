@@ -274,8 +274,19 @@ async function processAITurn(userChoice) {
     applyPacing(finalPacing);
   }
 
+  // v3.8.12: 年份一致性修正——锚点同步可能修改了GameState.year，但AI叙事文字中的年份可能仍是旧值
+  // 将叙事中所有"洪武X年"替换为正确的年份名称，确保情节文字与底部栏位一致
+  let fixedNarrative = parsed.narrative || '';
+  if (fixedNarrative && GameState.year) {
+    const correctYearName = getYearName(GameState.year);
+    // 替换"洪武X年"格式（X可以是数字或中文数字）
+    fixedNarrative = fixedNarrative.replace(/洪武[一二三四五六七八九十百零廿\d]+年/g, correctYearName);
+    // 同时替换纯数字年份如"1375年""1380年"等（4位数字+年）
+    fixedNarrative = fixedNarrative.replace(/\d{4}年/g, correctYearName);
+  }
+
   // 渲染叙事（驳回时使用特殊样式）
-  const narrativeHTML = narrativeToHTML(parsed.narrative);
+  const narrativeHTML = narrativeToHTML(fixedNarrative);
   const narrativeEl = renderNarrative(narrativeHTML);
   if (isRejected) {
     const textEl = narrativeEl.querySelector('.narrative-text');
@@ -292,8 +303,28 @@ async function processAITurn(userChoice) {
       // turn/year/month/age 已在前面硬校验钳制，此处不再采信AI
       GameState.pacing = finalPacing; // 节奏硬控：存档/状态面板同步最终判定值（历史锚点引擎为准，种子引爆例外）
       if (sb.character) {
+        // v3.8.12: 升职权力保底加成——记录旧品级，用于判定是否升职
+        const oldRank = GameState.character.rank;
         if (sb.character.position) GameState.character.position = sb.character.position;
         if (sb.character.rank !== undefined) GameState.character.rank = sb.character.rank;
+        // 升职判定：品级数字减小=升职（1=正一品最高，9=正九品最低，0=未入流）
+        // 从0→非0 或 高数字→低数字 视为升职
+        const newRank = GameState.character.rank;
+        let promotionSteps = 0;
+        if (oldRank === 0 && newRank > 0) {
+          promotionSteps = 1; // 从未入流到有品级，算1步
+        } else if (oldRank > 0 && newRank > 0 && newRank < oldRank) {
+          promotionSteps = oldRank - newRank;
+        }
+        if (promotionSteps > 0 && sb.changes && sb.changes.attributes) {
+          // 每步升职至少+3权势，最低+5保底
+          const minPowerBoost = Math.max(5, promotionSteps * 3);
+          const currentPowerDelta = sb.changes.attributes.power || 0;
+          if (currentPowerDelta < minPowerBoost) {
+            sb.changes.attributes.power = minPowerBoost;
+            console.log(`[升职加成] 品级 ${oldRank}→${newRank}（${promotionSteps}步），权势保底+${minPowerBoost}（AI原值${currentPowerDelta}）`);
+          }
+        }
       }
       if (sb.changes) {
         console.log('[DEBUG] parsed stateBlock.changes:', JSON.stringify(sb.changes));
@@ -348,6 +379,9 @@ async function processAITurn(userChoice) {
     return;
   }
 
+  // v3.8.11: gameOver 守卫——结局已触发则不再渲染选项
+  if (GameState.gameOver) return;
+
   // 渲染选项（驳回时给出重新选择的提示）
   await new Promise(r => setTimeout(r, isRejected ? 200 : 400));
   // 部分选项修复：解析器提取到了 1-2 个选项时，保留它们并补充默认项到 3 个；
@@ -364,6 +398,9 @@ async function processAITurn(userChoice) {
   } else {
     choices = DEFAULT_CHOICES;
   }
+
+  // v3.8.11: 存档当前选项用于断点恢复
+  GameState.pendingChoices = choices.slice();
 
   const choicesArea = renderChoices(choices, (choice) => {
     addDivider();
@@ -399,7 +436,78 @@ function showError(msg, retryChoice) {
   scrollToBottom();
 }
 
+// v3.8.11: 异步生成个性化墓志铭——确保所有结局路径都有完整墓志铭
+async function fetchEpitaphAsync(ending, deathIdx) {
+  var epitaphEl = document.getElementById('epitaph-card');
+  if (!epitaphEl) return;
+
+  try {
+    var a = GameState.attributes, f = GameState.factions;
+    var bg = GameState.character.background || '未知';
+    var pos = GameState.character.position || '未入流';
+    var turn = GameState.turn, year = GameState.year;
+
+    // 确定死因/结局
+    var fate = '';
+    if (deathIdx >= 0 && deathIdx < DEATH_NAMES.length) {
+      fate = '死因：' + DEATH_NAMES[deathIdx];
+    } else {
+      fate = '结局：' + (ending.title || '').replace(/[\[\]【】]/g, '');
+    }
+
+    // 找出最强阵营
+    var maxF = '', maxV = -999;
+    for (var k in f) { if (f[k] > maxV) { maxV = f[k]; maxF = k; } }
+    var factionLabels = {huaixi:'淮西',zhedong:'浙东',donggong:'东宫',zhuwang:'诸王',jinchen:'近臣'};
+
+    var prompt = '请为以下洪武朝人物写一段墓志铭续句（紧接底色之后），要求2-3句，不超过60字，文风古雅凝练。\n'
+      + '【人物信息】出身：' + bg + '，最终官职：' + pos + '，在位' + turn + '回合（至洪武' + year + '年）\n'
+      + '【' + fate + '】\n'
+      + '【属性】权术' + a.power + ' 人脉' + a.people + ' 智慧' + a.wisdom + ' 君臣' + a.bond + ' 名望' + a.fame + '\n'
+      + '【阵营倾向】最强：' + (factionLabels[maxF]||maxF) + '(' + maxV + ')，圣眷：' + (GameState.emperor_feeling > 0 ? '+' : '') + GameState.emperor_feeling + '\n'
+      + '【底色】' + (epitaphEl.textContent || '').replace(/[—⏳正在镌刻墓志铭…]/g, '').trim() + '\n'
+      + '请直接写出续句内容，不要加【墓志铭】标记，不要解释，只输出墓志铭文字。';
+
+    var resp = await fetch(BOT_CONFIG.proxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [
+          { role: 'system', content: '你是一位精通古典碑铭的文人，擅长为逝者撰写精炼的墓志铭。只输出墓志铭正文，不输出任何其他内容。' },
+          { role: 'user', content: prompt }
+        ]
+      })
+    });
+
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var text = await resp.text();
+    // 提取 JSON 中的 content
+    var aiText = '';
+    try {
+      var data = JSON.parse(text);
+      aiText = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+    } catch(_) {
+      aiText = text.trim();
+    }
+    aiText = aiText.replace(/【墓志铭】/g, '').trim();
+    if (aiText.length > 100) aiText = aiText.substring(0, 100) + '…';
+
+    // 更新墓志铭卡片
+    if (aiText && epitaphEl) {
+      var loadingEl = epitaphEl.querySelector('.epitaph-loading');
+      if (loadingEl) loadingEl.remove();
+      epitaphEl.innerHTML += '<br>' + aiText.replace(/\n/g, '<br>');
+    }
+  } catch(e) {
+    console.warn('[Epitaph] 生成失败:', e);
+    var loadingEl = document.querySelector('.epitaph-loading');
+    if (loadingEl) loadingEl.textContent = '';
+  }
+}
+
 function showEnding(ending, narrative) {
+  // v3.8.11: 游戏终止标记——阻止选项渲染
+  GameState.gameOver = true;
   const div = document.createElement('div');
   div.className = 'input-screen';
   // v3.8.6: 结局卡片展示AI叙事 + 代码评价
@@ -422,10 +530,15 @@ function showEnding(ending, narrative) {
     var tn = (ending.title || '').replace(/[\[\]【】]/g, '');
     if (EPITAPHS[tn]) epitaphBase = EPITAPHS[tn];
   }
+  // v3.8.11: 墓志铭始终渲染——有AI续写直接显示，否则异步生成
   var epitaphHtml = '';
   if (epitaphBase) {
-    var template = '<div class="ending-epitaph">\u2014\u2014 ' + epitaphBase;
-    if (aiEpitaph) template += '<br>' + aiEpitaph.replace(/\n/g, '<br>');
+    var template = '<div class="ending-epitaph" id="epitaph-card">\u2014\u2014 ' + epitaphBase;
+    if (aiEpitaph) {
+      template += '<br>' + aiEpitaph.replace(/\n/g, '<br>');
+    } else {
+      template += '<br><span class="epitaph-loading">⏳ 正在镌刻墓志铭…</span>';
+    }
     template += '</div>';
     epitaphHtml = template;
   }
@@ -454,16 +567,44 @@ function showEnding(ending, narrative) {
       margin: 1em 0; padding: 0 1em; line-height: 1.6;
     }
     .ending-epitaph {
-      text-align: center; color: #c4a882; font-size: 0.95em;
-      margin: 1.2em 0 0.5em; padding: 0.8em 1em;
-      border-top: 1px solid rgba(196,168,130,0.3);
-      border-bottom: 1px solid rgba(196,168,130,0.3);
-      line-height: 1.8; letter-spacing: 0.05em;
+      text-align: center; color: #d4c4a0; font-size: 1.0em;
+      margin: 1.5em auto 0.8em; padding: 1.2em 1.5em;
+      background: linear-gradient(135deg, rgba(60,45,30,0.6), rgba(40,30,20,0.8));
+      border: 1px solid rgba(196,168,130,0.35);
+      border-radius: 4px;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.2);
+      line-height: 2; letter-spacing: 0.1em;
+      font-family: "Noto Serif SC", "Source Han Serif SC", "STSong", serif;
+      position: relative;
+      max-width: 400px;
+    }
+    .ending-epitaph::before {
+      content: '\u2014\u00A0\u2014';
+      display: block;
+      color: rgba(196,168,130,0.5);
+      font-size: 0.85em;
+      margin-bottom: 0.5em;
+      letter-spacing: 0.3em;
+    }
+    .epitaph-loading {
+      display: inline-block;
+      color: rgba(196,168,130,0.5);
+      font-size: 0.85em;
+      animation: epitaphPulse 1.5s ease-in-out infinite;
+    }
+    @keyframes epitaphPulse {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
     }
   `;
   div.appendChild(style);
   gameContainer.appendChild(div);
   scrollToBottom();
+
+  // v3.8.11: 如果AI没写墓志铭续句，异步生成个性化墓志铭
+  if (epitaphBase && !aiEpitaph) {
+    fetchEpitaphAsync(ending, dIdx);
+  }
 }
 
 // ========== MAIN GAME LOOP (supports demo + live) ==========
@@ -802,24 +943,47 @@ function applySnapshot(save) {
       else if (block.type === 'narrative') gameContainer.appendChild(renderNarrative(block.html, false));
       else if (block.type === 'divider') addDivider();
     }
-    // 添加"继续"按钮，让玩家触发下一回合
+    // v3.8.11: 断点恢复——有效存档选项直接重选，否则让AI生成新回合
     addDivider();
-    const resumeBtn = document.createElement('button');
-    resumeBtn.className = 'choice-btn';
-    resumeBtn.textContent = '继续前行';
-    resumeBtn.style.margin = '1rem auto';
-    resumeBtn.style.display = 'block';
-    resumeBtn.style.opacity = '1';
-    resumeBtn.style.transform = 'none';
-    resumeBtn.style.animation = 'none';
-    resumeBtn.addEventListener('click', () => {
-      resumeBtn.remove();
-      const yearName = getYearName(GameState.year);
-      const monthNames = ['正','二','三','四','五','六','七','八','九','十','冬','腊'];
-      const context = `玩家选择继续。当前状态：第${GameState.turn}回，${yearName}${monthNames[GameState.month-1]}月。请严格依据 character_canon（角色身世铁律）与 recent_plot（前情提要）衔接剧情，生成下一回合的叙事和新选项；身世细节以 character_canon 为准，不得自行改编。`;
-      processAITurn(context);
-    });
-    gameContainer.appendChild(resumeBtn);
+    const DEFAULT_CHOICE_TEXTS = ['继续前行', '另作打算', '静观其变', '自由行动：（输入你想做的任何事）'];
+    const hasValidSavedChoices = Array.isArray(GameState.pendingChoices)
+      && GameState.pendingChoices.length > 0
+      && !GameState.pendingChoices.every(function(c) { return DEFAULT_CHOICE_TEXTS.indexOf(c) >= 0; });
+
+    if (hasValidSavedChoices) {
+      const savedChoices = GameState.pendingChoices;
+      const resumeHint = document.createElement('div');
+      resumeHint.style.cssText = 'text-align:center;color:#a89070;font-size:0.85em;margin:0.5rem 0 1rem;';
+      resumeHint.textContent = '— 上次中断于此，请选择 —';
+      gameContainer.appendChild(resumeHint);
+      const choicesArea = renderChoices(savedChoices, (choice) => {
+        resumeHint.remove();
+        choicesArea.remove();
+        const note = document.createElement('div');
+        note.className = 'history-choice-made';
+        note.textContent = '\u25b8 ' + choice;
+        gameContainer.appendChild(note);
+        processAITurn(choice);
+      });
+      gameContainer.appendChild(choicesArea);
+    } else {
+      const resumeBtn = document.createElement('button');
+      resumeBtn.className = 'choice-btn';
+      resumeBtn.textContent = '继续前行';
+      resumeBtn.style.margin = '1rem auto';
+      resumeBtn.style.display = 'block';
+      resumeBtn.style.opacity = '1';
+      resumeBtn.style.transform = 'none';
+      resumeBtn.style.animation = 'none';
+      resumeBtn.addEventListener('click', () => {
+        resumeBtn.remove();
+        const yearName = getYearName(GameState.year);
+        const monthNames = ['正','二','三','四','五','六','七','八','九','十','冬','腊'];
+        const context = `玩家选择继续。当前状态：第${GameState.turn}回，${yearName}${monthNames[GameState.month-1]}月。请严格依据 character_canon（角色身世铁律）与 recent_plot（前情提要）衔接剧情，生成下一回合的叙事和新选项；身世细节以 character_canon 为准，不得自行改编。`;
+        processAITurn(context);
+      });
+      gameContainer.appendChild(resumeBtn);
+    }
     scrollToBottom();
   }
 }

@@ -59,7 +59,10 @@ const GameState = {
   consecutiveHighEfTurns: 0,
   favorCrashThisTurn: null,
   // v3.8.10: 锚点顺序强制控制——已完成的锚点ID列表
-  completedAnchors: []
+  completedAnchors: [],
+  // v3.8.11: 结局终止标记 + 待处理选项存档
+  gameOver: false,
+  pendingChoices: null
 };
 
 // ========== LABELS ==========
