@@ -218,6 +218,17 @@ async function processAITurn(userChoice) {
     }
   }
 
+  // v3.8.14: 死人出场校验——检测AI输出是否让已故NPC以活人身份出场
+  if (typeof validateDeadNPCs === 'function' && !parsed.stateBlock.rejected) {
+    var deadValidation = validateDeadNPCs(rawOutput, GameState.year);
+    if (!deadValidation.valid) {
+      console.warn('[死人出场违规]', deadValidation.violations);
+      if (!parsed.stateBlock) parsed.stateBlock = {};
+      parsed.stateBlock.rejected = true;
+      parsed.stateBlock.rejected_reason = '死人出场违规：' + deadValidation.violations.join('；');
+    }
+  }
+
   // 判断是否为驳回（SP v3.1：rejected=true 时数值不变、回合不推进、时间不流逝）
   const isRejected = parsed.stateBlock &&
     (parsed.stateBlock.rejected === true || parsed.stateBlock.rejected === 'true');

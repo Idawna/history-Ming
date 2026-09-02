@@ -65,17 +65,36 @@ const NPC_BIRTH_DEATH = {
   '郭桓':   { birth: null, death: 1385, personality: '户部侍郎、贪腐案发。文官自称「下官/臣」' }
 };
 
-// 1. 获取当前在世NPC列表（代码硬控，杜绝死人复活）
+// 1. 获取当前在世NPC列表（v3.8.14：同时注入已故黑名单）
 function getAliveNPCs(year) {
   const alive = [];
+  const dead = [];
   for (const [name, info] of Object.entries(NPC_BIRTH_DEATH)) {
     if (year < info.death) {
       const age = info.birth ? year - info.birth : null;
       const ageStr = age ? `${age}岁` : '年龄不详';
       alive.push(`${name}(${ageStr}，${info.personality})`);
+    } else {
+      dead.push(`${name}(卒于${info.death}年)`);
     }
   }
-  return alive.length ? `【当前在世重要人物】${alive.join('；')}。已故之人严禁以活人身份出场。` : '';
+  var result = alive.length ? `【当前在世重要人物】${alive.join('；')}。` : '';
+  if (dead.length) {
+    result += `【已故人物·严禁以活人身份出场】${dead.join('、')}。这些人在当前年份已死，绝对不可让他们以活人身份出场、对话、被拜访或被提及近况。仅在回忆/追悼语境中可以提及他们的名字。违反将导致本回合被驳回。`;
+  }
+  return result;
+}
+
+// v3.8.14: 获取当前已故NPC列表（用于输出校验）
+function getDeadNPCs(year) {
+  var dead = [];
+  for (var name in NPC_BIRTH_DEATH) {
+    var info = NPC_BIRTH_DEATH[name];
+    if (year >= info.death) {
+      dead.push({ name: name, deathYear: info.death });
+    }
+  }
+  return dead;
 }
 
 // 2. 获取当前可用机构名称（制度时间窗硬控，杜绝穿帮）
@@ -989,20 +1008,36 @@ function applyFavorRisk() {
 
 // ========== v3.8.10: 锚点顺序强制控制 ==========
 
-// 锚点关键词表（用于校验AI输出）
+// 锚点关键词表（v3.8.14扩充：加入变体、错字、间接说法）
 function getAnchorKeywords(anchorId) {
   var map = {
-    1: ['刘伯温之死', '刘伯温病逝', '刘基之死', '刘基病逝'],
-    2: ['胡惟庸案', '胡惟庸被诛', '胡惟庸谋反', '胡案爆发'],
-    3: ['空印案', '空印案发', '空白盖印案发'],
-    4: ['郭桓案', '郭桓贪腐', '郭桓被查', '郭桓案发'],
-    5: ['李善长案', '李善长被赐死', '李善长赐死', '李善长案发'],
-    6: ['太子之死', '朱标病逝', '太子病逝', '朱标之死'],
-    7: ['蓝玉案', '蓝玉被诛', '蓝玉谋反', '蓝案爆发'],
+    1: ['刘伯温之死', '刘伯温病逝', '刘基之死', '刘基病逝', '刘伯温被毒', '刘伯温遇害', '刘伯温薨'],
+    2: ['胡惟庸案', '胡惟庸被诛', '胡惟庸谋反', '胡案爆发', '胡惟庸事发', '胡惟庸被杀', '胡惟庸下狱', '胡案牵连'],
+    3: ['空印案', '空印案发', '空白盖印案发', '空印事发', '空白印信案'],
+    4: ['郭桓案', '郭桓贪腐', '郭桓被查', '郭桓案发', '郭恒案', '郭恒被查', '郭恒贪腐'],
+    5: ['李善长案', '李善长被赐死', '李善长赐死', '李善长案发', '李善长被杀', '李善长事败'],
+    6: ['太子之死', '朱标病逝', '太子病逝', '朱标之死', '太子薨逝', '太子驾崩', '朱标薨'],
+    7: ['蓝玉案', '蓝玉被诛', '蓝玉谋反', '蓝案爆发', '蓝玉被杀', '蓝玉下狱', '蓝玉事发'],
     8: ['锦衣卫膨胀', '锦衣卫权力巅峰', '诏狱人满为患'],
-    9: ['朱元璋驾崩', '太祖驾崩', '朱元璋病逝']
+    9: ['朱元璋驾崩', '太祖驾崩', '朱元璋病逝', '太祖崩', '皇上驾崩']
   };
   return map[anchorId] || [];
+}
+
+// v3.8.14: 锚点关键人物表（用于第二层组合检测——人物名+案情词=间接提及）
+function getAnchorKeyFigures(anchorId) {
+  var map = {
+    1: { names: ['刘伯温', '刘基'], incidents: ['死', '病逝', '遇害', '被毒', '薨', '遇刺'] },
+    2: { names: ['胡惟庸'], incidents: ['案', '诛', '杀', '谋反', '下狱', '事发', '牵连', '伏诛'] },
+    3: { names: ['空印'], incidents: ['案', '事发', '查处', '追查'] },
+    4: { names: ['郭桓', '郭恒'], incidents: ['案', '查', '贪腐', '诛', '杀', '下狱', '事发', '牵连', '抄没'] },
+    5: { names: ['李善长'], incidents: ['案', '赐死', '诛', '杀', '事败', '赐死', '株连'] },
+    6: { names: ['朱标', '太子'], incidents: ['死', '病逝', '薨', '驾崩', '病故', '不治'] },
+    7: { names: ['蓝玉'], incidents: ['案', '诛', '杀', '谋反', '下狱', '事发', '伏诛', '族灭'] },
+    8: { names: [], incidents: [] },
+    9: { names: ['朱元璋', '太祖', '皇上', '陛下'], incidents: ['驾崩', '崩', '病逝', '驾崩', '大行', '晏驾'] }
+  };
+  return map[anchorId] || { names: [], incidents: [] };
 }
 
 // 获取当前允许的最大锚点ID（第一个未完成的锚点）
@@ -1031,7 +1066,7 @@ function checkAnchorCompletion() {
   }
 }
 
-// AI输出校验：检测是否包含未允许锚点的关键词
+// AI输出校验：检测是否包含未允许锚点的关键词（v3.8.14双层检测）
 function validateAnchorOrder(rawOutput) {
   if (!GameState.completedAnchors) GameState.completedAnchors = [];
   var maxAllowedId = getAllowedMaxAnchorId();
@@ -1041,12 +1076,35 @@ function validateAnchorOrder(rawOutput) {
     var a = HISTORY_ANCHORS[i];
     if (a.id <= maxAllowedId) continue; // 已允许，跳过
     
-    // 检查是否包含锚点关键词
+    // 第一层：精确关键词匹配
     var keywords = getAnchorKeywords(a.id);
+    var found = false;
     for (var k = 0; k < keywords.length; k++) {
       if (rawOutput.includes(keywords[k])) {
         violations.push('严禁提及「' + a.name + '」（关键词"' + keywords[k] + '"被检测到，该锚点尚未允许触发）');
+        found = true;
         break;
+      }
+    }
+    if (found) continue; // 已捕获，跳过第二层
+    
+    // v3.8.14: 第二层——人物名+案情词组合检测（防止间接提及绕过）
+    var figures = getAnchorKeyFigures(a.id);
+    if (figures.names.length > 0 && figures.incidents.length > 0) {
+      var nameFound = null;
+      for (var n = 0; n < figures.names.length; n++) {
+        if (rawOutput.includes(figures.names[n])) {
+          nameFound = figures.names[n];
+          break;
+        }
+      }
+      if (nameFound) {
+        for (var inc = 0; inc < figures.incidents.length; inc++) {
+          if (rawOutput.includes(figures.incidents[inc])) {
+            violations.push('严禁提及「' + a.name + '」（检测到人物"' + nameFound + '"+案情词"' + figures.incidents[inc] + '"组合，该锚点尚未允许触发）');
+            break;
+          }
+        }
       }
     }
   }
@@ -1057,3 +1115,75 @@ function validateAnchorOrder(rawOutput) {
 }
 
 // ========== v3.8.10 END ==========
+
+// ========== v3.8.14: 死人出场硬校验 ==========
+// NPC出场互动关键词——检测到已故NPC名字附近出现这些词，说明AI让死人"活"了
+var DEAD_NPC_INTERACTION_WORDS = [
+  '去见', '去找', '拜访', '拜见', '看望', '探望', '来到', '走到',
+  '对你说', '说道', '说：', '笑道', '叹道', '怒道', '答道', '问道',
+  '前来', '来访', '到访', '造访', '求见', '有请',
+  '坐在', '站着', '走来', '赶来', '现身', '出现',
+  '正在', '刚刚', '立刻', '马上', '派人', '传来',
+  '书信', '口信', '传话', '带来'
+];
+// 安全语境词——死人名字出现在这些语境中是合法的（回忆/追悼）
+var DEAD_NPC_SAFE_WORDS = [
+  '回忆', '回想', '想起', '追悼', '追思', '追念', '缅怀',
+  '生前', '故人', '已故', '亡故', '遗言', '遗物', '遗志', '遗训',
+  '墓地', '陵墓', '坟', '祭奠', '上香', '烧纸', '牌位', '灵位',
+  '病逝', '去世', '仙逝', '逝世', '过世', '殁', '薨', '殉',
+  '当年', '昔日', '从前', '那时', '那年', '旧事', '往事'
+];
+
+// 校验AI输出是否让已故NPC以活人身份出场
+function validateDeadNPCs(rawOutput, year) {
+  if (!year) return { valid: true };
+  var deadList = getDeadNPCs(year);
+  if (!deadList.length) return { valid: true };
+  var violations = [];
+  var WINDOW = 30; // 检测窗口（字符数）
+  
+  for (var i = 0; i < deadList.length; i++) {
+    var npc = deadList[i];
+    var name = npc.name;
+    var idx = rawOutput.indexOf(name);
+    while (idx !== -1) {
+      // 找到名字出现位置，检查上下文
+      var start = Math.max(0, idx - WINDOW);
+      var end = Math.min(rawOutput.length, idx + name.length + WINDOW);
+      var context = rawOutput.substring(start, end);
+      
+      // 检查是否有安全语境词
+      var isSafe = false;
+      for (var s = 0; s < DEAD_NPC_SAFE_WORDS.length; s++) {
+        if (context.includes(DEAD_NPC_SAFE_WORDS[s])) {
+          isSafe = true;
+          break;
+        }
+      }
+      
+      if (!isSafe) {
+        // 检查是否有互动关键词
+        var interactionFound = null;
+        for (var w = 0; w < DEAD_NPC_INTERACTION_WORDS.length; w++) {
+          if (context.includes(DEAD_NPC_INTERACTION_WORDS[w])) {
+            interactionFound = DEAD_NPC_INTERACTION_WORDS[w];
+            break;
+          }
+        }
+        if (interactionFound) {
+          violations.push('已故人物「' + name + '」(卒于' + npc.deathYear + '年)以活人身份出场（检测到"'+ interactionFound +'"，上下文："...' + context.substring(Math.max(0, context.indexOf(interactionFound) - 8), context.indexOf(interactionFound) + interactionFound.length + 8) + '..."）');
+          break; // 同一个NPC只报一次
+        }
+      }
+      
+      // 继续搜索下一个出现位置
+      idx = rawOutput.indexOf(name, idx + name.length);
+    }
+  }
+  
+  return violations.length > 0
+    ? { valid: false, violations: violations }
+    : { valid: true };
+}
+// ========== v3.8.14 死人校验 END ==========
