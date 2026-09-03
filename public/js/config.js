@@ -84,7 +84,6 @@ const GameState = {
   deathCooldown: {},            // 死法冷却期 { deathType: remainingTurns }
   anchorTriggerCount: { 2: 0, 7: 0 }, // 锚点触发计数（胡案/蓝案各最多2次）
   rescueAttempted: false,       // 当前危机是否已尝试自救
-  rescueSucceeded: false,       // 自救是否成功
   degradationActive: false,     // 降级过渡回合标记
   degradationType: 0,           // 降级类型（对应死法type）
   crisisBufferActive: false,    // 缓冲属性本回合是否生效

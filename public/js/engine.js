@@ -168,6 +168,52 @@ function plantPositiveSeed(turn) {
   }
 }
 
+// v3.8.19: 建设类行动触发正面种子（P1-5节奏曲线改进）
+// 当玩家选择建设类选项时，100%种植对应正面种子（不受概率限制）
+// actionCategory: '建设' | '社交' | '政治' | 其他（只有'建设'触发）
+function plantBuildingSeed(turn, actionCategory) {
+  if (actionCategory !== '建设') return;
+  
+  // 已有未触发的正面种子>=4个，不再额外种植（比随机上限高1）
+  var positiveCount = 0;
+  for (var i = 0; i < GameState.seeds.length; i++) {
+    var s = GameState.seeds[i];
+    if (s.type && s.type.indexOf('正面') === 0) positiveCount++;
+  }
+  if (positiveCount >= 4) {
+    console.log('[建设种子] 正面种子已满（' + positiveCount + '个），跳过种植');
+    return;
+  }
+  
+  // 根据建设类型选择对应种子
+  // 建设类选项：发展人脉→贵人提携/知己相交，积累财富→意外之喜，培养门生→民心归附/声名渐起
+  var buildingSeeds = POSITIVE_SEED_TYPES.filter(function(s) {
+    return s.type.indexOf('人脉') !== -1 || s.type.indexOf('情谊') !== -1 || 
+           s.type.indexOf('机遇') !== -1 || s.type.indexOf('声望') !== -1 || 
+           s.type.indexOf('名望') !== -1;
+  });
+  
+  if (buildingSeeds.length === 0) return;
+  
+  var seedType = buildingSeeds[Math.floor(Math.random() * buildingSeeds.length)];
+  var newSeed = {
+    id: seedType.id + '_build_' + turn,
+    type: seedType.type,
+    planted_turn: turn,
+    trigger_turn: turn + 3 + Math.floor(Math.random() * 3), // 3-5回合后触发
+    effect: JSON.parse(JSON.stringify(seedType.effect)),
+    desc: seedType.desc,
+    positive: true,
+    from_building: true // 标记为建设类触发
+  };
+  
+  // 避免重复
+  if (!GameState.seeds.some(function(s) { return s.id === newSeed.id; })) {
+    GameState.seeds.push(newSeed);
+    console.log('[建设种子] 玩家选择建设类行动，种下「' + seedType.id + '」：' + seedType.desc);
+  }
+}
+
 // ========== v3.8.15: 生活事件系统（P2-G Phase 1） ==========
 // 家庭初始化：根据出身生成初始家庭结构
 function initFamily(background) {
@@ -1052,6 +1098,7 @@ var EPITAPHS = {
   '乡望素著': '乡里称颂，口碑载道。',
   '名满天下': '天下景仰，士林楷模。',
   '全身而退': '明哲保身，善终于家。',
+  '朝中名宦': '朝堂立足，中规中矩。',
   '英年早逝': '壮志未酬，赍志而殁。',
   '封狼居胥': '勒石燕然，威震北疆。',
   '卸甲归田': '解甲归田，安然终老。',
@@ -1412,7 +1459,7 @@ function checkDeath() {
         if (GameState.deathCountdown === 0) { setCooldown(2); return 1; }
       } else if (shouldReplace(2)) {
         GameState.deathCountdown = 3; GameState.deathCountdownType = 2; setCooldown(2);
-        GameState.rescueAttempted = false; GameState.rescueSucceeded = false;
+        GameState.rescueAttempted = false;
         return -1;
       }
     }
@@ -1425,7 +1472,7 @@ function checkDeath() {
         if (GameState.deathCountdown === 0) { setCooldown(5); return 4; }
       } else if (shouldReplace(5)) {
         GameState.deathCountdown = 3; GameState.deathCountdownType = 5; setCooldown(5);
-        GameState.rescueAttempted = false; GameState.rescueSucceeded = false;
+        GameState.rescueAttempted = false;
         return -1;
       }
     }
@@ -1439,7 +1486,7 @@ function checkDeath() {
           if (GameState.deathCountdown === 0) { setCooldown(4); return 3; }
         } else if (shouldReplace(4)) {
           GameState.deathCountdown = 3; GameState.deathCountdownType = 4; setCooldown(4);
-          GameState.rescueAttempted = false; GameState.rescueSucceeded = false;
+          GameState.rescueAttempted = false;
           return -1;
         }
       }
@@ -1459,7 +1506,7 @@ function checkDeath() {
         } else if (Math.random() < p3) {
           if (shouldReplace(3)) {
             GameState.deathCountdown = 3; GameState.deathCountdownType = 3; setCooldown(3);
-            GameState.rescueAttempted = false; GameState.rescueSucceeded = false;
+            GameState.rescueAttempted = false;
             return -1;
           }
         }
@@ -1483,7 +1530,7 @@ function checkDeath() {
         } else if (Math.random() < p11) {
           if (shouldReplace(11)) {
             GameState.deathCountdown = 3; GameState.deathCountdownType = 11; setCooldown(11);
-            GameState.rescueAttempted = false; GameState.rescueSucceeded = false;
+            GameState.rescueAttempted = false;
             return -1;
           }
         }
@@ -1499,7 +1546,7 @@ function checkDeath() {
         if (GameState.deathCountdown === 0) { setCooldown(7); return 6; }
       } else if (shouldReplace(7)) {
         GameState.deathCountdown = 3; GameState.deathCountdownType = 7; setCooldown(7);
-        GameState.rescueAttempted = false; GameState.rescueSucceeded = false;
+        GameState.rescueAttempted = false;
         return -1;
       }
     }
@@ -1512,7 +1559,7 @@ function checkDeath() {
         if (GameState.deathCountdown === 0) { setCooldown(10); return 9; }
       } else if (shouldReplace(10)) {
         GameState.deathCountdown = 3; GameState.deathCountdownType = 10; setCooldown(10);
-        GameState.rescueAttempted = false; GameState.rescueSucceeded = false;
+        GameState.rescueAttempted = false;
         return -1;
       }
     }
@@ -1659,6 +1706,7 @@ function updateDeathTracking(narrative) {
       if (an.id === 7) GameState.factionPurged.huaixi = true;
       if (an.id === 5) GameState.factionPurged.zhedong = true;
       if (an.id === 6) GameState.factionPurged.donggong = true;
+      if (an.id === 8) GameState.factionPurged.jinchen = true;
     }
   }
   // v3.8.5: P1-C 阵营极端值衰减
@@ -1746,6 +1794,9 @@ function getCommonEnding() {
      check: function(){ return a.people >= 85 && a.fame >= 60 && a.power >= 30 && ef >= -10; }},
     {name:'\u6743\u503e\u671d\u91ce', desc:'\u4e00\u4eba\u4e4b\u4e0b\uff0c\u4e07\u4eba\u4e4b\u4e0a\u3002\u4f60\u7684\u6743\u52bf\u5df2\u7ecf\u5230\u4e86\u4eba\u81e3\u7684\u9876\u5cf0\u2014\u2014\u671d\u5803\u5927\u5c0f\u4e8b\u52a1\u7686\u7531\u4f60\u5b9a\u593a\uff0c\u516d\u90e8\u5c1a\u4e66\u89c1\u4e86\u4f60\u8981\u7ed5\u8def\u8d70\u3002\u4f46\u4f60\u5fc3\u91cc\u6e05\u695a\uff0c\u8fd9\u4efd\u6743\u52bf\u6765\u81ea\u6731\u5143\u7490\u7684\u4fe1\u4efb\uff0c\u4e5f\u53ef\u80fd\u5728\u67d0\u4e00\u5929\u88ab\u6536\u56de\u3002\u4f60\u7ad9\u5728\u4e86\u4eba\u81e3\u7684\u6700\u9ad8\u5904\uff0c\u4e5f\u7ad9\u5728\u4e86\u60ac\u5d16\u7684\u6700\u8fb9\u7f18\u3002\u540e\u4e16\u53f2\u5bb6\u8bc4\u4f60\uff1a\u201c\u6743\u503e\u4e00\u65f6\uff0c\u800c\u4e0d\u80fd\u81ea\u4fdd\u3002\u201d',
      check: function(){ return a.power >= 85 && a.wisdom >= 60 && ef >= -20 && countFactionsGTE(30) >= 2; }},
+    // v3.8.18: 填补fame 60-85区间覆盖间隙——中等偏上但无突出属性
+    {name:'朝中名宦', desc:'朝中名宦。你在这盘棋里不算赢家，却也没有输。洪武朝的风云变幻中，你凭借能力和谨慎站稳了脚跟。同僚敬重你，皇帝信任你，百姓记得你。你没有成为改变历史的人，但历史因为你的存在而少了几分残酷。百年之后，《明史》或许不会为你立传，但在那些你经手的公文、你庇护过的同僚、你治理过的城池里，你的痕迹一直都在。',
+     check: function(){ return a.fame >= 60 && a.fame < 85 && a.wisdom >= 50 && a.wisdom < 70 && a.power >= 30 && a.power < 85 && a.people >= 40 && a.people < 85 && GameState.attributes.bond >= 35 && GameState.attributes.bond < 60; }},
     {name:'\u906e\u81ed\u4e07\u5e74', desc:'\u4e07\u4eba\u5524\u9a82\uff0c\u5978\u4f5e\u4e4b\u540d\u3002\u4f60\u7684\u540d\u5b57\u6210\u4e86\u8d2a\u5b98\u6c61\u540f\u7684\u4ee3\u540d\u8bcd\uff0c\u7559\u4e0b\u5343\u53e4\u9a82\u540d\u3002\u4f60\u7684\u5e9c\u90b8\u91cc\u5806\u6ee1\u4e86\u94f6\u5b50\u548c\u7ee2\u7ef8\uff0c\u4f46\u6bcf\u4e2a\u4eba\u770b\u5230\u4f60\u90fd\u7ed5\u7740\u8d70\u3002\u4f60\u7684\u540d\u5b57\u88ab\u5199\u8fdb\u4e86\u300a\u59e5\u81e3\u4f20\u300b\uff0c\u4e0e\u5386\u4ee3\u5978\u81e3\u5e76\u5217\u3002\u540e\u4eba\u8bfb\u5230\u4f60\u7684\u6545\u4e8b\uff0c\u4f1a\u5578\u7136\u53d1\u7b11\uff0c\u7136\u540e\u8b66\u9192\u81ea\u5df1\u4e0d\u8981\u6210\u4e3a\u8fd9\u6837\u7684\u4eba\u3002',
      check: function(){ return a.fame <= 25 && a.power >= 50 && GameState.attributes.bond <= 25; }},
     {name:'\u4e71\u4e16\u9690\u8005', desc:'\u5f52\u9690\u6797\u6cc9\uff0c\u4e0d\u95ee\u671d\u5803\u3002\u4f60\u653e\u5f03\u4e86\u529f\u540d\u5bcc\u8d35\uff0c\u5728\u5c71\u6c34\u95f4\u627e\u5230\u4e86\u5185\u5fc3\u7684\u5b81\u9759\u3002\u4f60\u7684\u5c0f\u5c4b\u5750\u843d\u5728\u5c71\u811a\u4e0b\uff0c\u95e8\u524d\u6709\u4e00\u4e1b\u7aff\u3001\u4e00\u5f20\u7434\u3002\u5076\u5c14\u6709\u8fc7\u8def\u7684\u6e14\u7fc1\u6765\u6263\u95e8\uff0c\u4f60\u4fbf\u4e0e\u4ed6\u5bf9\u996e\u51e0\u676f\u3002\u671d\u5802\u4e0a\u7684\u98ce\u4e91\u518d\u4e5f\u4e0e\u4f60\u65e0\u5173\u3002\u4f60\u662f\u6d2a\u6b66\u671d\u6700\u4e0d\u8d77\u773c\u7684\u4eba\uff0c\u4e5f\u662f\u552f\u4e00\u771f\u6b63\u81ea\u7531\u7684\u4eba\u3002',
@@ -1758,13 +1809,31 @@ function getCommonEnding() {
     // v3.8.17: 瘦身"全身而退"描述——去掉家族相关措辞（子孙安全/家族延续），家庭维度由传承结局负责
     {name:'\u5168\u8eab\u800c\u9000', desc:'\u5e73\u6de1\u662f\u798f\uff0c\u5584\u7ec8\u3002\u4f60\u6ca1\u6709\u5efa\u4e0b\u4e0d\u4e16\u529f\u4e1a\uff0c\u4f46\u5e73\u5e73\u5b89\u5b89\u5ea6\u8fc7\u4e86\u8fd9\u4e2a\u6ce1\u8840\u65f6\u4ee3\u3002\u5728\u6d2a\u6b66\u671d\uff0c\u80fd\u6d3b\u7740\u79bb\u5f00\u5c31\u662f\u6700\u5927\u7684\u80dc\u5229\u3002\u591a\u5c11\u663e\u8d6b\u7684\u540d\u81e3\u6ca1\u80fd\u505a\u5230\u8fd9\u4e00\u70b9\u2014\u2014\u4ed6\u4eec\u7684\u540d\u5b57\u88ab\u62b9\u53bb\uff0c\u4ed6\u4eec\u7684\u5bb6\u65cf\u88ab\u6e05\u7b97\u3002\u800c\u4f60\uff0c\u5e73\u5e73\u65e0\u5947\u5730\u6d3b\u4e86\u4e0b\u6765\u3002',
      check: function(){ return a.power >= 30 && a.power <= 60 && ef >= -10 && allFactionsGTE(-30) && allFactionsLTE(40) && GameState.attributes.bond >= 50; }},
-    // v3.8.1: 英年早逝——非暴力死亡，壮志未酬
-    {name:'英年早逝', desc:'壮志未酬，赍志而殁。你没能在这个波澜壮阔的时代留下自己的印记，便在默默无闻中走到了终点。你的名字没有出现在任何重要的历史文件中，你的面孔没有被任何人画下。你活过、努力过、挣扎过，但这个时代太大了，大到足以吞没一个普通人的一切。你的故事，就是无数个没有故事的人的故事。',
-     check: function(){ return a.power <= 15 && GameState.attributes.bond <= 20 && a.people <= 25 && a.fame <= 20; }},
+    // v3.8.18: 英年早逝——放宽条件对齐预警阈值，加变体叙事
+    {name:'英年早逝',
+     desc: (function(){
+       if (a.power >= 30 || a.wisdom >= 50) {
+         return '壮志未酬，赍志而殁。你有过抱负，也有过机会——但洪武朝的风暴太大了，你还没来得及施展就已经被吞没。你倒下时，朝堂上没有人为你停步，奏章里你的名字很快被下一个名字覆盖。但这个时代记得你挣扎过的痕迹，哪怕那痕迹只是公文堆里一道被驳回的奏疏。';
+       } else {
+         return '赍志而殁，无声无息。你没能在这个波澜壮阔的时代留下自己的印记，便在默默无闻中走到了终点。你的名字没有出现在任何重要的历史文件中，你的面孔没有被任何人画下。你活过、努力过、挣扎过，但这个时代太大了，大到足以吞没一个普通人的一切。你的故事，就是无数个没有故事的人的故事。';
+       }
+     })(),
+     check: function(){ return a.power <= 20 && GameState.attributes.bond <= 25 && a.people <= 30 && a.fame <= 25; }},
     // v3.8.17 P1-5修复：传承结局已拆出到独立的 getLegacyEnding()，不再与通用结局竞争优先级
     // 通用结局列表现在只包含事业/庙堂维度的结局
     // 同时瘦身"全身而退"描述：去掉家族相关措辞，家庭维度由传承结局负责
   ];
+  // v3.8.18: 动态兜底"洪武落幕"——根据属性生成3种变体叙事
+  var fallbackDesc;
+  if (a.power >= 40 && a.power >= a.fame && a.power >= a.wisdom) {
+    fallbackDesc = '你手握权柄却未名动天下。洪武朝的棋盘上，你是那些默默运转的齿轮之一——没有显赫的名声，没有惊天的手笔，但在那些你经手的政务、你协调的纷争、你维持的秩序里，帝国因为你的存在而多稳了一分。你没有成为史书上浓墨重彩的一笔，但洪武朝的每一天，都有你留下的痕迹。';
+  } else if (ef <= -10) {
+    fallbackDesc = '帝王的猜忌像一柄悬在头顶的刀，你在这柄刀下走了几十年。圣眷早已不复当年，同僚们渐渐疏远了你，奏疏石沉大海，召对日渐稀少。你还在这朝堂上，但已经没有人记得你曾经被信任过。洪武三十一年，太祖驾崩。对你而言，那柄悬了半辈子的刀，终于落下了——只是落下的不是刀刃，而是无尽的疲惫。';
+  } else {
+    fallbackDesc = '洪武三十一年，太祖驾崩。建文帝即位，改元建文。你的洪武仕途在此画上句号——没有惊天动地的功业，也没有身败名裂的悲剧。你在一个最残酷的时代平平安安地走完了全程，这本身就已经是难得的运气。身后功过，留与青史。';
+  }
+  endings.push({name:'\u6d2a\u6b66\u843d\u5e55', desc: fallbackDesc,
+    check: function(){ return true; }});
   for (var i = 0; i < endings.length; i++) {
     if (endings[i].check()) return endings[i];
   }
@@ -1935,7 +2004,8 @@ function predictFinaleEnding() {
   var a = GameState.attributes, f = GameState.factions, ef = GameState.emperor_feeling;
   // 简单启发式：根据最高属性/阵营给出倾向
   var hints = [];
-  if (a.fame >= 70) hints.push('名望较高，可能走向"青史留名"或"名满天下"');
+  if (a.fame >= 85) hints.push('名望极高，可能走向"青史留名"');
+  else if (a.fame >= 60) hints.push('名望较高，可能走向"朝中名宦"或"民心所向"');
   if (a.wisdom >= 75) hints.push('智慧突出，可能走向"智绝天下"或"帝师"');
   if (a.power >= 70) hints.push('权势显赫，可能走向"权倾朝野"或"封狼居胥"');
   if (a.people >= 70) hints.push('人脉深厚，可能走向"民心所向"或"富甲一方"');
@@ -2050,7 +2120,7 @@ function getRhythmDirective(turn, background) {
     // 空白期前/中段 → 📜日常（蒙太奇快进）
     var breathNote = isBreathing ? '（锚点事件刚落幕不久，百姓与官员都在喘息——叙事中融入战后/案后余韵、民间恢复、角色日常生活的温度，不必急于推进新危机）' : '（常规政务 + 时间快进）';
     r = { pacing: '日常', directive:
-      `【节奏指令·硬控】本回合无历史锚点临近，节奏为📜日常${breathNote}：叙事500-900字，平稳扎实、生活化细节，岁月流转；给4个经营型选项（探索/社交/官场/经营均可）；⏰时间**必须推进6-12个月**，允许蒙太奇式快进（「半年过去」「年关将至」「次年春」「转眼间已是洪武X年」），本回合的核心任务是推进年份向下一个历史锚点靠拢。所有出场人物、机构、制度必须符合当前年份的真实历史。` };
+      `【节奏指令·硬控】本回合无历史锚点临近，节奏为📜日常${breathNote}：叙事500-900字，平稳扎实、生活化细节，岁月流转；给4个经营型选项——其中至少1个必须是**建设类**选项（发展人脉/积累财富/培养门生/经营产业等），这些选择会在后续大案期成为自保资源；⏰时间**必须推进6-12个月**，允许蒙太奇式快进（「半年过去」「年关将至」「次年春」「转眼间已是洪武X年」），本回合的核心任务是推进年份向下一个历史锚点靠拢。所有出场人物、机构、制度必须符合当前年份的真实历史。` };
     }
     // v3.6: warrior acceleration (preserved)
     if (background === '淮西武将之后') {

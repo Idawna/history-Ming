@@ -506,7 +506,7 @@ function _applySeedEffects(seeds) {
 
 // ========== APPLY STATE CHANGES ==========
 // v3.8.2: 新增跷跷板机制柔性化 + wisdom安全网 + ef正向收益
-function applyChanges(changes) {
+function applyChanges(changes, narrative) {
   console.log('[DEBUG] applyChanges received:', JSON.stringify(changes, null, 2));
   // ========== P1-E: 单回合数值变化上限校验 ==========
   // SP规定：普通变化±15，紧迫±25
@@ -577,6 +577,16 @@ function applyChanges(changes) {
   if (changes.faction_break) {
     console.log('[出身锁定] 玩家选择决裂/投靠选项，跳过减半（faction_break=true）');
     delete changes.faction_break; // 清理，防止传入后续逻辑
+  }
+
+  // ========== v3.8.19: 建设类行动触发正面种子（P1-5节奏曲线改进） ==========
+  // 当AI标记 action_category 为"建设"时，100%种植对应正面种子
+  if (changes.action_category) {
+    console.log('[行动分类] AI标记本回合行动类型: ' + changes.action_category);
+    if (typeof plantBuildingSeed === 'function') {
+      plantBuildingSeed(GameState.turn, changes.action_category);
+    }
+    delete changes.action_category; // 清理，防止传入后续逻辑
   }
 
   // ========== 方案A：每回合代价检查 ==========
@@ -830,16 +840,26 @@ function applyChanges(changes) {
     GameState.factions[fk] = Math.min(100, GameState.factions[fk] + fb);
   }
 
-  // P2-C: AI 标记争议文字（文字狱风险）
+  // P2-C: AI 标记争议文字（文字狱风险）+ 关键词兜底
   if (changes.controversial_text === true) {
     GameState.wroteControversialText = true;
     console.log('[文字狱] AI 标记本回合存在争议文字');
+  } else if (narrative && !GameState.wroteControversialText) {
+    if (/上疏.*諫|直言.*进谏|触怒.*龙颜|犯颜|奏疏.*激烈|文字.*获罪|争议.*文字/i.test(narrative)) {
+      GameState.wroteControversialText = true;
+      console.log('[文字狱-兜底] 叙事关键词触发: 争议文字');
+    }
   }
 
-  // P2-E: AI 标记出征事件（封狼居胥需要出征≥2次）
+  // P2-E: AI 标记出征事件（封狼居胥需要出征≥2次）+ 关键词兜底
   if (changes.expedition === true) {
     GameState.expeditionCount++;
     console.log('[出征] 第 ' + GameState.expeditionCount + ' 次出征');
+  } else if (narrative && GameState.expeditionCount < 3) {
+    if (/率军北伐|出征.*塞外|北伐.*出征|远征.*大漠|率师.*北征|凯旋.*回朝|出征.*蒙元/i.test(narrative)) {
+      GameState.expeditionCount++;
+      console.log('[出征-兜底] 叙事关键词触发: 第 ' + GameState.expeditionCount + ' 次出征');
+    }
   }
 
   // ========== v3.8.16 Phase 2: 婚姻选择处理 ==========

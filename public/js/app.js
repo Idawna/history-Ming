@@ -587,7 +587,7 @@ async function processAITurn(userChoice) {
       }
       if (sb.changes) {
         console.log('[DEBUG] parsed stateBlock.changes:', JSON.stringify(sb.changes));
-        applyChanges(sb.changes);
+        applyChanges(sb.changes, parsed.narrative || '');
       }
       // v3.8: 死亡追踪更新 + 即时死亡判定
       updateDeathTracking(parsed.narrative || '');
@@ -690,7 +690,6 @@ async function processAITurn(userChoice) {
         GameState.deathCountdownType = 0;
         GameState.deathWarning = 0;
         GameState.deathWarningType = 0;
-        GameState.rescueSucceeded = true;
         showRescueJudgment(true);
       } else {
         // 自救失败
