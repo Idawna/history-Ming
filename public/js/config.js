@@ -88,7 +88,9 @@ const GameState = {
   degradationType: 0,           // 降级类型（对应死法type）
   crisisBufferActive: false,    // 缓冲属性本回合是否生效
   // v3.8.17: 上下文优化 Phase 2 — 前情提要滚动摘要
-  plotSummary: ''
+  plotSummary: '',
+  // v3.8.19: 阶段性成就系统 — 上次触发成就的锚点ID（防重复）
+  lastAnchorAchieved: 0
 };
 
 // ========== LABELS ==========

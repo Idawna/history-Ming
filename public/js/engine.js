@@ -2414,3 +2414,81 @@ function validateDeadNPCs(rawOutput, year) {
     : { valid: true };
 }
 // ========== v3.8.14 死人校验 END ==========
+
+// ========== v3.8.19 阶段性成就系统 START ==========
+/**
+ * 检测锚点切换并生成阶段性成就评价
+ * 触发条件：当前 turn 从一个锚点的 end+2 跨入下一锚点的 start-3（缓冲期）
+ * @param {number} turn - 当前回合号
+ * @returns {object|null} - 成就信息 { anchorName, tier, text, bonus } 或 null
+ */
+function generateAnchorAchievement(turn) {
+  if (!GameState.lastAnchorAchieved && GameState.lastAnchorAchieved !== 0) {
+    GameState.lastAnchorAchieved = 0;
+  }
+
+  // 找到刚完成的锚点：turn == anchor.end + 3（即完成后的第一个缓冲回合）
+  var completedAnchor = null;
+  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+    var a = HISTORY_ANCHORS[i];
+    // 锚点在 end+2 被标记完成，成就在 end+3 触发（即进入缓冲期第一回合）
+    if (turn === a.end + 3 && GameState.lastAnchorAchieved !== a.id) {
+      completedAnchor = a;
+      break;
+    }
+  }
+
+  if (!completedAnchor) return null;
+
+  // 找到玩家当前属性最高值及对应名称
+  var attrs = GameState.attributes;
+  var attrEntries = [
+    { key: 'power',  label: '权势' },
+    { key: 'people', label: '民心' },
+    { key: 'wisdom', label: '智谋' },
+    { key: 'bond',   label: '情义' },
+    { key: 'fame',   label: '声望' }
+  ];
+  var maxAttr = attrEntries[0];
+  for (var j = 1; j < attrEntries.length; j++) {
+    if (attrs[attrEntries[j].key] > attrs[maxAttr.key]) {
+      maxAttr = attrEntries[j];
+    }
+  }
+  var maxVal = attrs[maxAttr.key];
+
+  // 根据最高属性值生成成就文案
+  var tier, text, bonus;
+  if (maxVal >= 60) {
+    tier = '卓越';
+    text = '你在「' + completedAnchor.name + '」中展现了卓越的' + maxAttr.label + '，声望远播朝野。';
+    bonus = 3;
+  } else if (maxVal >= 40) {
+    tier = '稳健';
+    text = '你在「' + completedAnchor.name + '」中全身而退，积累了不少经验。';
+    bonus = 2;
+  } else {
+    tier = '幸存';
+    text = '「' + completedAnchor.name + '」的风波让你心有余悸，但你活了下来。';
+    bonus = 1;
+  }
+
+  // 应用奖励：最高属性 +bonus
+  attrs[maxAttr.key] = Math.min(100, attrs[maxAttr.key] + bonus);
+
+  // 记录已触发，防止重复
+  GameState.lastAnchorAchieved = completedAnchor.id;
+
+  console.log('[成就] 锚点「' + completedAnchor.name + '」完成，成就等级：' + tier + '，' + maxAttr.label + '+' + bonus);
+
+  return {
+    anchorName: completedAnchor.name,
+    anchorId: completedAnchor.id,
+    tier: tier,
+    text: text,
+    bonusAttr: maxAttr.key,
+    bonusLabel: maxAttr.label,
+    bonus: bonus
+  };
+}
+// ========== v3.8.19 阶段性成就系统 END ==========

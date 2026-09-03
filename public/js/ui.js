@@ -930,6 +930,26 @@ function applyChanges(changes, narrative) {
     GameState.currentFamilyCrisis = null;
   }
 
+  // ========== v3.8.19: 阶段性成就系统 ==========
+  if (typeof generateAnchorAchievement === 'function') {
+    var achievement = generateAnchorAchievement(GameState.turn);
+    if (achievement) {
+      console.log('[成就系统] 触发成就:', achievement.text);
+      // 用浮动通知展示成就（复用 float-notify 机制）
+      var achContainer = document.querySelector('.floating-changes') || floatingChanges;
+      var achEl = document.createElement('div');
+      achEl.className = 'float-notify positive';
+      achEl.style.fontSize = '0.95rem';
+      achEl.style.padding = '8px 14px';
+      achEl.style.maxWidth = '280px';
+      achEl.style.whiteSpace = 'normal';
+      achEl.style.lineHeight = '1.4';
+      achEl.textContent = '🏆 ' + achievement.text + '（' + achievement.bonusLabel + '+' + achievement.bonus + '）';
+      achContainer.appendChild(achEl);
+      setTimeout(function() { achEl.remove(); }, 4000);
+    }
+  }
+
   updateStatusPanel();
   showFloatingChanges(changes);
   // ef加成单独飘字提示
