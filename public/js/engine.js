@@ -83,6 +83,243 @@ const NPC_ANCHOR_LINK = {
   '毛骧':   { boundAnchor: 5, boundEvent: '李善长案（以"胡党"被杀）' }
 };
 
+// ========== v3.8.15: 正面种子系统（D） ==========
+// 正面种子类型：在日常/缓冲回合中有概率种下，给玩家带来正面收益
+var POSITIVE_SEED_TYPES = [
+  { id: '贵人提携', type: '正面·人脉', effect: { attributes: { power: 5, people: 3 } }, desc: '一位朝中前辈主动指点你官场门道' },
+  { id: '民心归附', type: '正面·声望', effect: { attributes: { people: 5, fame: 3 } }, desc: '你的善举在民间传开，百姓口口相传' },
+  { id: '知己相交', type: '正面·情谊', effect: { attributes: { bond: 5, wisdom: 2 } }, desc: '偶遇一位志趣相投的同僚，引为知己' },
+  { id: '意外之喜', type: '正面·机遇', effect: { attributes: { wisdom: 4, power: 2 } }, desc: '偶然获得一份有价值的信息或资源' },
+  { id: '声名渐起', type: '正面·名望', effect: { attributes: { fame: 5, people: 2 } }, desc: '你的才干逐渐为人所知，名声在外' }
+];
+
+// 种植正面种子：仅在日常/缓冲回合、种子数<2时、15%概率触发
+function plantPositiveSeed(turn) {
+  // 检查当前节奏是否适合种正面种子（日常或缓冲）
+  var pacing = GameState.pacing;
+  if (pacing !== '日常' && pacing !== '缓冲') return;
+  
+  // 已有未触发的正面种子>=2个，不再种植
+  var positiveCount = 0;
+  for (var i = 0; i < GameState.seeds.length; i++) {
+    var s = GameState.seeds[i];
+    if (s.type && s.type.indexOf('正面') === 0) positiveCount++;
+  }
+  if (positiveCount >= 2) return;
+  
+  // 15%概率种植
+  if (Math.random() >= 0.15) return;
+  
+  // 随机选一种正面种子
+  var seedType = POSITIVE_SEED_TYPES[Math.floor(Math.random() * POSITIVE_SEED_TYPES.length)];
+  var newSeed = {
+    id: seedType.id + '_' + turn,
+    type: seedType.type,
+    planted_turn: turn,
+    trigger_turn: turn + 3 + Math.floor(Math.random() * 3), // 3-5回合后触发
+    effect: JSON.parse(JSON.stringify(seedType.effect)), // 深拷贝
+    desc: seedType.desc,
+    positive: true
+  };
+  
+  // 避免重复
+  if (!GameState.seeds.some(function(s) { return s.id === newSeed.id; })) {
+    GameState.seeds.push(newSeed);
+    console.log('[正面种子] 种下「' + seedType.id + '」：' + seedType.desc);
+  }
+}
+
+// ========== v3.8.15: 生活事件系统（P2-G Phase 1） ==========
+// 家庭初始化：根据出身生成初始家庭结构
+function initFamily(background) {
+  var family = {
+    spouse: null,
+    children: [],
+    parents: { father: null, mother: null },
+    siblings: []
+  };
+  
+  switch (background) {
+    case '淮西武将之后':
+      family.spouse = { name: '', relation: '妻', background: '淮西同阵营武将之女', status: '在世', marriedTurn: 0 };
+      family.parents.father = { name: '', relation: '父', background: '淮西老将', status: '在世', deathTurn: 0 };
+      family.parents.mother = { name: '', relation: '母', status: '在世', deathTurn: 0 };
+      break;
+    case '浙东寒门书生':
+      // 未婚，父早亡，母亲在世
+      family.parents.father = { name: '', relation: '父', background: '寒门秀才（早亡）', status: '已故', deathTurn: 0 };
+      family.parents.mother = { name: '', relation: '母', status: '在世', deathTurn: 0 };
+      break;
+    case '应天府商贾之子':
+      family.spouse = { name: '', relation: '妻', background: '商贾联姻', status: '在世', marriedTurn: 0 };
+      family.parents.father = { name: '', relation: '父', background: '应天商人', status: '在世', deathTurn: 0 };
+      family.parents.mother = { name: '', relation: '母', status: '在世', deathTurn: 0 };
+      break;
+    case '落魄前元官员之后':
+      family.spouse = { name: '', relation: '妻', background: '前元同僚之女', status: '在世', marriedTurn: 0 };
+      family.parents.father = { name: '', relation: '父', background: '前元旧臣', status: '已故', deathTurn: 0 };
+      family.parents.mother = { name: '', relation: '母', background: '前元旧臣之妻（身份敏感）', status: '在世', deathTurn: 0 };
+      break;
+    default:
+      console.log('[生活事件] 未知出身，家庭留空');
+  }
+  
+  return family;
+}
+
+// 生活事件总表：按触发窗口、出身条件、概率排序
+var LIFE_EVENTS = [
+  // ---- 婚后安顿（只有已有妻子的出身才会触发）----
+  { id: 'settling', turnWindow: [3, 8], backgrounds: ['淮西武将之后', '应天府商贾之子', '落魄前元官员之后'],
+    probability: 0.30, category: '婚后安顿', requiresSpouse: true,
+    effects: { bond: 3 },
+    narrative: '新婚安顿。叙事融入新家/邻里/妻子日常相处，建立家庭存在感。2-3句即可。' },
+  // ---- 第一个孩子 ----
+  { id: 'child1', turnWindow: [5, 12], probability: 0.25, category: '生子',
+    requiresSpouse: true,
+    effects: { bond: 5, people: 2 },
+    narrative: '第一个孩子出生。根据出身交代生产场景，写出初为人父/母的感受。2-3句即可。' },
+  // ---- 父亲去世（有在世父亲的出身）----
+  { id: 'father_death', turnWindow: [8, 18],
+    backgrounds: ['淮西武将之后', '应天府商贾之子'],
+    probability: 0.25, category: '丧亲',
+    requiresFatherAlive: true,
+    effects: { bond: -8, people: 3 },
+    narrative: '父亲去世。写出丧礼和角色的悲痛。根据出身不同，丧礼规格不同（武将简朴/商人铺张）。叙事可融入对父亲一生的回忆。' },
+  // ---- 第二个孩子 ----
+  { id: 'child2', turnWindow: [10, 20], probability: 0.20, category: '生子',
+    requiresSpouse: true, minChildren: 1,
+    effects: { bond: 3 },
+    narrative: '第二个孩子出生。简单交代即可，1-2句。可以提及老大对弟弟/妹妹的反应。' },
+  // ---- 母亲去世 ----
+  { id: 'mother_death', turnWindow: [15, 25], probability: 0.25, category: '丧亲',
+    requiresMotherAlive: true,
+    effects: { bond: -6, wisdom: 3 },
+    narrative: '母亲去世。根据母亲的身份不同，丧礼氛围不同。前元出身→母亲身份敏感，丧事需低调；武将→军中旧交来吊唁；商人→铺张。' },
+  // ---- 子女教育 ----
+  { id: 'child_education', turnWindow: [18, 30], probability: 0.20, category: '教育',
+    minChildren: 1,
+    effects: { wisdom: 3, bond: 2 },
+    narrative: '孩子渐长，到了启蒙读书的年纪。叙事中写角色为孩子选择老师或亲自教导的场景。' },
+  // ---- 子女婚嫁 ----
+  { id: 'child_marriage', turnWindow: [28, 42], probability: 0.20, category: '婚嫁',
+    minChildren: 1,
+    effects: { people: 5, bond: 3 },
+    narrative: '子女到了婚嫁年龄。叙事中写有人上门提亲或角色物色亲家的场景。' },
+  // ---- 孙辈出生 ----
+  { id: 'grandchild', turnWindow: [35, 50], probability: 0.18, category: '子孙',
+    minChildren: 1,
+    effects: { bond: 5, wisdom: 2 },
+    narrative: '孙辈出生。写角色的天伦之乐——在乱世之中，这是难得的温暖。' },
+  // ---- 晚年回忆 ----
+  { id: 'old_age_reflection', turnWindow: [45, 55], probability: 0.25, category: '晚年',
+    effects: { wisdom: 5 },
+    narrative: '角色已入暮年。叙事中写角色回望一生、思考传承的场景。' }
+];
+
+// 检查并触发生活事件（每回合在updateDeathTracking中调用）
+function checkLifeEvents(turn) {
+  // 家庭数据不存在则跳过（旧存档兼容）
+  if (!GameState.family) return;
+  
+  var pacing = GameState.pacing;
+  // 紧迫/反转/沉淀回合不触发生活事件（政治优先）
+  if (pacing === '紧迫' || pacing === '反转' || pacing === '沉淀') return;
+  
+  // 锚点回合不触发（锚点事件本身已经够密集）
+  for (var ai = 0; ai < HISTORY_ANCHORS.length; ai++) {
+    if (turn >= HISTORY_ANCHORS[ai].start && turn <= HISTORY_ANCHORS[ai].end) return;
+  }
+  
+  // 冷却检查：距上次生活事件至少4回合
+  if (GameState.lifeEventLastTurn > 0 && (turn - GameState.lifeEventLastTurn) < 4) return;
+  
+  var bg = GameState.character.background;
+  var family = GameState.family;
+  
+  // 遍历所有事件，找到当前可触发的
+  for (var i = 0; i < LIFE_EVENTS.length; i++) {
+    var evt = LIFE_EVENTS[i];
+    
+    // 已触发过？跳过
+    if (GameState.lifeEventsTriggered.indexOf(evt.id) >= 0) continue;
+    
+    // 回合窗口检查
+    if (turn < evt.turnWindow[0] || turn > evt.turnWindow[1]) continue;
+    
+    // 出身限制检查
+    if (evt.backgrounds && evt.backgrounds.indexOf(bg) < 0) continue;
+    
+    // 需要配偶？
+    if (evt.requiresSpouse && (!family.spouse || family.spouse.status !== '在世')) continue;
+    
+    // 需要父亲在世？
+    if (evt.requiresFatherAlive && (!family.parents.father || family.parents.father.status !== '在世')) continue;
+    
+    // 需要母亲在世？
+    if (evt.requiresMotherAlive && (!family.parents.mother || family.parents.mother.status !== '在世')) continue;
+    
+    // 最少孩子数量？
+    var livingChildren = 0;
+    for (var ci = 0; ci < family.children.length; ci++) {
+      if (family.children[ci].status === '在世') livingChildren++;
+    }
+    if (evt.minChildren && livingChildren < evt.minChildren) continue;
+    
+    // 概率判定
+    if (Math.random() >= evt.probability) continue;
+    
+    // === 触发！ ===
+    GameState.lifeEventsTriggered.push(evt.id);
+    GameState.lifeEventLastTurn = turn;
+    GameState.currentLifeEvent = {
+      id: evt.id,
+      category: evt.category,
+      narrative: evt.narrative,
+      effects: evt.effects,
+      turn: turn
+    };
+    
+    // 执行事件效果
+    if (evt.effects) {
+      for (var attr in evt.effects) {
+        if (evt.effects.hasOwnProperty(attr) && GameState.attributes[attr] !== undefined) {
+          GameState.attributes[attr] = Math.max(0, Math.min(100, GameState.attributes[attr] + evt.effects[attr]));
+        }
+      }
+    }
+    
+    // 根据事件类型更新家庭数据
+    switch (evt.id) {
+      case 'child1':
+        family.children.push({
+          name: '', birthTurn: turn, birthYear: GameState.year,
+          gender: Math.random() > 0.5 ? '男' : '女',
+          status: '在世', order: 1
+        });
+        break;
+      case 'child2':
+        family.children.push({
+          name: '', birthTurn: turn, birthYear: GameState.year,
+          gender: Math.random() > 0.5 ? '男' : '女',
+          status: '在世', order: 2
+        });
+        break;
+      case 'father_death':
+        family.parents.father.status = '已故';
+        family.parents.father.deathTurn = turn;
+        break;
+      case 'mother_death':
+        family.parents.mother.status = '已故';
+        family.parents.mother.deathTurn = turn;
+        break;
+    }
+    
+    console.log('[生活事件] 触发「' + evt.category + '」：' + evt.narrative.substring(0, 20) + '...');
+    return; // 每回合最多触发一个生活事件
+  }
+}
+
 // 1. 获取当前在世NPC列表（v3.9：信息隔离——对绑定未来锚点的NPC附加禁止指令）
 // v3.8.15修正：刘伯温之死是锚点事件1，必须等锚点完成后才算死亡
 function getAliveNPCs(year) {
@@ -1131,6 +1368,16 @@ function updateDeathTracking(narrative) {
       console.log('[近臣监控] 种下"被盯上"种子，回合', turn);
     }
   }
+  // v3.8.15: 正面种子种植（D）
+  plantPositiveSeed(turn);
+  // v3.8.15: 生活事件系统（P2-G Phase 1）
+  if (!GameState.family && GameState.character.background) {
+    GameState.family = initFamily(GameState.character.background);
+    console.log('[生活事件] 家庭初始化完成（出身：' + GameState.character.background + '）');
+  }
+  if (GameState.family) {
+    checkLifeEvents(turn);
+  }
 }
 
 function getCommonEnding() {
@@ -1363,14 +1610,25 @@ function getRhythmDirective(turn, background) {
         nextAnchorName = na.name;
       }
     }
+    // v3.8.15: 动态呼吸节点检测——锚点刚结束且距下一锚点较远时，日常回合加入"呼吸"基调
+    var isBreathing = false;
+    for (var bi = 0; bi < HISTORY_ANCHORS.length; bi++) {
+      var afterBreath = t - HISTORY_ANCHORS[bi].end;
+      if (afterBreath >= 3 && afterBreath <= 4 && distToNext >= 4) {
+        isBreathing = true;
+        break;
+      }
+    }
+
     // 空白期后段（距下一锚点1-3回合）→ 🍃缓冲（伏笔渐浓）
     if (distToNext >= 1 && distToNext <= 3) {
       r = { pacing: '缓冲', directive:
       `【节奏指令·硬控】本回合距下一历史节点「${nextAnchorName}」还有${distToNext}回合，节奏为🍃缓冲（暗流涌动）：叙事500-800字，中长句、从容细腻但暗藏不安，写坊间传闻、制度异常、人物处境变化；给4个选项（含至少1个涉及朝堂风向/官场暗流）；⏰时间推进**4-6个月**。本回合的核心任务是让下一节点的伏笔越来越浓——允许以当事人「当前在世的活跃状态」登场（但严禁点名未来事件名称或预言结局）。所有出场人物、机构、制度必须符合当前年份的真实历史。` };
     } else {
     // 空白期前/中段 → 📜日常（蒙太奇快进）
+    var breathNote = isBreathing ? '（锚点事件刚落幕不久，百姓与官员都在喘息——叙事中融入战后/案后余韵、民间恢复、角色日常生活的温度，不必急于推进新危机）' : '（常规政务 + 时间快进）';
     r = { pacing: '日常', directive:
-      `【节奏指令·硬控】本回合无历史锚点临近，节奏为📜日常（常规政务 + 时间快进）：叙事400-700字，平稳扎实、生活化细节，岁月流转；给4个经营型选项（探索/社交/官场/经营均可）；⏰时间**必须推进6-12个月**，允许蒙太奇式快进（「半年过去」「年关将至」「次年春」「转眼间已是洪武X年」），本回合的核心任务是推进年份向下一个历史锚点靠拢。所有出场人物、机构、制度必须符合当前年份的真实历史。` };
+      `【节奏指令·硬控】本回合无历史锚点临近，节奏为📜日常${breathNote}：叙事500-900字，平稳扎实、生活化细节，岁月流转；给4个经营型选项（探索/社交/官场/经营均可）；⏰时间**必须推进6-12个月**，允许蒙太奇式快进（「半年过去」「年关将至」「次年春」「转眼间已是洪武X年」），本回合的核心任务是推进年份向下一个历史锚点靠拢。所有出场人物、机构、制度必须符合当前年份的真实历史。` };
     }
     // v3.6: warrior acceleration (preserved)
     if (background === '淮西武将之后') {
@@ -1383,7 +1641,7 @@ function getRhythmDirective(turn, background) {
 
   // 种子引爆例外 + 强制对齐 JSON
   r.directive += `\n\n【⚡强制·种子例外与JSON】`;
-  r.directive += `①种子引爆：若本回合你判断 current_state.seeds 中某颗种子达到引爆时机，必须在JSON的 seeds_triggered 字段中写入该种子ID（如 "seeds_triggered": ["修撰日历"]），同时将节奏升级为反转并写出引爆后果及对应数值变化，种子引爆优先于历史节奏。种子存活超过8回合将自动引爆，超过5个则最早的自动引爆。`;
+  r.directive += `①种子引爆：若本回合你判断 current_state.seeds 中某颗种子达到引爆时机，必须在JSON的 seeds_triggered 字段中写入该种子ID（如 "seeds_triggered": ["修撰日历"]），同时将节奏升级为反转并写出引爆后果及对应数值变化，种子引爆优先于历史节奏。种子存活超过8回合将自动引爆，超过5个则最早的自动引爆。**正面种子**（type含"正面"）引爆时不用升级为反转，在当前节奏内自然融入正面事件即可（如贵人相助、民心归附、知己相交等），写出温暖/积极的叙事段落。`;
   r.directive += `②除此之外**必须严格按上述节奏执行，JSON 状态块中的 pacing 字段必须填写「${r.pacing}」，不可填写其他值**（前端会校验，填错则整个状态块被丢弃、数值回合全不推进）；`;
   r.directive += `③year/month 须与当前历史年份的推进逻辑一致（反转/紧迫回合参照正在发生或即将爆发的历史事件时间点；日常/沉淀回合只需保证年份单调递增，不得倒退）；`;
   // v3.8.12: 显式告知AI当前年份，防止叙事文字中的年份与JSON状态块不一致
@@ -1416,31 +1674,47 @@ function applyFactionDecay() {
 }
 
 // v3.8.5: P1-D 圣眷风险（朱元璋猜忌机制）
+// v3.8.15修复：暴跌需有因果——权力或声望偏高才会招忌（赵一#13）
 function applyFavorRisk() {
   var ef = GameState.emperor_feeling;
   var consecutive = GameState.consecutiveHighEfTurns;
+  var a = GameState.attributes;
   
   // 重置暴跌记录
   GameState.favorCrashThisTurn = null;
   
-  // 警戒区：ef 40~69，连续≥3回合，10%概率暴跌
-  if (ef >= 40 && ef < 70 && consecutive >= 3) {
+  // "有功可忌"：权力或声望达到一定水平才会引起皇帝猜忌
+  var hasProvocation = (a.power >= 45 || a.fame >= 40);
+  
+  // 警戒区：ef 40~69，连续≥3回合 且 有权势可忌，10%概率暴跌
+  if (ef >= 40 && ef < 70 && consecutive >= 3 && hasProvocation) {
     if (Math.random() < 0.10) {
       var crash = -(Math.floor(Math.random() * 11) + 10); // -10~-20
       GameState.emperor_feeling = ef + crash;
       GameState.favorCrashThisTurn = '功高遭忌' + crash;
-      console.log('[圣眷暴跌]', GameState.favorCrashThisTurn);
+      console.log('[圣眷暴跌]', GameState.favorCrashThisTurn, 'power:', a.power, 'fame:', a.fame);
       return;
     }
   }
   
-  // 危险区：ef≥70，每回合20%概率暴跌
-  if (ef >= 70) {
+  // 极端危险区：ef≥80，无需具体原因（皇帝多疑到极致），15%概率暴跌
+  if (ef >= 80) {
+    if (Math.random() < 0.15) {
+      var crash = -(Math.floor(Math.random() * 11) + 15); // -15~-25
+      GameState.emperor_feeling = ef + crash;
+      GameState.favorCrashThisTurn = '天威莫测' + crash;
+      console.log('[圣眷暴跌]', GameState.favorCrashThisTurn, 'ef:', ef);
+      return;
+    }
+  }
+  
+  // 危险区：ef 70~79，每回合20%概率暴跌，需要权力/声望作为诱因
+  if (ef >= 70 && ef < 80 && hasProvocation) {
     if (Math.random() < 0.20) {
       var crash = -(Math.floor(Math.random() * 11) + 20); // -20~-30
       GameState.emperor_feeling = ef + crash;
       GameState.favorCrashThisTurn = '宠极生厌' + crash;
-      console.log('[圣眷暴跌]', GameState.favorCrashThisTurn);
+      console.log('[圣眷暴跌]', GameState.favorCrashThisTurn, 'power:', a.power, 'fame:', a.fame);
       return;
     }
   }

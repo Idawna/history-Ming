@@ -55,6 +55,10 @@ const GameState = {
   factionDecayThisTurn: null,
   // v3.8.5: 出征次数追踪（P2-E：封狼居胥需要出征≥2次）
   expeditionCount: 0,
+  // v3.8.15: 生活事件系统——家庭数据（Phase 1）
+  family: null,          // { spouse: {...}, children: [...], parents: {...}, siblings: [...] }
+  lifeEventLastTurn: 0,  // 上次生活事件触发的回合号（冷却用）
+  lifeEventsTriggered: [], // 已触发的生活事件ID列表
   // v3.8.5: 圣眷风险追踪
   consecutiveHighEfTurns: 0,
   favorCrashThisTurn: null,

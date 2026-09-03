@@ -3,6 +3,8 @@
 // v3.9: 增加 buffered 参数，支持缓冲模式（不写入DOM，只累积文本）
 async function streamBotAPI(userMessage, streamTarget, options) {
   var buffered = options && options.buffered; // 是否缓冲模式
+  // v3.8.15修复：每回合重置争议文字标记，只检测本回合AI是否标记了争议文字（E）
+  GameState.wroteControversialText = false;
   // 前端节奏引擎：按即将生成的回合号硬判节奏（历史锚点不再依赖AI自觉）
   const rhythm = getRhythmDirective(getNextTurn(), GameState.character.background);
   // 构造当前回合的上下文消息
@@ -29,7 +31,9 @@ async function streamBotAPI(userMessage, streamTarget, options) {
       factions: GameState.factions,
       emperor_feeling: GameState.emperor_feeling,
       seeds: GameState.seeds,
-      seeds_triggered: GameState.seeds_triggered
+      seeds_triggered: GameState.seeds_triggered,
+      // v3.8.15: 家庭状态（生活事件系统 P2-G）
+      family: GameState.family || undefined
     },
     // v3.6：动态规则扩展
     dynamic_rules: {
@@ -67,6 +71,23 @@ async function streamBotAPI(userMessage, streamTarget, options) {
       degradationType: GameState.degradationType || 0,
       faction_decay: (function(){ return GameState.factionDecayThisTurn ? '【阵营衰减】上回合因阵营关系过度深入（绝对值>80），自然回落：' + GameState.factionDecayThisTurn + '。叙事中可体现"树大招风""功高遭忌后关系微妙疏远"等意象，但不可直接提及数值' : ''; })(),
       favor_crash: (function(){ return GameState.favorCrashThisTurn ? '【圣眷暴跌】' + GameState.favorCrashThisTurn + '——朱元璋猜忌加深，圣眷骤降。叙事中必须体现"帝王心术""天威难测""昨日恩宠今日猜忌"等紧张意象，可描写朝臣态度转变、皇帝冷淡等细节' : ''; })(),
+      // v3.8.15: 生活事件注入（P2-G Phase 1）
+      life_event: (function(){
+        var le = GameState.currentLifeEvent;
+        if (!le) return '';
+        var familySummary = '';
+        if (GameState.family) {
+          var f = GameState.family;
+          var parts = [];
+          if (f.spouse && f.spouse.status === '在世') parts.push('妻' + (f.spouse.name ? '(' + f.spouse.name + ')' : ''));
+          var livingChildren = f.children.filter(function(c){ return c.status === '在世'; });
+          if (livingChildren.length > 0) parts.push(livingChildren.length + '个子女');
+          if (f.parents.father && f.parents.father.status === '在世') parts.push('父');
+          if (f.parents.mother && f.parents.mother.status === '在世') parts.push('母');
+          if (parts.length > 0) familySummary = '（家庭成员：' + parts.join('、') + '）';
+        }
+        return '【生活事件·' + le.category + '】本回合触发了家庭生活事件。' + familySummary + '\n叙事要求：在正常叙事间隙自然穿插本事件的段落——' + le.narrative + '\n注意：这是生活细节，不要喧宾夺主，控制在3-5句内，融入整体叙事节奏中。';
+      })(),
       // v3.8.6: 终局/死亡叙事提示注入
       finale_hint: getFinaleHint(),
       origin_lock: (function(){
@@ -86,6 +107,9 @@ async function streamBotAPI(userMessage, streamTarget, options) {
     },
     player_action: userMessage
   };
+  
+  // v3.8.15: 上下文已读取currentLifeEvent，清空以备下次触发
+  GameState.currentLifeEvent = null;
   
   // v3.9: 如果有重试约束（上次违规信息），追加到上下文中
   if (options && options.retry_constraint && options.retry_constraint.length > 0) {
@@ -1118,6 +1142,11 @@ function applySnapshot(save) {
   GameState.completedAnchors = Array.isArray(gs.completedAnchors) ? [...gs.completedAnchors] : [];
   // v3.9.1: 恢复待选选项（修复"继续前行"重做后读档选项丢失）
   GameState.pendingChoices = Array.isArray(gs.pendingChoices) ? [...gs.pendingChoices] : [];
+  // v3.8.15: 恢复家庭数据（兼容旧存档——旧存档没有family字段，下次updateDeathTracking会自动初始化）
+  GameState.family = gs.family || null;
+  GameState.lifeEventLastTurn = gs.lifeEventLastTurn || 0;
+  GameState.lifeEventsTriggered = Array.isArray(gs.lifeEventsTriggered) ? [...gs.lifeEventsTriggered] : [];
+  GameState.currentLifeEvent = null;
 
   updateStatusPanel();
   clearContainer();
