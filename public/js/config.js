@@ -59,6 +59,12 @@ const GameState = {
   family: null,          // { spouse: {...}, children: [...], parents: {...}, siblings: [...] }
   lifeEventLastTurn: 0,  // 上次生活事件触发的回合号（冷却用）
   lifeEventsTriggered: [], // 已触发的生活事件ID列表
+  // v3.8.16: Phase 2-3 婚姻选择 + 家庭牵连危机
+  pendingMarriageChoice: null,  // 待处理的联姻选择 { proposals: [...], turn: n }
+  currentFamilyCrisis: null,    // 当前家庭牵连危机 { id, title, desc, choices, turn, anchorId }
+  familyCrisisTriggeredThisAnchor: false, // 当前锚点期间是否已触发家庭危机
+  lastFamilyCrisisAnchor: 0,    // 上次触发家庭危机的锚点ID
+  familyCrisisOutcome: {},      // 家庭危机选择结果记录 { crisisId: outcome }
   // v3.8.5: 圣眷风险追踪
   consecutiveHighEfTurns: 0,
   favorCrashThisTurn: null,
@@ -79,7 +85,9 @@ const GameState = {
   rescueSucceeded: false,       // 自救是否成功
   degradationActive: false,     // 降级过渡回合标记
   degradationType: 0,           // 降级类型（对应死法type）
-  crisisBufferActive: false     // 缓冲属性本回合是否生效
+  crisisBufferActive: false,    // 缓冲属性本回合是否生效
+  // v3.8.17: 上下文优化 Phase 2 — 前情提要滚动摘要
+  plotSummary: ''
 };
 
 // ========== LABELS ==========

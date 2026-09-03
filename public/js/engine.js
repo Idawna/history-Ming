@@ -1,15 +1,52 @@
 // ========== LIVE MODE: CALL BOT API VIA PROXY ==========
-// 收集最近 n 段叙事的纯文本，作为"前情提要"随每回合下发
+// v3.8.17 上下文优化 Phase 2：前情提要重构 — 最近3段全文 + 滚动摘要
 // 作用：①读档后 chatHistory 清空，AI 靠这个衔接剧情 ②长局历史被裁剪后也不会忘身世
+// 优化：从8段全文改为3段全文+滚动摘要，单回合recent_plot从~4000字降至~1200字
 function collectRecentPlot(n) {
-  const texts = [];
   const areas = gameContainer.querySelectorAll('.narrative-area .narrative-text');
-  for (let i = areas.length - 1; i >= 0 && texts.length < n; i--) {
+  if (!areas.length) return undefined;
+
+  // 最近 3 段保留全文（截断200字/段，确保AI有足够细节衔接）
+  const recent = [];
+  for (let i = areas.length - 1; i >= Math.max(0, areas.length - 3); i--) {
     const t = areas[i].textContent.trim();
-    if (t) texts.unshift(t);
+    if (t) recent.unshift(t.slice(0, 200));
   }
-  if (!texts.length) return undefined;
-  return '【前情提要】以下是玩家屏幕上已发生的最近剧情，必须无缝衔接、保持连贯，但严禁重复其中已写过的场景、事件、措辞与桥段（不得把同一件事再写一遍、不得让玩家原地经历相似情节）：\n' + texts.join('\n');
+
+  // 更早的剧情用滚动摘要替代（由 updatePlotSummary 每回合更新）
+  const summary = GameState.plotSummary || '';
+
+  let result = '【前情提要】';
+  if (summary) {
+    result += '更早剧情概要：' + summary + '\n';
+  }
+  if (recent.length) {
+    result += '最近剧情（须无缝衔接，严禁重复已写场景/事件/措辞/桥段）：\n' + recent.join('\n');
+  }
+
+  return result;
+}
+
+// v3.8.17 上下文优化 Phase 2：每回合结束时更新滚动摘要
+// 从第4段往回的叙事中提取每段首句，作为更早剧情的紧凑概要
+// 下次 collectRecentPlot 调用时会将其作为"更早剧情概要"下发
+function updatePlotSummary() {
+  const areas = gameContainer.querySelectorAll('.narrative-area .narrative-text');
+  if (areas.length <= 3) return; // 3段以内全部保留全文，不需要摘要
+
+  const older = [];
+  for (let i = areas.length - 4; i >= Math.max(0, areas.length - 8); i--) {
+    const t = areas[i].textContent.trim();
+    if (t) older.unshift(t);
+  }
+
+  if (older.length) {
+    GameState.plotSummary = older.map(function(t) {
+      // 提取每段的第一句话（到句号/叹号/问号为止）作为摘要
+      const firstSentence = t.split(/[。！？]/)[0];
+      return firstSentence + '。';
+    }).join('');
+  }
 }
 
 // 收集最近已出现/已选择的选项，防止 AI 反复给同样的选项
@@ -175,7 +212,8 @@ var LIFE_EVENTS = [
     effects: { bond: 3 },
     narrative: '新婚安顿。叙事融入新家/邻里/妻子日常相处，建立家庭存在感。2-3句即可。' },
   // ---- 第一个孩子 ----
-  { id: 'child1', turnWindow: [5, 12], probability: 0.25, category: '生子',
+  // v3.8.17 P1-4修复：turnWindow从[5,12]扩展到[5,22]，解决书生线child1窗口与scholar_marriage[8-15]严重错位问题
+  { id: 'child1', turnWindow: [5, 22], probability: 0.25, category: '生子',
     requiresSpouse: true,
     effects: { bond: 5, people: 2 },
     narrative: '第一个孩子出生。根据出身交代生产场景，写出初为人父/母的感受。2-3句即可。' },
@@ -191,11 +229,29 @@ var LIFE_EVENTS = [
     requiresSpouse: true, minChildren: 1,
     effects: { bond: 3 },
     narrative: '第二个孩子出生。简单交代即可，1-2句。可以提及老大对弟弟/妹妹的反应。' },
+  // ---- 第三个孩子 ----
+  // v3.8.17 P2-2修复：新增第三个孩子事件，使"家族兴旺"结局（3+子女）可达
+  { id: 'child3', turnWindow: [18, 30], probability: 0.15, category: '生子',
+    requiresSpouse: true, minChildren: 2,
+    effects: { bond: 3, people: 1 },
+    narrative: '第三个孩子出生。家丁兴旺，值得庆贺。简单交代即可，1-2句。' },
   // ---- 母亲去世 ----
   { id: 'mother_death', turnWindow: [15, 25], probability: 0.25, category: '丧亲',
     requiresMotherAlive: true,
     effects: { bond: -6, wisdom: 3 },
     narrative: '母亲去世。根据母亲的身份不同，丧礼氛围不同。前元出身→母亲身份敏感，丧事需低调；武将→军中旧交来吊唁；商人→铺张。' },
+  // ---- 子女早夭 ----
+  // v3.8.17 P2-2修复：新增子女早夭事件，使"家道中落"结局（allChildrenDead）可达
+  { id: 'child_death', turnWindow: [8, 25], probability: 0.12, category: '丧亲',
+    minChildren: 1,
+    effects: { bond: -10, wisdom: 2 },
+    narrative: '一个年幼的孩子夭折了。洪武朝婴儿死亡率极高，疫病、灾荒随时夺走幼小的生命。写出角色失去骨肉的悲痛——这是无声的崩溃。2-3句即可。' },
+  // ---- 配偶去世 ----
+  // v3.8.17 P2-1修复：新增配偶死亡事件，填补"妻子永远不会死"的设计缺口
+  { id: 'spouse_death', turnWindow: [20, 45], probability: 0.15, category: '丧亲',
+    requiresSpouse: true,
+    effects: { bond: -12, wisdom: 3, people: 2 },
+    narrative: '妻子去世了。难产、疫病、或是一场不起眼的风寒——在这个时代，夺走一条命太容易了。写出角色的丧妻之痛和丧礼场景。2-3句。' },
   // ---- 子女教育 ----
   { id: 'child_education', turnWindow: [18, 30], probability: 0.20, category: '教育',
     minChildren: 1,
@@ -207,15 +263,158 @@ var LIFE_EVENTS = [
     effects: { people: 5, bond: 3 },
     narrative: '子女到了婚嫁年龄。叙事中写有人上门提亲或角色物色亲家的场景。' },
   // ---- 孙辈出生 ----
+  // v3.8.17 P0-3修复：孙辈事件必须等子女已婚嫁（requiresChildMarried），避免"未婚生子→直接有孙子"的逻辑悖论
   { id: 'grandchild', turnWindow: [35, 50], probability: 0.18, category: '子孙',
     minChildren: 1,
+    requiresChildMarried: true,
     effects: { bond: 5, wisdom: 2 },
     narrative: '孙辈出生。写角色的天伦之乐——在乱世之中，这是难得的温暖。' },
   // ---- 晚年回忆 ----
-  { id: 'old_age_reflection', turnWindow: [45, 55], probability: 0.25, category: '晚年',
+  // v3.8.17 P0-4修复：turnWindow从[45,55]推迟到[48,56]，确保书生出身也至少45岁才触发
+  { id: 'old_age_reflection', turnWindow: [48, 56], probability: 0.25, category: '晚年',
     effects: { wisdom: 5 },
-    narrative: '角色已入暮年。叙事中写角色回望一生、思考传承的场景。' }
+    narrative: '角色渐入半百之年。叙事中写角色回望一生、思考传承的场景。注意措辞用"渐入暮年"或"半百之年"，不要用"暮年"——角色可能才四十多岁。' },
+  // ---- Phase 2: 书生婚姻选择（回合8-15）----
+  { id: 'scholar_marriage', turnWindow: [8, 15], backgrounds: ['浙东寒门书生'],
+    probability: 0.35, category: '婚姻', requiresNoSpouse: true,
+    effects: { bond: 5, people: 3 },
+    narrative: '有人上门提亲。寒门书生得此机缘，需抉择联姻对象——不同选择影响不同阵营关系。',
+    hasChoice: true }
 ];
+
+// ========== Phase 2: 联姻选项表（书生出身专属） ==========
+// v3.8.17 P0-2修复：name/desc去掉阵营名和暗示性措辞，改为纯叙事描述
+// 阵营数值效果保留在 factionEffect（代码内部使用），但不再暴露给AI
+var MARRIAGE_PROPOSALS = [
+  { id: 'marriage_huaixi', name: '武将之女', factionEffect: { huaixi: 12, zhedong: -5 },
+    desc: '一位军中老将愿将女儿许配于你。此女性格爽利，嫁妆丰厚。但朝中文人或许会觉得你与武将走得太近。' },
+  { id: 'marriage_zhedong', name: '同门之妹', factionEffect: { zhedong: 10, huaixi: -3 },
+    desc: '同门师兄弟的妹妹，知书达理，温婉贤淑。此亲事在文人圈中颇受称道，但军中旧交或许会对你另眼相看。' },
+  { id: 'marriage_commoner', name: '清白民女', factionEffect: { people: 3, wisdom: 2 },
+    desc: '一户清白人家的女儿，与朝堂无涉，不涉纷争。门户虽不高，但胜在干净。' }
+];
+
+// ========== Phase 3: 家庭牵连危机系统 ==========
+// 在政治大案期间，家人可能被牵连——产生"保人vs自保"的抉择
+var FAMILY_CRISIS_EVENTS = [
+  // 胡惟庸案期间（锚点2，turn 12-15）
+  { id: 'crisis_hu_spouse', anchorId: 2, backgrounds: ['淮西武将之后', '应天府商贾之子', '落魄前元官员之后'],
+    target: 'spouse', probability: 0.20,
+    title: '妻子被牵连',
+    desc: '胡惟庸案大清洗中，你妻子的娘家被查出与胡党有牵连。锦衣卫已登门问话。',
+    choices: [
+      { text: '变卖家产打点关系，保全妻子娘家', effects: { power: -8, bond: 10, people: 3 }, outcome: '保人' },
+      { text: '主动休妻切割，向朝廷表忠心', effects: { power: 5, bond: -15, fame: -5 }, outcome: '自保' },
+      { text: '暗中转移妻子，表面配合调查', effects: { wisdom: 5, power: -5, bond: 8 }, outcome: '两全' }
+    ]
+  },
+  // 胡惟庸案期间——书生出身特殊（老师宋濂被牵连）
+  { id: 'crisis_hu_teacher', anchorId: 2, backgrounds: ['浙东寒门书生'],
+    target: 'teacher', probability: 0.30,
+    title: '恩师宋濂被牵连',
+    desc: '胡惟庸案爆发，恩师宋濂的长孙宋慎被查出是"胡党"。有人提议连你一起查办。',
+    choices: [
+      { text: '上书力保恩师，不惜触怒皇帝', effects: { fame: 10, bond: 12, power: -10 }, outcome: '保人' },
+      { text: '联合数名同门私下求情', effects: { bond: 5, wisdom: 3, power: -3 }, outcome: '两全' },
+      { text: '断绝来往，明哲保身', effects: { bond: -12, power: 3 }, outcome: '自保' }
+    ]
+  },
+  // 李善长案期间（锚点5，turn 38-40）
+  { id: 'crisis_li_father', anchorId: 5, backgrounds: ['淮西武将之后'],
+    target: 'father', probability: 0.25, requiresFatherAlive: true,
+    title: '父亲被牵连',
+    desc: '李善长案株连淮西老人，你的父亲作为淮西老将，也被列入排查名单。',
+    choices: [
+      { text: '动用一切关系保全父亲', effects: { power: -12, bond: 15, people: 5 }, outcome: '保人' },
+      { text: '主动告发父亲的"过失"以求自保', effects: { power: 8, bond: -20, fame: -8 }, outcome: '自保' },
+      { text: '送父亲回乡避风头，表面配合', effects: { wisdom: 5, power: -5, bond: 8 }, outcome: '两全' }
+    ]
+  },
+  // 蓝玉案期间（锚点7，turn 47-49）——淮西武将的终极危机
+  { id: 'crisis_lan_clan', anchorId: 7, backgrounds: ['淮西武将之后'],
+    target: 'clan', probability: 0.35,
+    title: '蓝玉案株连淮西',
+    desc: '蓝玉案爆发，淮西勋贵被连根拔起。你的家族、姻亲、旧部人人自危。这是淮西武将的末日。',
+    choices: [
+      { text: '倾尽家财疏通关系，保全族人', effects: { power: -15, bond: 18, people: 8 }, outcome: '保人' },
+      { text: '主动揭发"同党"以求自保', effects: { power: 10, bond: -25, fame: -10 }, outcome: '自保' },
+      { text: '携家眷连夜出逃', effects: { power: -20, bond: 10, wisdom: 8, people: -5 }, outcome: '逃亡' }
+    ]
+  },
+  // 蓝玉案期间——前元老母身份暴露风险
+  { id: 'crisis_lan_mother', anchorId: 7, backgrounds: ['落魄前元官员之后'],
+    target: 'mother', probability: 0.30, requiresMotherAlive: true,
+    title: '母亲身份暴露',
+    desc: '蓝玉案大清洗中，锦衣卫查到你母亲的前元旧臣身份。在这风声鹤唳之时，这个身份可能是催命符。',
+    choices: [
+      { text: '重金贿赂锦衣卫，掩盖母亲身份', effects: { power: -10, bond: 8, wisdom: 3 }, outcome: '保人' },
+      { text: '主动举报母亲"前朝余孽"身份', effects: { power: 5, bond: -18, fame: -5 }, outcome: '自保' },
+      { text: '安排母亲隐匿，自己出面应对盘查', effects: { wisdom: 8, power: -8, bond: 10 }, outcome: '两全' }
+    ]
+  }
+];
+
+// 检查并触发家庭牵连危机（在锚点期间调用）
+function checkFamilyCrisis(turn) {
+  if (!GameState.family) return;
+  
+  // 已触发过家庭危机？本锚点期间只触发一次
+  if (GameState.familyCrisisTriggeredThisAnchor) return;
+  
+  var bg = GameState.character.background;
+  var family = GameState.family;
+  
+  // 找出当前回合所在的锚点
+  var currentAnchor = null;
+  for (var ai = 0; ai < HISTORY_ANCHORS.length; ai++) {
+    if (turn >= HISTORY_ANCHORS[ai].start && turn <= HISTORY_ANCHORS[ai].end) {
+      currentAnchor = HISTORY_ANCHORS[ai];
+      break;
+    }
+  }
+  if (!currentAnchor) return;
+  
+  // 遍历家庭牵连事件表
+  for (var i = 0; i < FAMILY_CRISIS_EVENTS.length; i++) {
+    var evt = FAMILY_CRISIS_EVENTS[i];
+    
+    // 锚点ID匹配？
+    if (evt.anchorId !== currentAnchor.id) continue;
+    
+    // 出身匹配？
+    if (evt.backgrounds && evt.backgrounds.indexOf(bg) < 0) continue;
+    
+    // 已触发过这个事件？
+    if (GameState.lifeEventsTriggered.indexOf(evt.id) >= 0) continue;
+    
+    // 需要父亲在世？
+    if (evt.requiresFatherAlive && (!family.parents.father || family.parents.father.status !== '在世')) continue;
+    
+    // 需要母亲在世？
+    if (evt.requiresMotherAlive && (!family.parents.mother || family.parents.mother.status !== '在世')) continue;
+    
+    // 需要配偶在世？
+    if (evt.target === 'spouse' && (!family.spouse || family.spouse.status !== '在世')) continue;
+    
+    // 概率判定
+    if (Math.random() >= evt.probability) continue;
+    
+    // === 触发！ ===
+    GameState.lifeEventsTriggered.push(evt.id);
+    GameState.familyCrisisTriggeredThisAnchor = true;
+    GameState.currentFamilyCrisis = {
+      id: evt.id,
+      title: evt.title,
+      desc: evt.desc,
+      choices: evt.choices,
+      turn: turn,
+      anchorId: currentAnchor.id
+    };
+    
+    console.log('[家庭危机] 触发「' + evt.title + '」');
+    return;
+  }
+}
 
 // 检查并触发生活事件（每回合在updateDeathTracking中调用）
 function checkLifeEvents(turn) {
@@ -253,6 +452,9 @@ function checkLifeEvents(turn) {
     // 需要配偶？
     if (evt.requiresSpouse && (!family.spouse || family.spouse.status !== '在世')) continue;
     
+    // Phase 2: 需要未婚？
+    if (evt.requiresNoSpouse && family.spouse && family.spouse.status === '在世') continue;
+    
     // 需要父亲在世？
     if (evt.requiresFatherAlive && (!family.parents.father || family.parents.father.status !== '在世')) continue;
     
@@ -265,6 +467,9 @@ function checkLifeEvents(turn) {
       if (family.children[ci].status === '在世') livingChildren++;
     }
     if (evt.minChildren && livingChildren < evt.minChildren) continue;
+
+    // v3.8.17 P0-3修复：孙辈事件必须等子女已完成婚嫁
+    if (evt.requiresChildMarried && GameState.lifeEventsTriggered.indexOf('child_marriage') < 0) continue;
     
     // 概率判定
     if (Math.random() >= evt.probability) continue;
@@ -305,6 +510,13 @@ function checkLifeEvents(turn) {
           status: '在世', order: 2
         });
         break;
+      case 'child3':
+        family.children.push({
+          name: '', birthTurn: turn, birthYear: GameState.year,
+          gender: Math.random() > 0.5 ? '男' : '女',
+          status: '在世', order: 3
+        });
+        break;
       case 'father_death':
         family.parents.father.status = '已故';
         family.parents.father.deathTurn = turn;
@@ -312,6 +524,31 @@ function checkLifeEvents(turn) {
       case 'mother_death':
         family.parents.mother.status = '已故';
         family.parents.mother.deathTurn = turn;
+        break;
+      case 'spouse_death':
+        if (family.spouse) {
+          family.spouse.status = '已故';
+          family.spouse.deathTurn = turn;
+        }
+        break;
+      case 'child_death':
+        // 选择最年幼的在世子女使其夭折（叙事上更合理——幼孩最脆弱）
+        var youngestChild = null;
+        for (var ci = family.children.length - 1; ci >= 0; ci--) {
+          if (family.children[ci].status === '在世') { youngestChild = family.children[ci]; break; }
+        }
+        if (youngestChild) {
+          youngestChild.status = '已故';
+          youngestChild.deathTurn = turn;
+          console.log('[生活事件] 子女夭折：第' + youngestChild.order + '个孩子');
+        }
+        break;
+      case 'scholar_marriage':
+        // Phase 2: 书生婚姻——设置待选联姻选项
+        GameState.pendingMarriageChoice = {
+          proposals: MARRIAGE_PROPOSALS,
+          turn: turn
+        };
         break;
     }
     
@@ -824,6 +1061,10 @@ var EPITAPHS = {
   '两面三刀': '左右逢源，苟全乱世。',
   '天子近臣': '孤独权臣，宠冠一时。',
   '洗心革面': '以绩洗名，脱胎换骨。',
+  // ========== Phase 4: 传承结局 ==========
+  '家族兴旺': '子孙满堂，家道昌盛。',
+  '孤身来去': '孑然一身，来去无痕。',
+  '家道中落': '家族凋零，门庭冷落。',
   // === 隐藏结局 ===
   '墨史归一': '完美平衡，万世太平。',
   '靖难先声': '预见未来，择木而栖。'
@@ -1377,6 +1618,24 @@ function updateDeathTracking(narrative) {
   }
   if (GameState.family) {
     checkLifeEvents(turn);
+    // Phase 3: 家庭牵连危机（在锚点期间检测）
+    checkFamilyCrisis(turn);
+    // 锚点切换时重置家庭危机标记
+    var inAnchor = false;
+    for (var ai = 0; ai < HISTORY_ANCHORS.length; ai++) {
+      if (turn >= HISTORY_ANCHORS[ai].start && turn <= HISTORY_ANCHORS[ai].end) {
+        inAnchor = true;
+        if (GameState.lastFamilyCrisisAnchor !== HISTORY_ANCHORS[ai].id) {
+          GameState.familyCrisisTriggeredThisAnchor = false;
+          GameState.lastFamilyCrisisAnchor = HISTORY_ANCHORS[ai].id;
+        }
+        break;
+      }
+    }
+    if (!inAnchor) {
+      GameState.familyCrisisTriggeredThisAnchor = false;
+      GameState.lastFamilyCrisisAnchor = 0;
+    }
   }
 }
 
@@ -1400,15 +1659,65 @@ function getCommonEnding() {
      check: function(){ return a.fame >= 25 && a.fame < 40 && a.people >= 45 && a.wisdom >= 35 && a.bond >= 30; }},
     {name:'名满天下', desc:'天下士人谈及当世人物，无人不知你的名字。你未必权倾一时，却以才学与品行赢得了广泛的敬重。你的文章被人传抄，你的品行被人效仿，你的判断被人信赖。这份声望不靠权位维系，而是来自你走过的每一步、做过的每一个决定。百年之后，人们或许记不清洪武朝的宰相是谁，但会记得你的名字。',
      check: function(){ return a.fame >= 40 && a.fame < 60 && a.wisdom >= 50 && a.people >= 40 && a.bond >= 35; }},
-    {name:'\u5168\u8eab\u800c\u9000', desc:'\u5e73\u6de1\u662f\u798f\uff0c\u5584\u7ec8\u3002\u4f60\u6ca1\u6709\u5efa\u4e0b\u4e0d\u4e16\u529f\u4e1a\uff0c\u4f46\u5e73\u5e73\u5b89\u5b89\u5ea6\u8fc7\u4e86\u8fd9\u4e2a\u6ce1\u8840\u65f6\u4ee3\u3002\u5728\u6d2a\u6b66\u671d\uff0c\u80fd\u6d3b\u7740\u79bb\u5f00\u5c31\u662f\u6700\u5927\u7684\u80dc\u5229\u3002\u4f60\u7684\u4e00\u751f\u6ca1\u6709\u60ca\u5929\u52a8\u5730\u7684\u4e8b\u8ff9\uff0c\u4f46\u4f60\u7684\u5b50\u5b59\u5b89\u5168\u3001\u5bb6\u65cf\u5ef6\u7eed\u3002\u591a\u5c11\u663e\u8d6b\u7684\u540d\u81e3\u6ca1\u80fd\u505a\u5230\u8fd9\u4e00\u70b9\u3002\u4f60\u7684\u6545\u4e8b\u4e0d\u4f1a\u88ab\u5199\u8fdb\u53f2\u518c\uff0c\u4f46\u4f60\u7684\u540e\u4eba\u4f1a\u8bb0\u5f97\u4f60\u3002',
+    // v3.8.17: 瘦身"全身而退"描述——去掉家族相关措辞（子孙安全/家族延续），家庭维度由传承结局负责
+    {name:'\u5168\u8eab\u800c\u9000', desc:'\u5e73\u6de1\u662f\u798f\uff0c\u5584\u7ec8\u3002\u4f60\u6ca1\u6709\u5efa\u4e0b\u4e0d\u4e16\u529f\u4e1a\uff0c\u4f46\u5e73\u5e73\u5b89\u5b89\u5ea6\u8fc7\u4e86\u8fd9\u4e2a\u6ce1\u8840\u65f6\u4ee3\u3002\u5728\u6d2a\u6b66\u671d\uff0c\u80fd\u6d3b\u7740\u79bb\u5f00\u5c31\u662f\u6700\u5927\u7684\u80dc\u5229\u3002\u591a\u5c11\u663e\u8d6b\u7684\u540d\u81e3\u6ca1\u80fd\u505a\u5230\u8fd9\u4e00\u70b9\u2014\u2014\u4ed6\u4eec\u7684\u540d\u5b57\u88ab\u62b9\u53bb\uff0c\u4ed6\u4eec\u7684\u5bb6\u65cf\u88ab\u6e05\u7b97\u3002\u800c\u4f60\uff0c\u5e73\u5e73\u65e0\u5947\u5730\u6d3b\u4e86\u4e0b\u6765\u3002',
      check: function(){ return a.power >= 30 && a.power <= 60 && ef >= -10 && allFactionsGTE(-30) && allFactionsLTE(40) && GameState.attributes.bond >= 50; }},
     // v3.8.1: 英年早逝——非暴力死亡，壮志未酬
     {name:'英年早逝', desc:'壮志未酬，赍志而殁。你没能在这个波澜壮阔的时代留下自己的印记，便在默默无闻中走到了终点。你的名字没有出现在任何重要的历史文件中，你的面孔没有被任何人画下。你活过、努力过、挣扎过，但这个时代太大了，大到足以吞没一个普通人的一切。你的故事，就是无数个没有故事的人的故事。',
-     check: function(){ return a.power <= 15 && GameState.attributes.bond <= 20 && a.people <= 25 && a.fame <= 20; }}
+     check: function(){ return a.power <= 15 && GameState.attributes.bond <= 20 && a.people <= 25 && a.fame <= 20; }},
+    // v3.8.17 P1-5修复：传承结局已拆出到独立的 getLegacyEnding()，不再与通用结局竞争优先级
+    // 通用结局列表现在只包含事业/庙堂维度的结局
+    // 同时瘦身"全身而退"描述：去掉家族相关措辞，家庭维度由传承结局负责
   ];
   for (var i = 0; i < endings.length; i++) {
     if (endings[i].check()) return endings[i];
   }
+  return null;
+}
+
+// ========== v3.8.17 P1-5: 传承结局系统（双维度——家庭/门楣） ==========
+// 从 getCommonEnding 独立出来，与事业结局并行输出
+// 优先级：隐藏结局(独占) > 出身专属+传承 > 通用+传承 > 兜底
+function getLegacyEnding() {
+  if (!GameState.family) return null;
+  var f = GameState.family;
+
+  // 族灭型死亡（CRISIS_EVENTS type 0）直接覆盖传承结局——满门抄斩没有"家族兴旺"
+  if (GameState.deathCountdownType === 0 || GameState.deathWarningType === 0) {
+    return { name: '满门抄斩', desc: '满门抄斩，鸡犬不留。你的家族在这场政治风暴中被连根拔起——妻子、儿女、老幼，无一幸免。百年之后，没有人记得你的家族曾经存在过。在这个时代，有些姓氏注定要从大地上被抹去。' };
+  }
+
+  // 家族兴旺：3+在世子女，至少1个已婚或有孙辈
+  var livingChildren = f.children.filter(function(c){ return c.status === '在世'; });
+  var hasGrandchild = GameState.lifeEventsTriggered.indexOf('grandchild') >= 0;
+  var hasChildMarried = GameState.lifeEventsTriggered.indexOf('child_marriage') >= 0;
+  if (livingChildren.length >= 3 && (hasGrandchild || hasChildMarried)) {
+    return { name: '家族兴旺', desc: '子孙满堂，家道昌盛。你建立了一个完整的家族——孩子们都已成家立业，孙辈在堂前嬉戏。在这个命如草芥的洪武朝，你能把血脉延续下去，让家族开枝散叶，这本身就是一种胜利。百年之后，你的牌位会被子孙供奉，你的家训会被后人传诵。这比任何庙堂功名都更持久。' };
+  }
+
+  // 孤身来去：无配偶、无子女、无在世父母
+  var hasSpouse = f.spouse && (f.spouse.status === '在世');
+  var hasChildren = f.children && f.children.filter(function(c){ return c.status === '在世'; }).length > 0;
+  var hasParent = (f.parents.father && f.parents.father.status === '在世')
+               || (f.parents.mother && f.parents.mother.status === '在世');
+  if (!hasSpouse && !hasChildren && !hasParent) {
+    return { name: '孤身来去', desc: '来时无牵无挂，去时孑然一身。你没有留下子嗣，没有人为你续香火。在这个重视传宗接代的时代，你的选择或许会被视为遗憾。但你自己清楚——在这个随时可能族灭的洪武朝，不留下血脉，也许是对后代最大的保护。你的名字会随着你的离去而消散，仿佛从未存在过。这未必是坏事。' };
+  }
+
+  // 家道中落：所有家庭成员已死/离异，且曾经有过家庭
+  var spouseDead = !f.spouse || f.spouse.status === '已故' || f.spouse.status === '离异';
+  var allChildrenDead = f.children.length > 0 && f.children.every(function(c){ return c.status === '已故'; });
+  var fatherDead = !f.parents.father || f.parents.father.status === '已故';
+  var motherDead = !f.parents.mother || f.parents.mother.status === '已故';
+  if (spouseDead && allChildrenDead && fatherDead && motherDead && (f.children.length > 0 || f.spouse)) {
+    return { name: '家道中落', desc: '家族凋零，门庭冷落。你眼睁睁看着至亲之人一个个离去——妻子、孩子、父母，都走在了你前面。你建立的家庭最终只剩你一人。这份孤独比任何政治失败都更沉重。当最后一个亲人离你而去时，你突然明白：在这个时代，拥有家庭和失去家庭，都是需要勇气的事。' };
+  }
+
+  // 兜底：平淡传家——有家庭但没达到以上任何条件
+  if (f.spouse || livingChildren.length > 0 || hasParent) {
+    return { name: '平淡传家', desc: '家族不大不小，平平淡淡延续了下去。没有显赫，也没有衰败，就像千千万万的洪武朝人家一样。日子一天天过，孩子慢慢长大，老人渐渐离去。你没能给家族带来惊天动地的荣耀，但也没有让它在你手中断绝。这份平凡，在洪武朝已经是难得的幸运。' };
+  }
+
   return null;
 }
 
@@ -1495,14 +1804,26 @@ function getBackgroundEnding() {
 }
 
 function resolveFinaleEnding() {
-  // 优先级: 隐藏 > 出身专属(v3.8.4代码化) > 通用 > 兜底
+  // v3.8.17 P1-5: 双维度结局系统
+  // 优先级: 隐藏(独占) > 出身专属+传承 > 通用+传承
   var hidden = getHiddenEnding();
-  if (hidden) return { title: hidden.name, description: hidden.desc };
-  // v3.8.4: 出身专属结局代码化
+  if (hidden) return { title: hidden.name, description: hidden.desc, legacy: null };
+
+  // 事业结局（出身专属 > 通用）
   var bgEnding = getBackgroundEnding();
-  if (bgEnding) return { title: bgEnding.name, description: bgEnding.desc };
-  var common = getCommonEnding();
-  if (common) return { title: common.name, description: common.desc };
+  var careerEnding = bgEnding || getCommonEnding();
+  
+  // 传承结局（独立维度——家庭/门楣）
+  var legacyEnding = getLegacyEnding();
+  
+  if (careerEnding) {
+    return { 
+      title: careerEnding.name, 
+      description: careerEnding.desc, 
+      // v3.8.17: 传承结局作为第二维度
+      legacy: legacyEnding ? { title: legacyEnding.name, description: legacyEnding.desc } : null
+    };
+  }
   return null;
 }
 
@@ -1511,6 +1832,8 @@ function resolveFinaleEnding() {
 function predictFinaleEnding() {
   var ending = resolveFinaleEnding();
   if (ending) return ending;
+  // resolveFinaleEnding 现在返回 { title, description, legacy }
+  // legacy 为 null 或 { title, description }
   // 如果当前状态未命中任何结局，返回最接近的结局提示
   var a = GameState.attributes, f = GameState.factions, ef = GameState.emperor_feeling;
   // 简单启发式：根据最高属性/阵营给出倾向
@@ -1534,11 +1857,13 @@ function getFinaleHint() {
   // 在终局窗口（回合>=55 或 年份>=1393）注入提示
   if (turn >= 55 || year >= 1393) {
     var pred = predictFinaleEnding();
+    // v3.8.17: 双维度结局提示——事业+传承
+    var legacyHint = (pred.legacy && pred.legacy.title) ? '；门楣传承结局为「' + pred.legacy.title + '」（家族维度，叙事中需简要交代家族最终状态）' : '';
     if (pred.title && pred.title !== '未定') {
       if (isDeathEnding) {
-        return '【终局将至】游戏即将进入最终回合。最可能的结局是「' + pred.title + '」。终局叙事必须做到：(1)本回合为死亡结局——叙事应聚焦于角色临终前的心理活动、一生回忆闪回、周围人物的反应与哀恸，**严禁直接描写死亡过程本身**（死因定性与临终场景由系统单独展示，重复会破坏体验）；(2)回顾本局关键抉择与转折；(3)在叙事最末尾另起一行写【墓志铭】后接2-3句对人物一生的个性化评价（系统会自动提取展示，不会混入叙事正文，总计不超过100字）。';
+        return '【终局将至】游戏即将进入最终回合。最可能的仕途结局是「' + pred.title + '」' + legacyHint + '。终局叙事必须做到：(1)本回合为死亡结局——叙事应聚焦于角色临终前的心理活动、一生回忆闪回、周围人物的反应与哀恸，**严禁直接描写死亡过程本身**（死因定性与临终场景由系统单独展示，重复会破坏体验）；(2)回顾本局关键抉择与转折；(3)在叙事最末尾另起一行写【墓志铭】后接2-3句对人物一生的个性化评价（系统会自动提取展示，不会混入叙事正文，总计不超过100字）。';
       } else {
-        return '【终局将至】游戏即将进入最终回合。最可能的结局是「' + pred.title + '」。终局叙事必须做到：(1)明确交代人物最终归宿与人生收束；(2)回顾本局关键抉择与转折；(3)在叙事最末尾另起一行写【墓志铭】后接2-3句对人物一生的个性化评价（系统会自动提取展示，不会混入叙事正文，总计不超过100字）。';
+        return '【终局将至】游戏即将进入最终回合。最可能的仕途结局是「' + pred.title + '」' + legacyHint + '。终局叙事必须做到：(1)明确交代人物最终归宿与人生收束；(2)同时交代家族/家庭的最终状态（传承维度）；(3)回顾本局关键抉择与转折；(4)在叙事最末尾另起一行写【墓志铭】后接2-3句对人物一生的个性化评价（系统会自动提取展示，不会混入叙事正文，总计不超过100字）。';
       }
     } else if (pred.hint) {
       if (isDeathEnding) {

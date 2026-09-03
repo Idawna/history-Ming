@@ -1,3 +1,103 @@
+// ========== v3.8.17 上下文优化 Phase 1：历史分层压缩 ==========
+// 三级衰减：L1热区(最近4回合全文) → L2温区(5-8回合摘要) → L3冷区(9+回合一行)
+// 将 chatHistory 从 ~135K tokens 压缩至 ~45K tokens（-67%）
+
+function compressHistory() {
+  const HOT = 8;    // 最近4回合(8条消息)：全文保留
+  const WARM = 16;  // 第5-8回合(9-16条消息)：段落摘要
+  // 第9+回合(17+条消息)：一行摘要
+
+  for (let i = 0; i < chatHistory.length; i++) {
+    const msg = chatHistory[i];
+    const age = chatHistory.length - i; // 距最新消息的距离
+
+    if (age > WARM) {
+      // L3 冷区：一行摘要
+      if (msg._compressedTier === 2) continue; // 已冷压缩，跳过
+      msg.content = compressToLine(msg);
+      msg._compressedTier = 3;
+    } else if (age > HOT) {
+      // L2 温区：段落摘要
+      if (msg._compressedTier) continue; // 已压缩（温或冷），跳过
+      msg.content = compressToSummary(msg);
+      msg._compressedTier = 2;
+    }
+    // L1 热区：不动
+  }
+
+  // 调试日志：追踪压缩效果
+  var totalChars = 0;
+  for (var j = 0; j < chatHistory.length; j++) totalChars += (chatHistory[j].content || '').length;
+  console.log('[上下文优化] chatHistory: ' + chatHistory.length + '条消息, 总字符=' + totalChars + ' (≈' + Math.round(totalChars/1.5) + ' tokens)');
+}
+
+// L3 压缩：从消息中提取一行极简摘要
+function compressToLine(msg) {
+  if (msg.role === 'user') {
+    // 已温压缩的user消息：content是JSON字符串（含current_state）
+    if (msg._compressedTier === 2) {
+      try {
+        var parsed = JSON.parse(msg.content);
+        if (parsed.current_state) {
+          return JSON.stringify({
+            _compressed: true,
+            content: '【第' + (parsed.current_state.turn || '?') + '回合】' + (parsed.player_action || '').slice(0, 80)
+          });
+        }
+      } catch(e) {}
+    }
+    // 原始user消息：content是完整contextPayload JSON
+    try {
+      var p = JSON.parse(msg.content);
+      var turn = p.current_state ? p.current_state.turn : '?';
+      var action = p.player_action || '';
+      return JSON.stringify({
+        _compressed: true,
+        content: '【第' + turn + '回合】玩家行动：' + action.slice(0, 80)
+      });
+    } catch(e) { return msg.content; }
+  } else {
+    // assistant消息：提取首行叙事+玩家选择
+    var text = msg.content || '';
+    var firstLine = text.split('\n')[0].slice(0, 100);
+    var choiceMatch = text.match(/▸\s*(.+?)(?:\n|$)/);
+    var choice = choiceMatch ? choiceMatch[1].slice(0, 60) : '';
+    return JSON.stringify({
+      _compressed: true,
+      content: '叙事：' + firstLine + (choice ? '。选择：' + choice : '')
+    });
+  }
+}
+
+// L2 压缩：保留核心状态+叙事摘要，丢弃冗余数据
+function compressToSummary(msg) {
+  if (msg.role === 'user') {
+    try {
+      var p = JSON.parse(msg.content);
+      // 保留：current_state(角色状态)、player_action(玩家行动)、rhythm(节奏)
+      // 丢弃：recent_plot(每回合DOM重新抓取)、dynamic_rules(每回合重算)、
+      //       character_canon(只在turn≤5重要)、retry_constraint(一次性)
+      var compressed = {
+        _compressed: true,
+        current_state: p.current_state,
+        player_action: p.player_action,
+        rhythm: p.rhythm_directive ? p.rhythm_directive.slice(0, 100) : undefined
+      };
+      return JSON.stringify(compressed);
+    } catch(e) { return msg.content; }
+  } else {
+    // AI回复：保留叙事前300字 + JSON状态块（AI丢弃的选项信息不影响后续）
+    var text = msg.content || '';
+    var narrative = text.slice(0, 300);
+    var jsonMatch = text.match(/```json\n[\s\S]*?\n```/);
+    var stateBlock = jsonMatch ? jsonMatch[0] : '';
+    return JSON.stringify({
+      _compressed: true,
+      content: '【摘要】' + narrative + '\n' + stateBlock
+    });
+  }
+}
+
 // ========== STREAMING API CALL ==========
 // 调用后端代理，流式接收 AI 回复，逐字显示在 streamTarget 元素中
 // v3.9: 增加 buffered 参数，支持缓冲模式（不写入DOM，只累积文本）
@@ -88,6 +188,46 @@ async function streamBotAPI(userMessage, streamTarget, options) {
         }
         return '【生活事件·' + le.category + '】本回合触发了家庭生活事件。' + familySummary + '\n叙事要求：在正常叙事间隙自然穿插本事件的段落——' + le.narrative + '\n注意：这是生活细节，不要喧宾夺主，控制在3-5句内，融入整体叙事节奏中。';
       })(),
+      // v3.8.16 Phase 2: 书生婚姻选择注入
+      marriage_choice: (function(){
+        var mc = GameState.pendingMarriageChoice;
+        if (!mc || !mc.proposals) return '';
+        // v3.8.17 P3-2修复：3回合超时机制——AI未能正确处理则自动清空，避免每回合重复注入
+        if (mc.turn && GameState.turn - mc.turn > 3) {
+          GameState.pendingMarriageChoice = null;
+          return '';
+        }
+        var proposalsText = mc.proposals.map(function(p, i) {
+          return String.fromCharCode(65 + i) + '. ' + p.name + '——' + p.desc;
+        }).join('\n');
+        return '【婚姻抉择】有人上门提亲，你需要选择联姻对象。请将以下选项融入本回合的选项中：\n' + proposalsText + '\n玩家选择后，请在state block中标记"marriage_choice": "A"/"B"/"C"以便前端处理。';
+      })(),
+      // v3.8.16 Phase 3: 家庭牵连危机注入
+      family_crisis: (function(){
+        var fc = GameState.currentFamilyCrisis;
+        if (!fc) return '';
+        // v3.8.17 P0-1修复：去掉结局标签（保人/自保/两全），避免AI知道选项性质后暗示最优解
+        var choicesText = fc.choices.map(function(c, i) {
+          return String.fromCharCode(65 + i) + '. ' + c.text;
+        }).join('\n');
+        return '【家庭危机·' + fc.title + '】' + fc.desc + '\n请将以下抉择融入本回合的选项中：\n' + choicesText + '\n玩家选择后，请在state block中标记"family_crisis_choice": "A"/"B"/"C"以便前端处理。这是政治与家庭的交叉点，叙事应体现角色在亲情与自保之间的煎熬。';
+      })(),
+      // v3.8.17 P2-3修复：家庭危机选择长期影响注入——让AI在后续叙事中引用过往抉择
+      family_crisis_outcome: (function(){
+        var fco = GameState.familyCrisisOutcome;
+        if (!fco || Object.keys(fco).length === 0) return '';
+        var parts = [];
+        for (var cid in fco) {
+          if (fco.hasOwnProperty(cid)) {
+            if (fco[cid] === '保人') parts.push('你曾拼尽全力保全了家人——但被保全之人如今成了你的政治弱点，有人以此要挟');
+            else if (fco[cid] === '自保') parts.push('你曾冷酷地切割了亲情以求自保——这份心狠手辣的名声在同僚间悄然传开，有人敬你果决，有人惧你无情');
+            else if (fco[cid] === '两全') parts.push('你曾试图两全其美——但隐患并未真正消除，暗中的安排随时可能再次暴露');
+            else if (fco[cid] === '逃亡') parts.push('你曾携家出逃——那段颠沛流离的日子在记忆中挥之不去');
+          }
+        }
+        if (parts.length === 0) return '';
+        return '【家庭危机余波】过往抉择的长期影响：' + parts.join('；') + '。叙事中可自然体现这些后果——NPC态度变化、旧事重提、隐患爆发等。';
+      })(),
       // v3.8.6: 终局/死亡叙事提示注入
       finale_hint: getFinaleHint(),
       origin_lock: (function(){
@@ -110,6 +250,7 @@ async function streamBotAPI(userMessage, streamTarget, options) {
   
   // v3.8.15: 上下文已读取currentLifeEvent，清空以备下次触发
   GameState.currentLifeEvent = null;
+  // v3.8.16: 上下文已读取pendingMarriageChoice和currentFamilyCrisis，但不清空——等玩家选择后在applyChanges中清空
   
   // v3.9: 如果有重试约束（上次违规信息），追加到上下文中
   if (options && options.retry_constraint && options.retry_constraint.length > 0) {
@@ -128,6 +269,8 @@ async function streamBotAPI(userMessage, streamTarget, options) {
   // 控制历史长度：保留最近 30 条消息（约 15 回合），防止超出上下文窗口
   // 每回合 = 1条 user + 1条 assistant，30条 ≈ 15 回合
   const MAX_HISTORY = 30;
+  // v3.8.17 上下文优化 Phase 1：发送前压缩旧消息（三级衰减）
+  compressHistory();
   const trimmedHistory = chatHistory.slice(-MAX_HISTORY);
 
   const controller = new AbortController();
@@ -203,6 +346,8 @@ async function streamBotAPI(userMessage, streamTarget, options) {
     // 把 AI 回复加入历史
     if (fullText.trim()) {
       chatHistory.push({ role: 'assistant', content: fullText.trim() });
+      // v3.8.17 上下文优化 Phase 2：更新前情提要滚动摘要
+      if (typeof updatePlotSummary === 'function') updatePlotSummary();
     }
 
     return fullText;
@@ -751,17 +896,37 @@ function showEnding(ending, narrative) {
   const narrativeHtml = narrative
     ? `<div class="ending-narrative">${narrative.replace(/\n/g, '<br>')}</div>`
     : '';
+  // v3.8.17: 双维度结局——事业+传承
+  var legacyHtml = '';
+  if (ending.legacy && ending.legacy.title) {
+    legacyHtml = '<div class="ending-legacy">'
+      + '<h3 class="ending-legacy-title">◆ 门楣兴衰 ◆</h3>'
+      + '<p class="ending-legacy-name">' + ending.legacy.title + '</p>'
+      + '<p class="ending-legacy-desc">' + ending.legacy.description + '</p>'
+      + '</div>';
+  }
   div.innerHTML = `
-    <h2 class="ending-title">${ending.title || '终章'}</h2>
+    <h2 class="ending-title">◆ 仕途终局 ◆</h2>
+    <h3 class="ending-career-name">${ending.title || '终章'}</h3>
     ${narrativeHtml}
     <p class="ending-verdict">${ending.description || '你的故事到此结束。'}</p>
+    ${legacyHtml}
     ${epitaphHtml}
     <button class="confirm-btn" onclick="location.reload()">重新开始</button>
   `;
   // Add styles for ending display
   const style = document.createElement('style');
   style.textContent = `
-    .ending-title { font-size: 1.6em; margin-bottom: 0.5em; color: #d4a574; text-align: center; }
+    .ending-title { font-size: 1.6em; margin-bottom: 0.3em; color: #d4a574; text-align: center; }
+    .ending-career-name { font-size: 1.2em; color: #e8c9a0; text-align: center; margin-bottom: 0.5em; font-weight: 600; }
+    .ending-legacy {
+      margin: 1.2em 0; padding: 1em 1.2em;
+      background: rgba(180,140,80,0.08); border: 1px solid rgba(196,168,130,0.25);
+      border-radius: 6px;
+    }
+    .ending-legacy-title { font-size: 1.0em; color: #b8956a; text-align: center; margin-bottom: 0.5em; }
+    .ending-legacy-name { font-size: 1.1em; color: #d4b88c; text-align: center; font-weight: 600; margin-bottom: 0.3em; }
+    .ending-legacy-desc { font-size: 0.9em; color: #a89070; text-align: center; line-height: 1.6; font-style: italic; }
     .ending-narrative {
       max-height: 40vh; overflow-y: auto; padding: 1em;
       background: rgba(255,255,255,0.05); border-radius: 8px;
@@ -1147,6 +1312,12 @@ function applySnapshot(save) {
   GameState.lifeEventLastTurn = gs.lifeEventLastTurn || 0;
   GameState.lifeEventsTriggered = Array.isArray(gs.lifeEventsTriggered) ? [...gs.lifeEventsTriggered] : [];
   GameState.currentLifeEvent = null;
+  // v3.8.16: 恢复Phase 2-3婚姻/危机状态（兼容旧存档）
+  GameState.pendingMarriageChoice = gs.pendingMarriageChoice || null;
+  GameState.currentFamilyCrisis = gs.currentFamilyCrisis || null;
+  GameState.familyCrisisTriggeredThisAnchor = gs.familyCrisisTriggeredThisAnchor || false;
+  GameState.lastFamilyCrisisAnchor = gs.lastFamilyCrisisAnchor || 0;
+  GameState.familyCrisisOutcome = gs.familyCrisisOutcome || {};
 
   updateStatusPanel();
   clearContainer();

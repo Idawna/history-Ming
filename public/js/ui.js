@@ -745,6 +745,74 @@ function applyChanges(changes) {
     console.log('[出征] 第 ' + GameState.expeditionCount + ' 次出征');
   }
 
+  // ========== v3.8.16 Phase 2: 婚姻选择处理 ==========
+  if (changes.marriage_choice && GameState.pendingMarriageChoice) {
+    var choiceIdx = changes.marriage_choice.charCodeAt(0) - 65; // A=0, B=1, C=2
+    var proposals = GameState.pendingMarriageChoice.proposals;
+    if (choiceIdx >= 0 && choiceIdx < proposals.length) {
+      var selected = proposals[choiceIdx];
+      console.log('[婚姻选择] 玩家选择：' + selected.name);
+      // 应用联姻效果
+      if (selected.factionEffect) {
+        for (var feKey in selected.factionEffect) {
+          var feVal = selected.factionEffect[feKey];
+          if (GameState.attributes[feKey] !== undefined) {
+            GameState.attributes[feKey] = Math.max(0, Math.min(100, GameState.attributes[feKey] + feVal));
+          } else if (GameState.factions[feKey] !== undefined) {
+            GameState.factions[feKey] = Math.max(-100, Math.min(100, GameState.factions[feKey] + feVal));
+          }
+        }
+      }
+      // 更新家庭数据：添加妻子
+      if (!GameState.family) GameState.family = { spouse: null, children: [], parents: { father: null, mother: null }, siblings: [] };
+      GameState.family.spouse = {
+        name: '',
+        relation: '妻',
+        background: selected.name,
+        status: '在世',
+        marriedTurn: GameState.turn
+      };
+      console.log('[婚姻] 妻子已添加：' + selected.name);
+    }
+    // 清空待选状态
+    GameState.pendingMarriageChoice = null;
+  }
+
+  // ========== v3.8.16 Phase 3: 家庭危机选择处理 ==========
+  if (changes.family_crisis_choice && GameState.currentFamilyCrisis) {
+    var crisisChoiceIdx = changes.family_crisis_choice.charCodeAt(0) - 65;
+    var crisis = GameState.currentFamilyCrisis;
+    if (crisisChoiceIdx >= 0 && crisisChoiceIdx < crisis.choices.length) {
+      var selectedChoice = crisis.choices[crisisChoiceIdx];
+      console.log('[家庭危机] 玩家选择：' + selectedChoice.text + '（' + selectedChoice.outcome + '）');
+      // 应用选择效果
+      if (selectedChoice.effects) {
+        for (var ceKey in selectedChoice.effects) {
+          var ceVal = selectedChoice.effects[ceKey];
+          if (GameState.attributes[ceKey] !== undefined) {
+            GameState.attributes[ceKey] = Math.max(0, Math.min(100, GameState.attributes[ceKey] + ceVal));
+          }
+        }
+      }
+      // 记录选择结果
+      if (!GameState.familyCrisisOutcome) GameState.familyCrisisOutcome = {};
+      GameState.familyCrisisOutcome[crisis.id] = selectedChoice.outcome;
+      // 根据选择结果更新家庭数据
+      if (selectedChoice.outcome === '自保' || selectedChoice.outcome === '逃亡') {
+        // 自保/逃亡结局可能导致家庭成员状态变化
+        if (crisis.target === 'spouse' && selectedChoice.outcome === '自保') {
+          // 休妻切割
+          if (GameState.family.spouse) {
+            GameState.family.spouse.status = '离异';
+            console.log('[家庭危机] 妻子已离异');
+          }
+        }
+      }
+    }
+    // 清空当前危机状态
+    GameState.currentFamilyCrisis = null;
+  }
+
   updateStatusPanel();
   showFloatingChanges(changes);
   // ef加成单独飘字提示
