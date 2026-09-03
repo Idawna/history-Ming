@@ -122,30 +122,32 @@ const NPC_ANCHOR_LINK = {
 
 // ========== v3.8.15: 正面种子系统（D） ==========
 // 正面种子类型：在日常/缓冲回合中有概率种下，给玩家带来正面收益
+// v3.8.18: 正面种子类型（v1.1修正：新增圣眷/阵营回复效果）
 var POSITIVE_SEED_TYPES = [
-  { id: '贵人提携', type: '正面·人脉', effect: { attributes: { power: 5, people: 3 } }, desc: '一位朝中前辈主动指点你官场门道' },
-  { id: '民心归附', type: '正面·声望', effect: { attributes: { people: 5, fame: 3 } }, desc: '你的善举在民间传开，百姓口口相传' },
-  { id: '知己相交', type: '正面·情谊', effect: { attributes: { bond: 5, wisdom: 2 } }, desc: '偶遇一位志趣相投的同僚，引为知己' },
-  { id: '意外之喜', type: '正面·机遇', effect: { attributes: { wisdom: 4, power: 2 } }, desc: '偶然获得一份有价值的信息或资源' },
-  { id: '声名渐起', type: '正面·名望', effect: { attributes: { fame: 5, people: 2 } }, desc: '你的才干逐渐为人所知，名声在外' }
+  { id: '贵人提携', type: '正面·人脉', effect: { attributes: { power: 7, people: 4 }, emperor_feeling: 3 }, desc: '一位朝中前辈主动指点你官场门道，皇帝对你印象渐好' },
+  { id: '民心归附', type: '正面·声望', effect: { attributes: { people: 7, fame: 4 }, faction_boost: 3 }, desc: '你的善举在民间传开，各派势力对你刮目相看' },
+  { id: '知己相交', type: '正面·情谊', effect: { attributes: { bond: 7, wisdom: 3 }, emperor_feeling: 2 }, desc: '偶遇一位志趣相投的同僚，引为知己，圣眷微升' },
+  { id: '意外之喜', type: '正面·机遇', effect: { attributes: { wisdom: 5, power: 3, fame: 2 } }, desc: '偶然获得一份有价值的信息或资源' },
+  { id: '声名渐起', type: '正面·名望', effect: { attributes: { fame: 7, people: 3 }, emperor_feeling: 2 }, desc: '你的才干逐渐为人所知，皇帝也有所耳闻' }
 ];
 
-// 种植正面种子：仅在日常/缓冲回合、种子数<2时、15%概率触发
+// v3.8.18: 种植正面种子（P0-1修正：概率提升+上限提升+沉淀回合+紧迫减半）
 function plantPositiveSeed(turn) {
-  // 检查当前节奏是否适合种正面种子（日常或缓冲）
   var pacing = GameState.pacing;
-  if (pacing !== '日常' && pacing !== '缓冲') return;
+  // 沉淀回合也允许种植；紧迫回合概率减半
+  if (pacing !== '日常' && pacing !== '缓冲' && pacing !== '沉淀' && pacing !== '紧迫') return;
   
-  // 已有未触发的正面种子>=2个，不再种植
+  // 已有未触发的正面种子>=3个，不再种植
   var positiveCount = 0;
   for (var i = 0; i < GameState.seeds.length; i++) {
     var s = GameState.seeds[i];
     if (s.type && s.type.indexOf('正面') === 0) positiveCount++;
   }
-  if (positiveCount >= 2) return;
+  if (positiveCount >= 3) return;
   
-  // 15%概率种植
-  if (Math.random() >= 0.15) return;
+  // 35%概率种植（紧迫回合减半为17.5%）
+  var effectiveProb = (pacing === '紧迫') ? 0.175 : 0.35;
+  if (Math.random() >= effectiveProb) return;
   
   // 随机选一种正面种子
   var seedType = POSITIVE_SEED_TYPES[Math.floor(Math.random() * POSITIVE_SEED_TYPES.length)];
@@ -1248,6 +1250,80 @@ function getDegradationAnchorMod() {
   return DEGRADATION_ANCHOR_MOD[GameState.degradationType] || 1.0;
 }
 
+// v3.8.18: 锚点弹性烈度分级（策划报告#3）
+// 每个锚点根据玩家状态计算烈度1/2/3，输出给SP调整叙事烈度
+var ANCHOR_FACTION_MAP = {
+  1: 'zhedong',   // 刘伯温之死 → 浙东线
+  2: 'huaixi',    // 胡惟庸案 → 淮西/中书省
+  3: null,         // 空印案 → 户部系统性（无特定阵营）
+  4: null,         // 郭桓案 → 户部系统性
+  5: 'huaixi',    // 李善长案 → 淮西
+  6: 'donggong',  // 太子之死 → 东宫
+  7: 'huaixi',    // 蓝玉案 → 淮西
+  8: 'jinchen',   // 锦衣卫膨胀 → 近臣/锦衣卫
+  9: null          // 朱元璋驾崩 → 全局
+};
+
+function calcAnchorIntensity(anchorId) {
+  var factionKey = ANCHOR_FACTION_MAP[anchorId];
+  var f = GameState.factions;
+  var a = GameState.attributes;
+  var score = 0;
+
+  // 因子1：相关阵营温度 ≥40
+  if (factionKey && f[factionKey] >= 40) score++;
+
+  // 因子2：权力水平 ≥50（权力大=被关注多=卷入深）
+  if (a.power >= 50) score++;
+
+  // 因子3：深度卷入——已清洗相关阵营 / 有近臣NPC绑定此锚点
+  if (factionKey && GameState.factionPurged && GameState.factionPurged[factionKey]) score++;
+  for (var npc in NPC_ANCHOR_LINK) {
+    if (NPC_ANCHOR_LINK[npc].boundAnchor === anchorId) {
+      if (GameState.jinchenEvents && Object.keys(GameState.jinchenEvents).length > 0) score++;
+      break;
+    }
+  }
+
+  // 系统性事件（空印案/郭桓案/朱元璋驾崩）：基础烈度至少1，额外看ef
+  if (!factionKey) {
+    score = Math.max(score, 1);
+    if (GameState.emperor_feeling >= 60) score++;
+  }
+
+  // 映射到1-3档
+  var intensity = score <= 1 ? 1 : (score <= 2 ? 2 : 3);
+  return intensity;
+}
+
+// 获取当前活跃锚点的烈度（供contextPayload使用）
+function getCurrentAnchorIntensity() {
+  var turn = GameState.turn;
+  var anchor = null;
+  // 优先找当前窗口内的锚点
+  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+    if (turn >= HISTORY_ANCHORS[i].start && turn <= HISTORY_ANCHORS[i].end + 2) {
+      anchor = HISTORY_ANCHORS[i];
+      break;
+    }
+  }
+  // 找不到就找下一个即将发生的
+  if (!anchor) {
+    for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+      if (turn < HISTORY_ANCHORS[i].start && turn >= HISTORY_ANCHORS[i].start - 5) {
+        anchor = HISTORY_ANCHORS[i];
+        break;
+      }
+    }
+  }
+  if (!anchor) return null;
+  return {
+    anchor_id: anchor.id,
+    anchor_name: anchor.name,
+    intensity: calcAnchorIntensity(anchor.id)
+  };
+}
+
 // v3.8.2: 死亡倒计时机制（P0-2重写：优先级+预警+冷却+缓冲）
 function checkDeath() {
   var a = GameState.attributes, f = GameState.factions, ef = GameState.emperor_feeling;
@@ -1594,19 +1670,39 @@ function updateDeathTracking(narrative) {
     GameState.consecutiveHighEfTurns = 0;
   }
   applyFavorRisk();
-  // P0-1: 近臣监控压力——jinchen <= -60时每5回合种下"被盯上"种子
+  // P0-4: 近臣监控种子修复（v3.8.18：存在性检查+效果递减+退出条件）
+  // 退出条件：jinchen回升到-40以上，清除所有监控种子
+  if (GameState.factions.jinchen > -40) {
+    var hadWatch = GameState.seeds.some(function(s) { return s.id.indexOf('被盯上_') === 0; });
+    if (hadWatch) {
+      GameState.seeds = GameState.seeds.filter(function(s) { return s.id.indexOf('被盯上_') !== 0; });
+      GameState.jinchenWatchCount = 0;
+      console.log('[近臣监控] jinchen回升到-40以上，监控种子已清除');
+    }
+  }
+  // 种植条件：jinchen<=-60 + 每5回合 + 不存在未引爆的监控种子
   if (GameState.factions.jinchen <= -60 && turn % 5 === 0) {
-    var watchedSeed = {
-      id: '被盯上_' + turn,
-      type: '把柄暴露',
-      planted_turn: turn,
-      trigger_turn: turn + 4,
-      effect: { attributes: { power: -5, wisdom: -3 }, emperor_feeling: -8 }
-    };
-    // 避免重复种入
-    if (!GameState.seeds.some(function(s) { return s.id === watchedSeed.id; })) {
+    var hasExistingWatch = GameState.seeds.some(function(s) { return s.id.indexOf('被盯上_') === 0; });
+    if (!hasExistingWatch) {
+      // 效果递减：第1次×1.0，第2次×0.5，第3次×0.25，保底-1/-1/-2
+      var watchCount = GameState.jinchenWatchCount || 0;
+      var decay = Math.pow(0.5, watchCount);
+      var watchedSeed = {
+        id: '被盯上_' + turn,
+        type: '把柄暴露',
+        planted_turn: turn,
+        trigger_turn: turn + 4,
+        effect: {
+          attributes: {
+            power: Math.max(Math.round(-5 * decay), -1),
+            wisdom: Math.max(Math.round(-3 * decay), -1)
+          },
+          emperor_feeling: Math.max(Math.round(-8 * decay), -2)
+        }
+      };
       GameState.seeds.push(watchedSeed);
-      console.log('[近臣监控] 种下"被盯上"种子，回合', turn);
+      GameState.jinchenWatchCount = watchCount + 1;
+      console.log('[近臣监控] 种下"被盯上"种子，衰减系数:', decay.toFixed(2), '回合', turn);
     }
   }
   // v3.8.15: 正面种子种植（D）
@@ -1695,22 +1791,23 @@ function getLegacyEnding() {
     return { name: '家族兴旺', desc: '子孙满堂，家道昌盛。你建立了一个完整的家族——孩子们都已成家立业，孙辈在堂前嬉戏。在这个命如草芥的洪武朝，你能把血脉延续下去，让家族开枝散叶，这本身就是一种胜利。百年之后，你的牌位会被子孙供奉，你的家训会被后人传诵。这比任何庙堂功名都更持久。' };
   }
 
-  // 孤身来去：无配偶、无子女、无在世父母
+  // v3.8.18修复：家道中落必须在孤身来去之前检查——曾有家庭但全失去 ≠ 从未有家庭
+  // 家道中落：所有家庭成员已死/离异，且曾经有过家庭（优先级高于孤身来去）
   var hasSpouse = f.spouse && (f.spouse.status === '在世');
   var hasChildren = f.children && f.children.filter(function(c){ return c.status === '在世'; }).length > 0;
   var hasParent = (f.parents.father && f.parents.father.status === '在世')
                || (f.parents.mother && f.parents.mother.status === '在世');
-  if (!hasSpouse && !hasChildren && !hasParent) {
-    return { name: '孤身来去', desc: '来时无牵无挂，去时孑然一身。你没有留下子嗣，没有人为你续香火。在这个重视传宗接代的时代，你的选择或许会被视为遗憾。但你自己清楚——在这个随时可能族灭的洪武朝，不留下血脉，也许是对后代最大的保护。你的名字会随着你的离去而消散，仿佛从未存在过。这未必是坏事。' };
-  }
-
-  // 家道中落：所有家庭成员已死/离异，且曾经有过家庭
   var spouseDead = !f.spouse || f.spouse.status === '已故' || f.spouse.status === '离异';
   var allChildrenDead = f.children.length > 0 && f.children.every(function(c){ return c.status === '已故'; });
   var fatherDead = !f.parents.father || f.parents.father.status === '已故';
   var motherDead = !f.parents.mother || f.parents.mother.status === '已故';
   if (spouseDead && allChildrenDead && fatherDead && motherDead && (f.children.length > 0 || f.spouse)) {
     return { name: '家道中落', desc: '家族凋零，门庭冷落。你眼睁睁看着至亲之人一个个离去——妻子、孩子、父母，都走在了你前面。你建立的家庭最终只剩你一人。这份孤独比任何政治失败都更沉重。当最后一个亲人离你而去时，你突然明白：在这个时代，拥有家庭和失去家庭，都是需要勇气的事。' };
+  }
+
+  // 孤身来去：无配偶、无子女、无在世父母（且从未有过家庭，否则应该匹配家道中落）
+  if (!hasSpouse && !hasChildren && !hasParent) {
+    return { name: '孤身来去', desc: '来时无牵无挂，去时孑然一身。你没有留下子嗣，没有人为你续香火。在这个重视传宗接代的时代，你的选择或许会被视为遗憾。但你自己清楚——在这个随时可能族灭的洪武朝，不留下血脉，也许是对后代最大的保护。你的名字会随着你的离去而消散，仿佛从未存在过。这未必是坏事。' };
   }
 
   // 兜底：平淡传家——有家庭但没达到以上任何条件
@@ -2000,45 +2097,67 @@ function applyFactionDecay() {
 
 // v3.8.5: P1-D 圣眷风险（朱元璋猜忌机制）
 // v3.8.15修复：暴跌需有因果——权力或声望偏高才会招忌（赵一#13）
+// v3.8.18修复：①所有区域均需诱因（消除"天威莫测"无条件暴跌）②加入连续暴跌冷却（3回合内不重复）③诱因扩展到阵营权势+近期清洗
 function applyFavorRisk() {
   var ef = GameState.emperor_feeling;
   var consecutive = GameState.consecutiveHighEfTurns;
   var a = GameState.attributes;
+  var f = GameState.factions;
   
   // 重置暴跌记录
   GameState.favorCrashThisTurn = null;
   
-  // "有功可忌"：权力或声望达到一定水平才会引起皇帝猜忌
-  var hasProvocation = (a.power >= 45 || a.fame >= 40);
+  // 连续暴跌冷却：如果近3回合内已暴跌过，不再触发（防止连续断崖）
+  if (GameState.favorCrashRecentTurns > 0) {
+    GameState.favorCrashRecentTurns--;
+    return;
+  }
   
-  // 警戒区：ef 40~69，连续≥3回合 且 有权势可忌，10%概率暴跌
-  if (ef >= 40 && ef < 70 && consecutive >= 3 && hasProvocation) {
+  // "有功可忌"——多维诱因检测（不再只看属性，也看阵营权势和政治环境）
+  var hasProvocation = (
+    a.power >= 45 || a.fame >= 40 ||              // 个人权势：权力或声望突出
+    f.huaixi >= 60 || f.zhedong >= 60 ||          // 阵营坐大：任一主要阵营好感极高（结党之嫌）
+    GameState.factionPurged && (                   // 有过清洗→皇帝疑心持续加重
+      GameState.factionPurged.jinchen ||
+      GameState.factionPurged.donggong ||
+      GameState.factionPurged.huaixi
+    )
+  );
+  
+  // 无诱因则不触发——朱元璋虽多疑，也不会无缘无故发怒
+  if (!hasProvocation) return;
+  
+  // 警戒区：ef 40~69，连续≥3回合高圣眷 + 有权势可忌，10%概率暴跌
+  if (ef >= 40 && ef < 70 && consecutive >= 3) {
     if (Math.random() < 0.10) {
       var crash = -(Math.floor(Math.random() * 11) + 10); // -10~-20
       GameState.emperor_feeling = ef + crash;
       GameState.favorCrashThisTurn = '功高遭忌' + crash;
+      GameState.favorCrashRecentTurns = 3;
       console.log('[圣眷暴跌]', GameState.favorCrashThisTurn, 'power:', a.power, 'fame:', a.fame);
       return;
     }
   }
   
-  // 极端危险区：ef≥80，无需具体原因（皇帝多疑到极致），15%概率暴跌
+  // 极端危险区：ef≥80 + 有权势可忌，15%概率暴跌（不再无条件触发）
   if (ef >= 80) {
     if (Math.random() < 0.15) {
       var crash = -(Math.floor(Math.random() * 11) + 15); // -15~-25
       GameState.emperor_feeling = ef + crash;
-      GameState.favorCrashThisTurn = '天威莫测' + crash;
-      console.log('[圣眷暴跌]', GameState.favorCrashThisTurn, 'ef:', ef);
+      GameState.favorCrashThisTurn = '宠极生变' + crash;
+      GameState.favorCrashRecentTurns = 3;
+      console.log('[圣眷暴跌]', GameState.favorCrashThisTurn, 'ef:', ef, 'power:', a.power);
       return;
     }
   }
   
-  // 危险区：ef 70~79，每回合20%概率暴跌，需要权力/声望作为诱因
-  if (ef >= 70 && ef < 80 && hasProvocation) {
+  // 危险区：ef 70~79，20%概率暴跌
+  if (ef >= 70 && ef < 80) {
     if (Math.random() < 0.20) {
       var crash = -(Math.floor(Math.random() * 11) + 20); // -20~-30
       GameState.emperor_feeling = ef + crash;
       GameState.favorCrashThisTurn = '宠极生厌' + crash;
+      GameState.favorCrashRecentTurns = 3;
       console.log('[圣眷暴跌]', GameState.favorCrashThisTurn, 'power:', a.power, 'fame:', a.fame);
       return;
     }

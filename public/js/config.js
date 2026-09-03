@@ -68,6 +68,7 @@ const GameState = {
   // v3.8.5: 圣眷风险追踪
   consecutiveHighEfTurns: 0,
   favorCrashThisTurn: null,
+  favorCrashRecentTurns: 0,
   // v3.8.10: 锚点顺序强制控制——已完成的锚点ID列表
   completedAnchors: [],
   // v3.8.11: 结局终止标记 + 待处理选项存档
@@ -76,6 +77,7 @@ const GameState = {
   // P0-1: 近臣事件追踪
   jinchenEvents: {},    // 已触发的近臣事件 { 'jc_1': 'A', 'jc_2': 'C', ... }
   jinchenFlags: {},     // 近臣特殊标记 { jinchenCap: 30 /* 事件8选A后锁死上限 */ }
+  jinchenWatchCount: 0, // v3.8.18: 近臣监控种子计数（效果递减用）
   // P0-2: 死亡容错机制
   deathWarning: 0,              // 必死/概率直接死型预警倒计时（1回合）
   deathWarningType: 0,          // 预警类型（对应CRISIS_EVENTS key）
@@ -155,52 +157,50 @@ const ORIGIN_FACTION_MAP = {
 };
 
 // v3.8.5: P2-B 种子类型模板（代码化引爆效果）
+// v3.8.18: 负面种子效果下调~15%（配合到期必爆100%引爆率），出身修正补全
 const SEED_TEMPLATES = {
   '政治炸弹': {
-    latency: [4, 5],       // 潜伏期（回合数范围）
-    triggerRate: 0.8,       // 引爆概率
-    // 效果模板：[最小值, 最大值]，负数为损失
+    latency: [4, 5],
+    triggerRate: 0.8,
     effect: {
-      attributes: { power: [-20, -10] },
-      factions: null        // 阵营效果动态计算（针对玩家最高阵营）
+      attributes: { power: [-17, -8] },
+      factions: null
     },
-    // 出身修正：武将出身概率-10%
     originMod: { '淮西武将之后': -0.1 }
   },
   '人情债': {
     latency: [3, 4],
     triggerRate: 0.6,
     effect: {
-      attributes: { people: [5, 15] },   // 正面效果
+      attributes: { people: [5, 15] },
       emperor_feeling: [0, 5]
     },
-    originMod: {}
+    originMod: { '应天府商贾之子': 0.15 }
   },
   '把柄暴露': {
     latency: [3, 5],
     triggerRate: 0.7,
     effect: {
-      attributes: { power: [-15, -5], wisdom: [-5, 0] },
-      emperor_feeling: [-25, -15]
+      attributes: { power: [-12, -4], wisdom: [-4, 0] },
+      emperor_feeling: [-20, -12]
     },
-    originMod: {}
+    originMod: { '落魄前元官员之后': 0.20 }
   },
   '谣言传播': {
     latency: [3, 4],
     triggerRate: 0.5,
     effect: {
-      attributes: { fame: [-15, -5], people: [-10, -3] },
-      factions: null        // 阵营效果动态计算
+      attributes: { fame: [-12, -4], people: [-8, -3] },
+      factions: null
     },
-    // 出身修正：书生出身概率+10%（更容易卷入文字风波）
     originMod: { '浙东寒门书生': 0.1 }
   },
   '盟友反水': {
     latency: [4, 5],
     triggerRate: 0.4,
     effect: {
-      attributes: { people: [-20, -10], bond: [-10, -5] },
-      factions: null        // 阵营效果动态计算
+      attributes: { people: [-17, -8], bond: [-8, -4] },
+      factions: null
     },
     originMod: {}
   }

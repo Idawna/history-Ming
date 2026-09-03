@@ -55,7 +55,7 @@ function updateStatusPanel() {
       <span class="faction-label seesaw-label" style="color:${display.leftColor}">${display.leftLabel}</span>
       <div class="faction-bar-container seesaw-container">
         <div class="faction-bar-center"></div>
-        <div class="faction-bar-fill" style="left:${isLeftDominant ? '50%' : `${pct}%`};width:${Math.abs(seeSaw)/2}%;background:${isLeftDominant ? display.leftColor : display.rightColor}"></div>
+        <div class="faction-bar-fill" style="left:${isLeftDominant ? `${50 - Math.abs(seeSaw)/2}%` : '50%'};width:${Math.abs(seeSaw)/2}%;background:${isLeftDominant ? display.leftColor : display.rightColor}"></div>
       </div>
       <span class="faction-label seesaw-label" style="color:${display.rightColor}">${display.rightLabel}</span>
     `;
@@ -93,6 +93,9 @@ function updateStatusPanel() {
 
   // P0-2: 危机徽章更新
   updateCrisisBadge();
+  
+  // v3.8.18 P0-2: 伏笔区域更新
+  renderSeedHints();
 }
 
 // ========== P0-2: 危机徽章 ==========
@@ -127,6 +130,67 @@ function updateCrisisBadge() {
   }
 
   badge.style.display = 'none';
+}
+
+// v3.8.18 P0-2: 伏笔区域——种子可见性提示
+function renderSeedHints() {
+  var container = document.getElementById('seedHints');
+  if (!container) return;
+  container.innerHTML = '';
+  var seeds = GameState.seeds || [];
+  var negativeSeeds = seeds.filter(function(s) { return !s.positive; });
+  var positiveSeeds = seeds.filter(function(s) { return s.positive; });
+  
+  // 总数<=1不显示（保持神秘感）
+  if (seeds.length <= 1) {
+    var seedSection = document.getElementById('seedSection');
+    if (seedSection) seedSection.style.display = 'none';
+    return;
+  }
+  
+  // 总数=2显示"暗流涌动"
+  if (seeds.length === 2) {
+    var hint = document.createElement('span');
+    hint.className = 'seed-hint-group';
+    hint.textContent = '暗流涌动 ×2';
+    container.appendChild(hint);
+  } else {
+    // 总数>=3显示叙事化标签
+    var SEED_LABELS = {
+      '政治炸弹': { icon: '📜', label: '旧账未清' },
+      '把柄暴露': { icon: '👁', label: '暗处有眼' },
+      '谣言传播': { icon: '🗣', label: '流言未息' },
+      '盟友反水': { icon: '🎭', label: '人心难测' },
+      '人情债':   { icon: '🤝', label: '恩情未还' }
+    };
+    var grouped = {};
+    negativeSeeds.forEach(function(s) {
+      var type = s.type || '政治炸弹';
+      if (!grouped[type]) grouped[type] = 0;
+      grouped[type]++;
+    });
+    for (var type in grouped) {
+      var info = SEED_LABELS[type] || { icon: '📌', label: '伏笔' };
+      var el = document.createElement('span');
+      el.className = 'seed-hint';
+      el.textContent = info.icon + ' ' + info.label + (grouped[type] > 1 ? ' ×' + grouped[type] : '');
+      container.appendChild(el);
+    }
+  }
+  
+  // 正面种子显示为机缘暗藏
+  if (positiveSeeds.length > 0) {
+    var posEl = document.createElement('span');
+    posEl.className = 'seed-hint seed-hint-positive';
+    posEl.textContent = '✨ 机缘暗藏 ×' + positiveSeeds.length;
+    container.appendChild(posEl);
+  }
+  
+  // 控制section显示/隐藏
+  var seedSection = document.getElementById('seedSection');
+  if (seedSection) {
+    seedSection.style.display = (container.children.length > 0) ? '' : 'none';
+  }
 }
 
 // ========== P0-2: 自救判定动画 ==========
@@ -378,21 +442,18 @@ function _getSeedTriggerRate(seedType) {
 }
 
 // 应用多个种子效果（处理叠加）
+// v3.8.18: _applySeedEffects() 重写（P1-3全局叠加乘数 + 正面种子faction_boost）
 function _applySeedEffects(seeds) {
   var totalEffect = { attributes: {}, emperor_feeling: 0, factions: {} };
   
-  // 按类型分组，处理叠加
-  var typeCount = {};
-  for (var i = 0; i < seeds.length; i++) {
-    var s = seeds[i];
-    typeCount[s.type] = (typeCount[s.type] || 0) + 1;
-  }
+  // v3.8.18 P1-3: 全局叠加乘数（基于总种子数，不区分类型）
+  var totalSeeds = seeds.length;
+  var globalMultiplier = 1 + (totalSeeds - 1) * 0.2; // 1个×1.0, 2个×1.2, 3个×1.4...
   
-  // 应用效果
   for (var j = 0; j < seeds.length; j++) {
     var seed = seeds[j];
     var effect = seed.effect;
-    var stackMultiplier = 1 + (typeCount[seed.type] - 1) * 0.5; // 同类型叠加：2个=1.5倍，3个=2倍
+    var stackMultiplier = globalMultiplier;
     
     // 属性效果
     if (effect.attributes) {
@@ -401,15 +462,23 @@ function _applySeedEffects(seeds) {
       }
     }
     
-    // 圣眷效果
+    // 圣眷效果（负面种子的emperor_feeling + 正面种子的emperor_feeling）
     if (effect.emperor_feeling) {
       totalEffect.emperor_feeling += Math.round(effect.emperor_feeling * stackMultiplier);
     }
     
-    // 阵营效果
+    // 阵营效果（负面种子）
     if (effect.factions) {
       for (var fk in effect.factions) {
         totalEffect.factions[fk] = (totalEffect.factions[fk] || 0) + Math.round(effect.factions[fk] * stackMultiplier);
+      }
+    }
+    
+    // v3.8.18: 正面种子 faction_boost（民心归附：所有阵营+N）
+    if (seed.positive && effect.faction_boost) {
+      var fb = Math.round(effect.faction_boost * stackMultiplier);
+      for (var fbk in GameState.factions) {
+        totalEffect.factions[fbk] = (totalEffect.factions[fbk] || 0) + fb;
       }
     }
   }
@@ -431,7 +500,7 @@ function _applySeedEffects(seeds) {
     }
   }
   
-  console.log('[种子效果] 应用:', JSON.stringify(totalEffect));
+  console.log('[种子效果] 应用:', JSON.stringify(totalEffect), '乘数:', globalMultiplier.toFixed(1));
   return totalEffect;
 }
 
@@ -611,6 +680,7 @@ function applyChanges(changes) {
   if (changes.emperor_feeling !== undefined) {
     GameState.emperor_feeling = Math.max(-100, Math.min(100, GameState.emperor_feeling + changes.emperor_feeling));
   }
+  
   // P2-B 代码化：种子系统完整实现
   // 1. 新种子入库（存储完整对象，含类型、预计引爆回合、效果）
   if (changes.seeds && changes.seeds.length > 0) {
@@ -633,11 +703,29 @@ function applyChanges(changes) {
           effect: effect
         });
         console.log('[种子] 新种下:', seedId, '类型:', seedType, '预计引爆回合:', GameState.turn + latencyRoll);
+        
+        // v3.8.18 P0-1: 伴随种植——每个负面种子有40%概率伴生一个正面种子
+        if (seedType && seedType.indexOf('正面') !== 0) {
+          if (Math.random() < 0.4) {
+            var positiveType = POSITIVE_SEED_TYPES[Math.floor(Math.random() * POSITIVE_SEED_TYPES.length)];
+            var positiveLatency = 2 + Math.floor(Math.random() * 3); // 2-4回合后触发
+            GameState.seeds.push({
+              id: positiveType.id + '_companion_' + GameState.turn,
+              type: positiveType.type,
+              planted_turn: GameState.turn,
+              trigger_turn: GameState.turn + positiveLatency,
+              effect: JSON.parse(JSON.stringify(positiveType.effect)),
+              desc: positiveType.desc,
+              positive: true
+            });
+            console.log('[伴随种植] 负面种子伴生正面种子:', positiveType.id);
+          }
+        }
       }
     }
   }
   
-  // 2. 检查种子引爆（AI主动 + 到期自动 + 上限溢出）
+  // 2. 检查种子引爆（AI主动 + 种子解除 + 到期必爆 + 上限溢出）
   var seedsToTrigger = [];
   var now = GameState.turn;
   
@@ -654,16 +742,25 @@ function applyChanges(changes) {
     }
   }
   
-  // 2b. 到期概率引爆
+  // 2a-2. v3.8.18 P0-3: 种子解除（AI叙事驱动）
+  if (changes.seeds_defused && changes.seeds_defused.length > 0) {
+    for (var dfi = 0; dfi < changes.seeds_defused.length; dfi++) {
+      var defuseId = changes.seeds_defused[dfi];
+      var defuseIdx = GameState.seeds.findIndex(function(s) { return s.id === defuseId; });
+      if (defuseIdx >= 0) {
+        console.log('[种子解除] 已解除:', defuseId);
+        GameState.seeds.splice(defuseIdx, 1);
+      }
+    }
+  }
+  
+  // 2b. v3.8.18 P1-1: 到期必爆（移除概率，now >= trigger_turn 直接引爆）
   for (var di = GameState.seeds.length - 1; di >= 0; di--) {
     var seed = GameState.seeds[di];
     if (now >= seed.trigger_turn) {
-      var rate = _getSeedTriggerRate(seed.type);
-      if (Math.random() < rate || now - seed.planted_turn >= 8) { // 超期必引爆
-        seedsToTrigger.push(seed);
-        GameState.seeds.splice(di, 1);
-        console.log('[种子引爆] 到期触发:', seed.id, '概率:', rate);
-      }
+      seedsToTrigger.push(seed);
+      GameState.seeds.splice(di, 1);
+      console.log('[种子引爆] 到期必爆:', seed.id);
     }
   }
   

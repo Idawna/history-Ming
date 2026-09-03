@@ -1375,6 +1375,35 @@ body {
   border-color: rgba(39, 135, 74, 0.35);
 }
 
+/* === v3.8.18: 伏笔区域（种子可见性） === */
+.seed-hint {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 8px;
+  margin: 2px 4px 2px 0;
+  border-radius: 3px;
+  background: rgba(139, 58, 42, 0.12);
+  border: 1px solid rgba(139, 58, 42, 0.25);
+  color: #8b3a2a;
+  font-family: var(--font-ui);
+}
+.seed-hint-positive {
+  background: rgba(46, 125, 50, 0.12);
+  border-color: rgba(46, 125, 50, 0.25);
+  color: #2e6d3a;
+}
+.seed-hint-group {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 8px;
+  margin: 2px 4px 2px 0;
+  border-radius: 3px;
+  background: rgba(139, 105, 20, 0.12);
+  border: 1px solid rgba(139, 105, 20, 0.25);
+  color: #8b6914;
+  font-family: var(--font-ui);
+}
+
 /* === 危机详情卡片 === */
 .crisis-detail-card {
   padding: 12px 14px;

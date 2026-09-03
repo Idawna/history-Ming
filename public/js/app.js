@@ -140,6 +140,14 @@ async function streamBotAPI(userMessage, streamTarget, options) {
       alive_npcs: getAliveNPCs(GameState.year),
       institutions: getAllowedInstitutions(GameState.year),
       anchor_info: getAnchorHints(getNextTurn()),
+      // v3.8.18: 锚点弹性烈度分级——告诉AI当前锚点的叙事烈度等级
+      anchor_intensity: (function(){
+        var ai = getCurrentAnchorIntensity();
+        if (!ai) return '';
+        var labels = ['', '旁观者', '被波及', '刀锋上'];
+        var descs = ['', '你与此事关联较浅，以旁观者视角 witnessing 即可，叙事基调安全克制', '你被事件波及但尚有脱身余地，叙事应有紧迫感和两难抉择', '你深度卷入风暴核心，叙事必须在刀锋上跳舞，每一步都可能致命'];
+        return '【锚点烈度】' + ai.anchor_name + ' — 烈度' + ai.intensity + '（' + labels[ai.intensity] + '）：' + descs[ai.intensity];
+      })(),
       background_anchor_hint: getBackgroundAnchorHint(GameState.character.background, getNextTurn()),
       ending_conditions: getEndingConditions(GameState.character.background),
       path_reminder: getBackgroundPathReminder(GameState.character.background, getNextTurn()),
