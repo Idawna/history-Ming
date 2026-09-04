@@ -286,8 +286,8 @@ function showFloatingChanges(changes) {
   if (changes.attributes) {
     const attrs = changes.attributes;
 
-    // 官运变化 = power×0.6 + fame×0.4
-    const careerDelta = Math.round((attrs.power || 0) * 0.6 + (attrs.fame || 0) * 0.4);
+    // 官运变化 = power×0.4 + fame×0.3 + wisdom×0.3（v3.8.20 智谋融入）
+    const careerDelta = Math.round((attrs.power || 0) * 0.4 + (attrs.fame || 0) * 0.3 + (attrs.wisdom || 0) * 0.3);
     if (careerDelta !== 0) {
       items.push({
         text: `${careerDelta > 0 ? '+' : ''}${careerDelta} 官运`,
@@ -809,9 +809,18 @@ function applyChanges(changes, narrative) {
         }
       }
     }
-    // 记录到 seeds_triggered
+    // 记录到 seeds_triggered + v3.8.20 引爆通知
     for (var sti = 0; sti < seedsToTrigger.length; sti++) {
       GameState.seeds_triggered.push(seedsToTrigger[sti].id);
+      // 引爆通知：记录被引爆的种子信息（UI层稍后展示）
+      var trigSeed = seedsToTrigger[sti];
+      if (!GameState._pendingSeedDetonations) GameState._pendingSeedDetonations = [];
+      GameState._pendingSeedDetonations.push({
+        id: trigSeed.id,
+        type: trigSeed.type || '',
+        desc: trigSeed.desc || '',
+        positive: !!trigSeed.positive
+      });
     }
   }
 
@@ -952,6 +961,58 @@ function applyChanges(changes, narrative) {
 
   updateStatusPanel();
   showFloatingChanges(changes);
+
+  // ========== v3.8.20: 种子系统可见化 ==========
+  var seedContainer = document.querySelector('.floating-changes') || floatingChanges;
+  var seedDelay = 0;
+
+  // 种植通知
+  if (GameState._pendingSeedNotif) {
+    var pn = GameState._pendingSeedNotif;
+    seedDelay += 300;
+    (function(notif, delay) {
+      setTimeout(function() {
+        var el = document.createElement('div');
+        el.className = 'float-notify positive';
+        el.style.fontSize = '0.85rem';
+        el.style.padding = '6px 12px';
+        el.style.maxWidth = '260px';
+        el.style.whiteSpace = 'normal';
+        el.style.lineHeight = '1.4';
+        el.style.opacity = '0.85';
+        var prefix = notif.from_building ? '🔧' : '🌱';
+        el.textContent = prefix + ' 暗线：' + notif.desc;
+        seedContainer.appendChild(el);
+        setTimeout(function() { el.remove(); }, 4000);
+      }, delay);
+    })(pn, seedDelay);
+    GameState._pendingSeedNotif = null;
+  }
+
+  // 引爆通知
+  if (GameState._pendingSeedDetonations && GameState._pendingSeedDetonations.length > 0) {
+    for (var sdi = 0; sdi < GameState._pendingSeedDetonations.length; sdi++) {
+      seedDelay += 300;
+      (function(detonation, delay) {
+        setTimeout(function() {
+          var el = document.createElement('div');
+          el.className = 'float-notify ' + (detonation.positive ? 'positive' : 'negative');
+          el.style.fontSize = '0.85rem';
+          el.style.padding = '6px 12px';
+          el.style.maxWidth = '260px';
+          el.style.whiteSpace = 'normal';
+          el.style.lineHeight = '1.4';
+          var icon = detonation.positive ? '✨' : '💥';
+          var label = detonation.positive ? '善缘结果' : '伏笔引爆';
+          el.textContent = icon + ' ' + label + '：' + (detonation.desc || detonation.type || detonation.id);
+          seedContainer.appendChild(el);
+          setTimeout(function() { el.remove(); }, 4500);
+        }, delay);
+      })(GameState._pendingSeedDetonations[sdi], seedDelay);
+    }
+    GameState._pendingSeedDetonations = null;
+  }
+
   // ef加成单独飘字提示
   if (Object.keys(efBonus).length > 0) showFloatingChanges({ attributes: efBonus });
 }

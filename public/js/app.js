@@ -153,6 +153,31 @@ async function streamBotAPI(userMessage, streamTarget, options) {
       path_reminder: getBackgroundPathReminder(GameState.character.background, getNextTurn()),
       surveillance_hint: getSurveillanceHint(GameState.year, getNextTurn(), GameState.character.background),
       branch_focus: getBranchFocus(getNextTurn(), GameState.character.background),
+      // v3.8.20: 家庭上下文注入（事实锚点+氛围基调）
+      family_context: (function(){
+        if (!GameState.family) return '';
+        var parts = [];
+        var ctx = getFamilyContext();
+        if (ctx) parts.push(ctx);
+        var atm = getFamilyAtmosphere();
+        if (atm) parts.push(atm);
+        // 政治联姻提示：子女达婚龄时提醒AI
+        if (GameState.family.children) {
+          var cy = GameState.year;
+          for (var ci = 0; ci < GameState.family.children.length; ci++) {
+            var ch = GameState.family.children[ci];
+            if (ch.status === '在世') {
+              var chAge = cy - (ch.birthYear || cy);
+              if (chAge >= 14 && chAge <= 22) {
+                parts.push('（子女已达婚龄，可适当融入议亲相关叙事）');
+                break;
+              }
+            }
+          }
+        }
+        if (parts.length === 0) return '';
+        return parts.join('\n') + '\n叙事中须融入1句与上述家庭状况相符的细节——具体内容由你自由发挥，但须符合角色年龄和当前年份。';
+      })(),
       // v3.9: 动态硬禁令——明确列出本回合严禁描写的具体人物+事件
       hard_forbidden: (typeof getHardForbiddenList === 'function') ? getHardForbiddenList() : '',
       death_warning: (function(){ var w = checkDeathWarning(); return w.length ? '【死亡预警】' + w.join('、') + '——命运已在悬崖边缘，叙事中必须埋下明显的危险信号' : ''; })(),
@@ -746,6 +771,18 @@ async function processAITurn(userChoice) {
   }
 
   gameContainer.appendChild(choicesArea);
+
+  // ========== v3.8.20: 自由行动引导提示 ==========
+  if (typeof getActionHint === 'function') {
+    var actionHint = getActionHint();
+    if (actionHint) {
+      var hintEl = document.createElement('div');
+      hintEl.style.cssText = 'text-align:center;color:#a89070;font-size:0.82em;margin:0.3rem 0 0.8rem;font-style:italic;opacity:0.8;';
+      hintEl.textContent = '💡 ' + actionHint;
+      gameContainer.appendChild(hintEl);
+    }
+  }
+
   scrollToBottom();
 }
 

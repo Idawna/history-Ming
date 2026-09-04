@@ -114,14 +114,14 @@ const DISPLAY_ATTRS = [
   { 
     key: 'career',       // 官运
     label: '官运', 
-    formula: (attrs) => Math.round(attrs.power * 0.6 + attrs.fame * 0.4) 
+    formula: (attrs) => Math.round(attrs.power * 0.4 + attrs.fame * 0.3 + attrs.wisdom * 0.3) 
   },
   { 
     key: 'hearts',       // 人心
     label: '人心', 
     formula: (attrs) => Math.round(attrs.people * 0.5 + attrs.bond * 0.5) 
   }
-  // wisdom 不显示（通过AI叙事视角体现）
+  // v3.8.20: wisdom 融入官运公式（占比30%），玩家可感知智谋的影响
 ];
 
 // ========== P0-1: 展示层阵营定义（跷跷板） ==========

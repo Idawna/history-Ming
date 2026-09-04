@@ -164,6 +164,8 @@ function plantPositiveSeed(turn) {
   // 避免重复
   if (!GameState.seeds.some(function(s) { return s.id === newSeed.id; })) {
     GameState.seeds.push(newSeed);
+    // v3.8.20: 种植通知（UI层读取后清除）
+    GameState._pendingSeedNotif = { action: 'planted', id: seedType.id, type: seedType.type, desc: seedType.desc, positive: true };
     console.log('[正面种子] 种下「' + seedType.id + '」：' + seedType.desc);
   }
 }
@@ -210,6 +212,8 @@ function plantBuildingSeed(turn, actionCategory) {
   // 避免重复
   if (!GameState.seeds.some(function(s) { return s.id === newSeed.id; })) {
     GameState.seeds.push(newSeed);
+    // v3.8.20: 种植通知
+    GameState._pendingSeedNotif = { action: 'planted', id: seedType.id, type: seedType.type, desc: seedType.desc, positive: true, from_building: true };
     console.log('[建设种子] 玩家选择建设类行动，种下「' + seedType.id + '」：' + seedType.desc);
   }
 }
@@ -600,6 +604,9 @@ function checkLifeEvents(turn) {
         break;
     }
     
+    // v3.8.20: 家庭事件→正面种子联动（路径A）
+    plantFamilySeed(evt.id);
+    
     console.log('[生活事件] 触发「' + evt.category + '」：' + evt.narrative.substring(0, 20) + '...');
     return; // 每回合最多触发一个生活事件
   }
@@ -842,6 +849,59 @@ function getAnchorHints(currentTurn) {
   }
   hints.anchor_order_lock = guide;
   return hints;
+}
+
+// ========== v3.8.20: 自由行动引导 ==========
+// 根据当前游戏状态生成一行提示，帮助玩家思考自由行动该输入什么
+// 返回字符串或null（不显示）
+function getActionHint() {
+  var turn = GameState.turn;
+  var pacing = GameState.pacing;
+  var attrs = GameState.attributes;
+  var ef = GameState.emperor_feeling;
+
+  // 1. 临近锚点提示（最重要）
+  var nextAnchor = null;
+  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+    if (turn < HISTORY_ANCHORS[i].start && turn >= HISTORY_ANCHORS[i].start - 5) {
+      nextAnchor = HISTORY_ANCHORS[i];
+      break;
+    }
+  }
+  if (nextAnchor) {
+    var gap = nextAnchor.start - turn;
+    if (gap <= 2) return '风暴将至，或可提前布局——结交关键人物、打探消息、准备后路';
+    if (gap <= 5) return '朝中暗流涌动，或有值得打探的消息';
+  }
+
+  // 2. 圣眷危险提示
+  if (ef <= -20) return '圣眷低迷，或可设法修复——上书陈情、办妥差事、或通过近臣美言';
+  if (ef >= 30) return '圣眷正隆，趁此良机或可谋更大图谋';
+
+  // 3. 属性极端提示
+  if (attrs.power >= 65) return '权势过盛，功高震主之忧——或可主动示弱、韬光养晦';
+  if (attrs.people >= 65) return '民心所向，百姓拥戴——或可借此为朝廷办几件实事';
+  if (attrs.bond <= 15) return '朝中孤立，无人可依——或可主动结交同僚、修复关系';
+  if (attrs.wisdom >= 65) return '智谋出众，或可运筹帷幄——布局长远、谋定后动';
+
+  // 4. 种子相关提示
+  var overdueSeeds = 0;
+  for (var si = 0; si < GameState.seeds.length; si++) {
+    if (GameState.seeds[si].trigger_turn <= turn + 1) overdueSeeds++;
+  }
+  if (overdueSeeds > 0) return '此前埋下的伏笔即将揭晓——静观其变，或可主动推动';
+
+  // 5. 日常回合通用提示
+  if (pacing === '日常') {
+    var dailyHints = [
+      '日常政务之余，或可发展个人关系',
+      '趁此平静时光，或可积累资源、经营人脉',
+      '朝堂暂歇，正是布局好时机'
+    ];
+    return dailyHints[turn % dailyHints.length];
+  }
+
+  return null;
 }
 
 
@@ -2133,7 +2193,7 @@ function getRhythmDirective(turn, background) {
 
   // 种子引爆例外 + 强制对齐 JSON
   r.directive += `\n\n【⚡强制·种子例外与JSON】`;
-  r.directive += `①种子引爆：若本回合你判断 current_state.seeds 中某颗种子达到引爆时机，必须在JSON的 seeds_triggered 字段中写入该种子ID（如 "seeds_triggered": ["修撰日历"]），同时将节奏升级为反转并写出引爆后果及对应数值变化，种子引爆优先于历史节奏。种子存活超过8回合将自动引爆，超过5个则最早的自动引爆。**正面种子**（type含"正面"）引爆时不用升级为反转，在当前节奏内自然融入正面事件即可（如贵人相助、民心归附、知己相交等），写出温暖/积极的叙事段落。`;
+  r.directive += `①种子引爆：若本回合你判断 current_state.seeds 中某颗种子达到引爆时机，必须在JSON的 seeds_triggered 字段中写入该种子ID（如 "seeds_triggered": ["修撰日历"]），同时将节奏升级为反转并写出引爆后果及对应数值变化，种子引爆优先于历史节奏。种子存活超过8回合将自动引爆，超过5个则最早的自动引爆。**正面种子**（type含"正面"）引爆时不用升级为反转，在当前节奏内自然融入正面事件即可（如贵人相助、民心归附、知己相交等），写出温暖/积极的叙事段落。**v3.8.20家庭联动**：种子引爆时，若玩家有在世配偶/子女，须在叙事中追加1句家庭反应（如"妻子连夜收拾细软""孩子在私塾被人指指点点"）——不增加数值效果，只让引爆更立体（示例见SP 14b.6路径B）。`;
   r.directive += `②除此之外**必须严格按上述节奏执行，JSON 状态块中的 pacing 字段必须填写「${r.pacing}」，不可填写其他值**（前端会校验，填错则整个状态块被丢弃、数值回合全不推进）；`;
   r.directive += `③year/month 须与当前历史年份的推进逻辑一致（反转/紧迫回合参照正在发生或即将爆发的历史事件时间点；日常/沉淀回合只需保证年份单调递增，不得倒退）；`;
   // v3.8.12: 显式告知AI当前年份，防止叙事文字中的年份与JSON状态块不一致
@@ -2492,3 +2552,140 @@ function generateAnchorAchievement(turn) {
   };
 }
 // ========== v3.8.19 阶段性成就系统 END ==========
+
+// ========== v3.8.20: 家庭上下文注入 + 氛围系统 + 种子联动 ==========
+
+// v3.8.20: 生成家庭上下文提示（注入给AI，让叙事有事实锚点）
+function getFamilyContext() {
+  if (!GameState.family) return '';
+  var f = GameState.family;
+  var parts = [];
+  
+  // 配偶
+  if (f.spouse) {
+    if (f.spouse.status === '已故') {
+      parts.push('妻已故');
+    } else {
+      parts.push('妻' + (f.spouse.name || '') + '安在');
+    }
+  }
+  
+  // 子女（按年龄排序，计算实际年龄）
+  if (f.children && f.children.length > 0) {
+    var currentYear = GameState.year;
+    var childDescs = [];
+    for (var i = 0; i < f.children.length; i++) {
+      var c = f.children[i];
+      if (c.status !== '在世') continue;
+      var age = currentYear - (c.birthYear || currentYear);
+      if (age < 0) age = 0;
+      var label = c.gender === '女' ? '女' : (c.order === 1 ? '长子' : c.order === 2 ? '次子' : '子');
+      if (age <= 2) childDescs.push(label + '（' + age + '岁，尚在襁褓）');
+      else if (age <= 6) childDescs.push(label + '（' + age + '岁，稚嫩年幼）');
+      else if (age <= 14) childDescs.push(label + '（' + age + '岁，正当启蒙）');
+      else childDescs.push(label + '（' + age + '岁，已渐成人）');
+    }
+    if (childDescs.length > 0) parts.push(childDescs.join('，'));
+  }
+  
+  // 父母
+  var parentParts = [];
+  if (f.parents) {
+    if (f.parents.father) {
+      if (f.parents.father.status === '已故') {
+        parentParts.push('父已故');
+      } else {
+        var fAge = GameState.character.baseAge + (GameState.year - 1375) + 25;
+        parentParts.push('父' + (fAge > 65 ? '年迈' : '安在'));
+      }
+    }
+    if (f.parents.mother) {
+      if (f.parents.mother.status === '已故') {
+        parentParts.push('母已故');
+      } else {
+        parentParts.push('母安在');
+      }
+    }
+  }
+  if (parentParts.length > 0) parts.push(parentParts.join('，'));
+  
+  if (parts.length === 0) return '';
+  return '【家庭近况】' + parts.join('。') + '。';
+}
+
+// v3.8.20: 生成家庭氛围提示（让家庭细节基调跟随主线）
+function getFamilyAtmosphere() {
+  if (!GameState.family) return '';
+  var f = GameState.family;
+  var hasSpouse = f.spouse && f.spouse.status === '在世';
+  var hasChildren = f.children && f.children.some(function(c){ return c.status === '在世'; });
+  if (!hasSpouse && !hasChildren) return '';
+  
+  var hints = [];
+  var ef = GameState.emperor_feeling;
+  var pw = GameState.attributes.power;
+  
+  // 最危险组合：权势大但圣眷低
+  if (pw >= 70 && ef < 20) {
+    hints.push('权势虽盛但圣眷已衰，家中气氛凝重——妻子夜里常惊醒，问你"是不是要出事了"');
+  } else if (ef <= -20) {
+    hints.push('天威渐远，妻子欲言又止，家中人心惶惶');
+  } else if (ef >= 50) {
+    hints.push('圣眷正隆，家中颇为安定，妻子面有喜色');
+  }
+  
+  if (GameState.deathWarning > 0 && hasSpouse) {
+    hints.push('大祸将至的气息弥漫，妻子已多日不曾安睡');
+  }
+  
+  if (pw >= 70 && GameState.deathCountdown === 0 && hasSpouse) {
+    hints.push('府上访客渐多，妻子暗自忧虑——她懂得"功高震主"的道理');
+  }
+  
+  if (GameState.currentFamilyCrisis && hasChildren) {
+    hints.push('家中孩子感受到紧张气氛，不敢大声说话');
+  }
+  
+  if (hints.length === 0) {
+    hints.push('家中暂安，妻儿如常度日');
+  }
+  
+  return '【家庭氛围】' + hints.join('；') + '。';
+}
+
+// v3.8.20: 家庭事件→正面种子联动（路径A）
+// 日常家庭事件触发后，50%概率种一颗正面种子，10回合冷却
+function plantFamilySeed(eventId) {
+  var turn = GameState.turn;
+  // 冷却检查：10回合内最多1次
+  var recentFamilySeed = GameState.seeds.some(function(s) {
+    return s.source === 'family' && (turn - s.planted_turn) < 10;
+  });
+  if (recentFamilySeed) return;
+  
+  // 50%概率
+  if (Math.random() > 0.5) return;
+  
+  var type = null;
+  if (eventId === 'child_education') type = '贵人提携';
+  else if (eventId === 'child_marriage') type = '人心归附';
+  else if (eventId === 'grandchild') type = '知己相交';
+  else if (eventId === 'old_age_reflection') type = '声名渐起';
+  
+  if (!type) return;
+  
+  var template = SEED_TEMPLATES[type];
+  if (!template) return;
+  
+  var seed = {
+    id: 'family_' + type + '_' + turn,
+    type: type,
+    planted_turn: turn,
+    trigger_turn: turn + template.latency[0] + Math.floor(Math.random() * (template.latency[1] - template.latency[0] + 1)),
+    source: 'family',
+    _pendingNotif: true
+  };
+  
+  GameState.seeds.push(seed);
+  console.log('[家庭种子] 种下正面种子「' + type + '」（来源：家庭事件' + eventId + '）回合', turn);
+}
