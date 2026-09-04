@@ -1,5 +1,5 @@
 /* ========== FONT IMPORTS ========== */
-@import url('https://fonts.googleapis.cn/css2?family=LXGW+WenKai:wght@300;400;700&family=ZCOOL+XiaoWei&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* v3.8.23 P1-5: 字体已移至index.html用preload方式加载，消除阻塞 */
 
 /* ========== RESET & BASE ========== */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -109,7 +109,7 @@ body {
 
 /* ========== PACING EFFECTS ========== */
 .pacing-container {
-  transition: all 0.6s ease;
+  transition: border-left-color 0.6s ease, background-color 0.6s ease;
   border-left: 3px solid transparent;
   padding-left: 0;
   border-radius: 0;
@@ -304,6 +304,34 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ========== v3.8.22 P0: 骨架屏 ========== */
+.skeleton-narrative {
+  padding: 8px 0 16px 0;
+}
+.skeleton-line {
+  height: 1em;
+  background: linear-gradient(90deg,
+    rgba(44,44,44,0.06) 25%,
+    rgba(44,44,44,0.12) 50%,
+    rgba(44,44,44,0.06) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.5s ease infinite;
+  border-radius: 2px;
+  margin-bottom: 0.8em;
+}
+.skeleton-line:nth-child(1) { width: 85%; }
+.skeleton-line:nth-child(2) { width: 92%; }
+.skeleton-line:nth-child(3) { width: 78%; }
+.skeleton-line:nth-child(4) { width: 88%; }
+.skeleton-line:nth-child(5) { width: 65%; }
+
+@keyframes skeletonShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+
 /* ========== INK DIVIDER ========== */
 .ink-divider {
   width: 100%;
@@ -361,7 +389,7 @@ body {
   cursor: pointer;
   text-align: left;
   position: relative;
-  transition: all 0.25s ease;
+  transition: opacity 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease;
   opacity: 0;
   transform: translateX(-10px);
   line-height: 1.6;
@@ -484,7 +512,7 @@ body {
   font-weight: 500;
   font-size: 0.9rem;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: color 0.3s ease, background-color 0.3s ease, opacity 0.3s ease;
   white-space: nowrap;
   min-height: 48px;
 }
@@ -502,7 +530,7 @@ body {
   width: 100%;
   max-width: 720px;
   z-index: 100;
-  transition: all 0.4s ease;
+  transition: transform 0.4s ease, max-height 0.4s ease;
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
@@ -521,7 +549,7 @@ body {
   letter-spacing: 0.05em;
   cursor: pointer;
   user-select: none;
-  transition: all var(--transition);
+  transition: color 0.3s ease, background-color 0.3s ease, opacity 0.3s ease;
 }
 
 .status-summary:hover {
@@ -558,7 +586,7 @@ body {
   padding: 0 20px;
   max-height: 0;
   overflow: hidden;
-  transition: all 0.4s ease;
+  transition: max-height 0.4s ease, opacity 0.4s ease, padding 0.4s ease;
 }
 
 .status-panel.expanded .status-detail {
@@ -682,7 +710,7 @@ body {
   top: 0;
   height: 100%;
   border-radius: 4px;
-  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: left 0.8s cubic-bezier(0.4, 0, 0.2, 1), width 0.8s cubic-bezier(0.4, 0, 0.2, 1), background 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .faction-value {
@@ -756,7 +784,7 @@ body {
   height: 100%;
   background: linear-gradient(90deg, #b8860b, #daa520);
   border-radius: 4px;
-  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: left 0.8s cubic-bezier(0.4, 0, 0.2, 1), width 0.8s cubic-bezier(0.4, 0, 0.2, 1), background 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .emperor-value {
@@ -874,7 +902,7 @@ body {
   font-weight: 500;
   font-size: 0.95rem;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: color 0.3s ease, background-color 0.3s ease, opacity 0.3s ease;
   letter-spacing: 0.1em;
   min-height: 44px;
 }
@@ -895,7 +923,7 @@ body {
   font-weight: 500;
   font-size: 0.9rem;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: color 0.3s ease, background-color 0.3s ease, opacity 0.3s ease;
   letter-spacing: 0.08em;
   min-height: 44px;
 }
@@ -951,7 +979,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition);
+  transition: color 0.3s ease, background-color 0.3s ease, opacity 0.3s ease;
   font-family: var(--font-ui);
   font-weight: 500;
 }
@@ -1025,7 +1053,7 @@ body {
   padding: 16px;
   margin-bottom: 12px;
   background: var(--paper);
-  transition: all var(--transition);
+  transition: color 0.3s ease, background-color 0.3s ease, opacity 0.3s ease;
   cursor: pointer;
 }
 
@@ -1092,7 +1120,7 @@ body {
   font-weight: 500;
   font-size: 0.8rem;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: color 0.3s ease, background-color 0.3s ease, opacity 0.3s ease;
   min-height: 32px;
 }
 
@@ -1801,7 +1829,7 @@ body {
   color: rgba(245, 240, 232, 0.7);
   letter-spacing: 0.15em;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.3s ease, color 0.3s ease;
   min-height: 48px;
 }
 
@@ -1819,4 +1847,161 @@ body {
   letter-spacing: 0.1em;
   font-style: italic;
   text-align: center;
+}
+
+/* ========== 改动1: P0-1 属性展开按钮 ========== */
+.attr-expand-btn {
+  cursor: pointer;
+  font-size: 12px;
+  color: rgba(245, 240, 232, 0.55);
+  padding: 6px 8px;
+  font-family: var(--font-ui);
+  letter-spacing: 0.05em;
+  transition: color 0.2s;
+  user-select: none;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+.attr-expand-btn:hover {
+  color: rgba(245, 240, 232, 0.85);
+}
+.attr-row-detail {
+  opacity: 0.85;
+}
+.attr-row-detail .attr-label {
+  font-size: 11px;
+}
+.attr-row-detail .attr-value {
+  font-size: 11px;
+}
+
+/* ========== 改动2: P0-2 阵营展开 ========== */
+.faction-expand-btn {
+  cursor: pointer;
+  font-size: 12px;
+  color: rgba(245, 240, 232, 0.55);
+  padding: 6px 8px;
+  font-family: var(--font-ui);
+  letter-spacing: 0.05em;
+  transition: color 0.2s;
+  user-select: none;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+.faction-expand-btn:hover {
+  color: rgba(245, 240, 232, 0.85);
+}
+.faction-detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.faction-detail-label {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
+.faction-detail-val {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: rgba(245, 240, 232, 0.8);
+  font-variant-numeric: tabular-nums;
+}
+.faction-danger {
+  color: #e74c3c !important;
+  font-weight: 600;
+}
+.faction-safe-low {
+  color: #5dade2 !important;
+  font-weight: 600;
+}
+
+/* ========== 改动3: P1-2 圣眷区间标签 ========== */
+.emperor-zone-label {
+  font-size: 11px;
+  margin-left: 6px;
+  font-family: var(--font-ui);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.emperor-zone-good {
+  color: #7eb89a;
+}
+.emperor-zone-neutral {
+  color: #999;
+}
+.emperor-zone-worry {
+  color: #e6a23c;
+}
+.emperor-zone-danger {
+  color: #e74c3c;
+}
+.emperor-zone-critical {
+  color: #c0392b;
+  animation: pulse-text 1.5s infinite;
+}
+@keyframes pulse-text {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ========== 改动4: P2-3 一生回顾面板 ========== */
+.life-review-panel {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid rgba(201, 164, 92, 0.3);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.life-review-title {
+  text-align: center;
+  font-size: 14px;
+  color: var(--gold);
+  margin-bottom: 12px;
+  letter-spacing: 2px;
+  font-family: var(--font-display);
+}
+.life-review-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.lr-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.lr-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+}
+.lr-value {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 一生回顾面板 - 手机端适配 */
+@media (max-width: 480px) {
+  .life-review-grid {
+    grid-template-columns: 1fr;
+  }
+  .life-review-panel {
+    padding: 12px;
+    margin-top: 14px;
+  }
+  .attr-expand-btn,
+  .faction-expand-btn {
+    min-height: 36px;
+    font-size: 13px;
+    padding: 8px;
+  }
 }

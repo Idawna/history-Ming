@@ -182,6 +182,8 @@ async function streamBotAPI(userMessage, streamTarget, options) {
       })(),
       // v3.9: 动态硬禁令——明确列出本回合严禁描写的具体人物+事件
       hard_forbidden: (typeof getHardForbiddenList === 'function') ? getHardForbiddenList() : '',
+      // v3.8.23: 家庭成员命名指令（P2-5）
+      family_naming: (typeof getFamilyNamingPrompt === 'function') ? getFamilyNamingPrompt() : '',
       death_warning: (function(){ var w = checkDeathWarning(); return w.length ? '【死亡预警】' + w.join('、') + '——命运已在悬崖边缘，叙事中必须埋下明显的危险信号' : ''; })(),
       // P0-2: 危机事件注入
       crisis: (function(){
@@ -287,6 +289,16 @@ async function streamBotAPI(userMessage, streamTarget, options) {
   GameState.currentLifeEvent = null;
   // v3.8.16: 上下文已读取pendingMarriageChoice和currentFamilyCrisis，但不清空——等玩家选择后在applyChanges中清空
   
+  // v3.8.23 P2-1: 请求体瘦身 — 清理dynamic_rules中的空值字段
+  if (contextPayload.dynamic_rules) {
+    Object.keys(contextPayload.dynamic_rules).forEach(function(key) {
+      var val = contextPayload.dynamic_rules[key];
+      if (val === '' || val === null || val === undefined) {
+        delete contextPayload.dynamic_rules[key];
+      }
+    });
+  }
+  
   // v3.9: 如果有重试约束（上次违规信息），追加到上下文中
   if (options && options.retry_constraint && options.retry_constraint.length > 0) {
     contextPayload.retry_constraint = 
@@ -304,8 +316,12 @@ async function streamBotAPI(userMessage, streamTarget, options) {
   // 控制历史长度：保留最近 30 条消息（约 15 回合），防止超出上下文窗口
   // 每回合 = 1条 user + 1条 assistant，30条 ≈ 15 回合
   const MAX_HISTORY = 30;
-  // v3.8.17 上下文优化 Phase 1：发送前压缩旧消息（三级衰减）
-  compressHistory();
+  // v3.8.23 P2-2: 历史压缩异步化 — 使用requestIdleCallback不阻塞主线程
+  if (typeof requestIdleCallback !== 'undefined') {
+    requestIdleCallback(() => compressHistory());
+  } else {
+    setTimeout(compressHistory, 0);
+  }
   const trimmedHistory = chatHistory.slice(-MAX_HISTORY);
 
   const controller = new AbortController();
@@ -352,19 +368,25 @@ async function streamBotAPI(userMessage, streamTarget, options) {
       const chunk = decoder.decode(value, { stream: true });
       fullText += chunk;
 
-      // 实时更新流式显示区域（缓冲模式下跳过DOM写入）
+      // v3.8.23 P1-1: 流式增量解析优化 — 避免每个chunk全量重算
       if (streamTarget && !buffered) {
-        // 检测 --- 分隔符，只显示分隔符之前的叙事文本
-        let displayText = fullText;
-        const dividerRe = /\n[ \t]*(?:[-]{2,6}|[—]{2,6}|[-—]{2,6})[ \t]*\n/;
-        const dividerMatch = fullText.match(dividerRe);
-        if (dividerMatch) displayText = fullText.substring(0, dividerMatch.index);
-        // 流式阶段也过滤掉可能出现的 JSON 代码块残影
-        displayText = displayText
-          .replace(/`{3,4}\s*(?:json)?\s*[\s\S]*?(?:`{3,4}|$)/gi, '')
-          .replace(/\{\s*[\s\S]*?(?:\}\s*(?:,?\s*\n|\s*$))/gm, '')
-          .trim();
-        streamTarget.textContent = displayText;
+        // 快速判断：新增内容是否可能包含JSON开头或分隔符
+        const needsFullRescan = /[`{]/.test(chunk) || /\n[-—]/.test(chunk);
+        if (needsFullRescan) {
+          // 结构可能变化，全量重算（低频触发）
+          let displayText = fullText;
+          const dividerRe = /\n[ \t]*(?:[-]{2,6}|[—]{2,6}|[-—]{2,6})[ \t]*\n/;
+          const dividerMatch = fullText.match(dividerRe);
+          if (dividerMatch) displayText = fullText.substring(0, dividerMatch.index);
+          displayText = displayText
+            .replace(/`{3,4}\s*(?:json)?\s*[\s\S]*?(?:`{3,4}|$)/gi, '')
+            .replace(/\{\s*[\s\S]*?(?:\}\s*(?:,?\s*\n|\s*$))/gm, '')
+            .trim();
+          streamTarget.textContent = displayText;
+        } else {
+          // 安全追加模式（高频路径，纯叙事文字直接追加）
+          streamTarget.textContent += chunk;
+        }
         // 节流滚动：每 150ms 最多滚一次，避免性能问题；用户主动滚动时暂停自动滚动
         const now = Date.now();
         if (now - lastScrollTime > 150 && !userScrolling) {
@@ -422,7 +444,12 @@ async function processAITurn(userChoice) {
     streamText.className = 'stream-text';
     
     if (retryCount === 0) {
-      streamText.innerHTML = '<span class="stream-cursor"></span>';
+      // v3.8.22 P0: 骨架屏——首token到达前展示
+      streamText.innerHTML = '<span class="stream-cursor"></span>' +
+        '<div class="skeleton-narrative">' +
+        '<div class="skeleton-line"></div><div class="skeleton-line"></div>' +
+        '<div class="skeleton-line"></div><div class="skeleton-line"></div>' +
+        '<div class="skeleton-line"></div></div>';
     } else {
       var retryMessages = [
         '墨史官搁笔沉思，似有不妥……',
@@ -437,7 +464,7 @@ async function processAITurn(userChoice) {
 
     // 缓冲模式调用AI（不写入DOM）
     try {
-      var options = { buffered: true };
+      var options = { buffered: false }; // v3.8.22 P0: 取消缓冲，真流式上屏
       // 如果有上次违规信息，追加到上下文中
       if (lastViolations && lastViolations.length > 0) {
         options.retry_constraint = lastViolations;
@@ -583,7 +610,17 @@ async function processAITurn(userChoice) {
 
   // 应用状态变更（驳回时跳过：不更新数值、不推进回合、不存档）
   if (!isRejected) {
-    await new Promise(r => setTimeout(r, 500));
+    // v3.8.22 P0: 等待叙事淡入动画完成，兜底1s
+    await new Promise(r => {
+      const narrativeText = narrativeEl.querySelector('.narrative-text');
+      if (narrativeText) {
+        const onEnd = () => { narrativeText.removeEventListener('animationend', onEnd); r(); };
+        narrativeText.addEventListener('animationend', onEnd);
+        setTimeout(r, 1000); // 安全兜底
+      } else {
+        r();
+      }
+    });
     if (parsed.stateBlock) {
       const sb = parsed.stateBlock;
       // turn/year/month/age 已在前面硬校验钳制，此处不再采信AI
@@ -615,6 +652,10 @@ async function processAITurn(userChoice) {
       if (sb.changes) {
         console.log('[DEBUG] parsed stateBlock.changes:', JSON.stringify(sb.changes));
         applyChanges(sb.changes, parsed.narrative || '');
+      }
+      // v3.8.23: 家庭成员命名处理（P2-5）——从AI输出提取名字回写GameState
+      if (typeof processFamilyNames === 'function' && sb.family_name_updates) {
+        processFamilyNames(sb.family_name_updates);
       }
       // v3.8: 死亡追踪更新 + 即时死亡判定
       updateDeathTracking(parsed.narrative || '');
@@ -669,7 +710,10 @@ async function processAITurn(userChoice) {
   if (GameState.gameOver) return;
 
   // 渲染选项（驳回时给出重新选择的提示）
-  await new Promise(r => setTimeout(r, isRejected ? 200 : 400));
+  // v3.8.22 P0: 等两帧确保DOM更新完毕再渲染选项
+  await new Promise(r => {
+    requestAnimationFrame(() => requestAnimationFrame(r));
+  });
   // 部分选项修复：解析器提取到了 1-2 个选项时，保留它们并补充默认项到 3 个；
   // 完全没提取到时才回退到默认四项
   const DEFAULT_CHOICES = ['继续前行', '另作打算', '静观其变', '自由行动：（输入你想做的任何事）'];
@@ -950,11 +994,18 @@ function showEnding(ending, narrative) {
       + '<p class="ending-legacy-desc">' + ending.legacy.description + '</p>'
       + '</div>';
   }
+  // v3.8.23: 一生回顾数据面板（P2-3）
+  var lifeReviewHtml = '';
+  if (typeof generateLifeReview === 'function' && typeof renderLifeReviewPanel === 'function') {
+    var review = generateLifeReview();
+    lifeReviewHtml = renderLifeReviewPanel(review);
+  }
   div.innerHTML = `
     <h2 class="ending-title">◆ 仕途终局 ◆</h2>
     <h3 class="ending-career-name">${ending.title || '终章'}</h3>
     <p class="ending-verdict">${ending.description || '你的故事到此结束。'}</p>
     ${legacyHtml}
+    ${lifeReviewHtml}
     ${epitaphHtml}
     <button class="confirm-btn" onclick="location.reload()">重新开始</button>
   `;
@@ -1065,7 +1116,10 @@ async function enterGameLoop() {
       applyChanges(turn.state.changes);
       autoSave();
 
-      await new Promise(r => setTimeout(r, 400));
+      // v3.8.22 P0: 等两帧确保DOM更新
+      await new Promise(r => {
+        requestAnimationFrame(() => requestAnimationFrame(r));
+      });
 
       if (i === DEMO_TURNS.length - 1) {
         const choicesArea = renderChoices(turn.choices, (choice) => {

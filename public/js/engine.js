@@ -240,6 +240,18 @@ function plantBuildingSeed(turn, actionCategory) {
     // v3.8.20: 种植通知
     GameState._pendingSeedNotif = { action: 'planted', id: seedType.id, type: seedType.type, desc: seedType.desc, positive: true, from_building: true };
     console.log('[建设种子] 玩家选择建设类行动，种下「' + seedType.id + '」：' + seedType.desc);
+    
+    // P1-7: 即时微效——建设选择当回合获得+1~+2属性回报
+    var instantBonus = {};
+    var bonusKey = ['power', 'people'][Math.floor(Math.random() * 2)];
+    instantBonus[bonusKey] = 1 + Math.floor(Math.random() * 2);
+    for (var bk in instantBonus) {
+      if (instantBonus.hasOwnProperty(bk) && GameState.attributes[bk] !== undefined) {
+        GameState.attributes[bk] = Math.min(100, GameState.attributes[bk] + instantBonus[bk]);
+      }
+    }
+    GameState._buildingInstantBonus = instantBonus; // UI层读取后清除
+    console.log('[建设即时回报]', JSON.stringify(instantBonus));
   }
 }
 
@@ -285,19 +297,19 @@ function initFamily(background) {
 var LIFE_EVENTS = [
   // ---- 婚后安顿（只有已有妻子的出身才会触发）----
   { id: 'settling', turnWindow: [3, 8], backgrounds: ['淮西武将之后', '应天府商贾之子', '落魄前元官员之后'],
-    probability: 0.30, category: '婚后安顿', requiresSpouse: true,
+    probability: 0.40, category: '婚后安顿', requiresSpouse: true,
     effects: { bond: 3 },
     narrative: '新婚安顿。叙事融入新家/邻里/妻子日常相处，建立家庭存在感。2-3句即可。' },
   // ---- 第一个孩子 ----
   // v3.8.17 P1-4修复：turnWindow从[5,12]扩展到[5,22]，解决书生线child1窗口与scholar_marriage[8-15]严重错位问题
-  { id: 'child1', turnWindow: [5, 22], probability: 0.25, category: '生子',
+  { id: 'child1', turnWindow: [5, 22], probability: 0.35, category: '生子',
     requiresSpouse: true,
     effects: { bond: 5, people: 2 },
     narrative: '第一个孩子出生。根据出身交代生产场景，写出初为人父/母的感受。2-3句即可。' },
   // ---- 父亲去世（有在世父亲的出身）----
   { id: 'father_death', turnWindow: [8, 18],
     backgrounds: ['淮西武将之后', '应天府商贾之子'],
-    probability: 0.25, category: '丧亲',
+    probability: 0.30, category: '丧亲',
     requiresFatherAlive: true,
     effects: { bond: -8, people: 3 },
     narrative: '父亲去世。写出丧礼和角色的悲痛。根据出身不同，丧礼规格不同（武将简朴/商人铺张）。叙事可融入对父亲一生的回忆。' },
@@ -313,42 +325,42 @@ var LIFE_EVENTS = [
     effects: { bond: 3, people: 1 },
     narrative: '第三个孩子出生。家丁兴旺，值得庆贺。简单交代即可，1-2句。' },
   // ---- 母亲去世 ----
-  { id: 'mother_death', turnWindow: [15, 25], probability: 0.25, category: '丧亲',
+  { id: 'mother_death', turnWindow: [15, 25], probability: 0.30, category: '丧亲',
     requiresMotherAlive: true,
     effects: { bond: -6, wisdom: 3 },
     narrative: '母亲去世。根据母亲的身份不同，丧礼氛围不同。前元出身→母亲身份敏感，丧事需低调；武将→军中旧交来吊唁；商人→铺张。' },
   // ---- 子女早夭 ----
   // v3.8.17 P2-2修复：新增子女早夭事件，使"家道中落"结局（allChildrenDead）可达
-  { id: 'child_death', turnWindow: [8, 25], probability: 0.12, category: '丧亲',
+  { id: 'child_death', turnWindow: [8, 25], probability: 0.15, category: '丧亲',
     minChildren: 1,
     effects: { bond: -10, wisdom: 2 },
     narrative: '一个年幼的孩子夭折了。洪武朝婴儿死亡率极高，疫病、灾荒随时夺走幼小的生命。写出角色失去骨肉的悲痛——这是无声的崩溃。2-3句即可。' },
   // ---- 配偶去世 ----
   // v3.8.17 P2-1修复：新增配偶死亡事件，填补"妻子永远不会死"的设计缺口
-  { id: 'spouse_death', turnWindow: [20, 45], probability: 0.15, category: '丧亲',
+  { id: 'spouse_death', turnWindow: [20, 45], probability: 0.20, category: '丧亲',
     requiresSpouse: true,
     effects: { bond: -12, wisdom: 3, people: 2 },
     narrative: '妻子去世了。难产、疫病、或是一场不起眼的风寒——在这个时代，夺走一条命太容易了。写出角色的丧妻之痛和丧礼场景。2-3句。' },
   // ---- 子女教育 ----
-  { id: 'child_education', turnWindow: [18, 30], probability: 0.20, category: '教育',
+  { id: 'child_education', turnWindow: [18, 30], probability: 0.30, category: '教育',
     minChildren: 1,
     effects: { wisdom: 3, bond: 2 },
     narrative: '孩子渐长，到了启蒙读书的年纪。叙事中写角色为孩子选择老师或亲自教导的场景。' },
   // ---- 子女婚嫁 ----
-  { id: 'child_marriage', turnWindow: [28, 42], probability: 0.20, category: '婚嫁',
+  { id: 'child_marriage', turnWindow: [28, 42], probability: 0.30, category: '婚嫁',
     minChildren: 1,
     effects: { people: 5, bond: 3 },
     narrative: '子女到了婚嫁年龄。叙事中写有人上门提亲或角色物色亲家的场景。' },
   // ---- 孙辈出生 ----
   // v3.8.17 P0-3修复：孙辈事件必须等子女已婚嫁（requiresChildMarried），避免"未婚生子→直接有孙子"的逻辑悖论
-  { id: 'grandchild', turnWindow: [35, 50], probability: 0.18, category: '子孙',
+  { id: 'grandchild', turnWindow: [35, 50], probability: 0.25, category: '子孙',
     minChildren: 1,
     requiresChildMarried: true,
     effects: { bond: 5, wisdom: 2 },
     narrative: '孙辈出生。写角色的天伦之乐——在乱世之中，这是难得的温暖。' },
   // ---- 晚年回忆 ----
   // v3.8.17 P0-4修复：turnWindow从[45,55]推迟到[48,56]，确保书生出身也至少45岁才触发
-  { id: 'old_age_reflection', turnWindow: [48, 56], probability: 0.25, category: '晚年',
+  { id: 'old_age_reflection', turnWindow: [48, 56], probability: 0.35, category: '晚年',
     effects: { wisdom: 5 },
     narrative: '角色渐入半百之年。叙事中写角色回望一生、思考传承的场景。注意措辞用"渐入暮年"或"半百之年"，不要用"暮年"——角色可能才四十多岁。' },
   // ---- Phase 2: 书生婚姻选择（回合8-15）----
@@ -473,8 +485,14 @@ function checkFamilyCrisis(turn) {
     // 需要配偶在世？
     if (evt.target === 'spouse' && (!family.spouse || family.spouse.status !== '在世')) continue;
     
-    // 概率判定
-    if (Math.random() >= evt.probability) continue;
+    // 概率判定（P2-4: 家庭事件触发时，选择权重+20%）
+    var adjustedProb = evt.probability;
+    // 家庭类事件概率增强：让家庭线更有存在感
+    var familyCategories = ['婚后安顿', '生子', '教育', '婚嫁', '晚年', '子孙'];
+    if (familyCategories.indexOf(evt.category) >= 0) {
+      adjustedProb = Math.min(1.0, evt.probability * 1.20);
+    }
+    if (Math.random() >= adjustedProb) continue;
     
     // === 触发！ ===
     GameState.lifeEventsTriggered.push(evt.id);
@@ -1975,12 +1993,35 @@ function getLegacyEnding() {
 
 function getHiddenEnding() {
   var a = GameState.attributes, f = GameState.factions, ef = GameState.emperor_feeling;
-  // 墨史归一: 完美平衡 (P2-D: 放宽区间，从"不可能"变为"极难但可达")
-  if (allFactionsGTE(5) && allFactionsLTE(50) &&
-      a.power >= 40 && a.power <= 80 && a.people >= 40 && a.people <= 80 &&
-      a.wisdom >= 65 && a.fame >= 40 && a.fame <= 80 && a.bond >= 40 && a.bond <= 80 &&
-      ef >= 15 && ef <= 55 && GameState.deathWarningCount <= 2) {
-    return {name:'\u58a8\u53f2\u5f52\u4e00', desc:'\u5b8c\u7f8e\u5e73\u8861\uff0c\u4e07\u4e16\u592a\u5e73\u3002\u4f60\u5728\u6d2a\u6b66\u671d\u7684\u6bcf\u4e00\u6b65\u90fd\u8e29\u5728\u4e86\u6700\u5999\u7684\u4f4d\u7f6e\u2014\u2014\u4e0d\u5351\u4e0d\u4ea2\uff0c\u4e0d\u5371\u4e0d\u6024\u3002\u4f60\u4e0d\u662f\u6700\u6709\u6743\u7684\u4eba\uff0c\u4e0d\u662f\u6700\u6709\u540d\u7684\u4eba\uff0c\u4e0d\u662f\u6700\u53d7\u5ba0\u7684\u4eba\u2014\u2014\u4f46\u4f60\u662f\u552f\u4e00\u5728\u6bcf\u4e00\u4e2a\u7ef4\u5ea6\u4e0a\u90fd\u627e\u5230\u4e86\u5e73\u8861\u7684\u4eba\u3002\u6d2a\u6b66\u671d\u7684\u6bcf\u4e00\u573a\u98ce\u66b4\u90fd\u6ca1\u80fd\u51b2\u8d70\u4f60\uff0c\u56e0\u4e3a\u4f60\u4ece\u4e0d\u7ad9\u5728\u4efb\u4f55\u4e00\u4e2a\u6781\u7aef\u3002\u8fd9\u662f\u6700\u96be\u8fbe\u6210\u7684\u7ed3\u5c40\uff0c\u4e5f\u662f\u6700\u5b8c\u7f8e\u7684\u4e00\u4e2a\u2014\u2014\u5b83\u8bc1\u660e\u4e86\uff1a\u5728\u66b4\u529b\u7684\u65f6\u4ee3\uff0c\u6e29\u548c\u4e5f\u662f\u4e00\u79cd\u529b\u91cf\u3002'};
+  // 墨史归一: 距离判定 (P1-5: 从硬阈值改为曼哈顿距离，大幅提升可达性)
+  // 理想中心：factions各=25, power=60, people=60, wisdom=70, fame=60, bond=60, ef=35
+  if (GameState.deathWarningCount <= 2) {
+    var ideal = { power: 60, people: 60, wisdom: 70, fame: 60, bond: 60 };
+    var factionIdeal = 25;
+    var efIdeal = 35;
+    // 归一化权重：属性满分100，阵营满分100，圣眷范围-50~100
+    var dist = 0;
+    // 属性维度（权重1.0）
+    dist += Math.abs((a.power || 0) - ideal.power) / 100;
+    dist += Math.abs((a.people || 0) - ideal.people) / 100;
+    dist += Math.abs((a.wisdom || 0) - ideal.wisdom) / 100;
+    dist += Math.abs((a.fame || 0) - ideal.fame) / 100;
+    dist += Math.abs((a.bond || 0) - ideal.bond) / 100;
+    // 阵营维度（权重0.8，稍低于属性）
+    var factionKeys = ['huaixi', 'zhedong', 'jinchen', 'donggong', 'zhuwang'];
+    for (var fi = 0; fi < factionKeys.length; fi++) {
+      var fk = factionKeys[fi];
+      dist += Math.abs((f[fk] || 0) - factionIdeal) / 100 * 0.8;
+    }
+    // 圣眷维度（权重1.2，因为圣眷波动更大）
+    dist += Math.abs(ef - efIdeal) / 150 * 1.2;
+    // 总维度数 = 5属性 + 5阵营 + 1圣眷 = 11
+    // 最大可能距离约为11（每维度最大约1.0），阈值取20%即约2.2
+    var maxDist = 11;
+    var threshold = maxDist * 0.20;
+    if (dist <= threshold) {
+      return {name:'\u58a8\u53f2\u5f52\u4e00', desc:'\u5b8c\u7f8e\u5e73\u8861\uff0c\u4e07\u4e16\u592a\u5e73\u3002\u4f60\u5728\u6d2a\u6b66\u671d\u7684\u6bcf\u4e00\u6b65\u90fd\u8e29\u5728\u4e86\u6700\u5999\u7684\u4f4d\u7f6e\u2014\u2014\u4e0d\u5351\u4e0d\u4ea2\uff0c\u4e0d\u5371\u4e0d\u6024\u3002\u4f60\u4e0d\u662f\u6700\u6709\u6743\u7684\u4eba\uff0c\u4e0d\u662f\u6700\u6709\u540d\u7684\u4eba\uff0c\u4e0d\u662f\u6700\u53d7\u5ba0\u7684\u4eba\u2014\u2014\u4f46\u4f60\u662f\u552f\u4e00\u5728\u6bcf\u4e00\u4e2a\u7ef4\u5ea6\u4e0a\u90fd\u627e\u5230\u4e86\u5e73\u8861\u7684\u4eba\u3002\u6d2a\u6b66\u671d\u7684\u6bcf\u4e00\u573a\u98ce\u66b4\u90fd\u6ca1\u80fd\u51b2\u8d70\u4f60\uff0c\u56e0\u4e3a\u4f60\u4ece\u4e0d\u7ad9\u5728\u4efb\u4f55\u4e00\u4e2a\u6781\u7aef\u3002\u8fd9\u662f\u6700\u96be\u8fbe\u6210\u7684\u7ed3\u5c40\uff0c\u4e5f\u662f\u6700\u5b8c\u7f8e\u7684\u4e00\u4e2a\u2014\u2014\u5b83\u8bc1\u660e\u4e86\uff1a\u5728\u66b4\u529b\u7684\u65f6\u4ee3\uff0c\u6e29\u548c\u4e5f\u662f\u4e00\u79cd\u529b\u91cf\u3002'};
+    }
   }
   // 靖难先声: 诸王线 (书生除外)
   if (f.zhuwang >= 60 && a.power >= 55 && a.wisdom >= 75 && ef <= 20 &&
@@ -2283,38 +2324,48 @@ function applyFavorRisk() {
   // 无诱因则不触发——朱元璋虽多疑，也不会无缘无故发怒
   if (!hasProvocation) return;
   
-  // 警戒区：ef 40~69，连续≥3回合高圣眷 + 有权势可忌，10%概率暴跌
+  // === P1-10: 渐进衰减模式 ===
+  
+  // 警戒区：ef 40~69，连续>=3回合高圣眷 + 有权势可忌，25%概率每回合衰减
   if (ef >= 40 && ef < 70 && consecutive >= 3) {
-    if (Math.random() < 0.10) {
-      var crash = -(Math.floor(Math.random() * 11) + 10); // -10~-20
-      GameState.emperor_feeling = ef + crash;
-      GameState.favorCrashThisTurn = '功高遭忌' + crash;
+    if (Math.random() < 0.25) {
+      var decay = -(Math.floor(Math.random() * 4) + 2); // -2~-5
+      GameState.emperor_feeling = ef + decay;
+      GameState.favorCrashThisTurn = '功高遭忌' + decay;
       GameState.favorCrashRecentTurns = 3;
-      console.log('[圣眷暴跌]', GameState.favorCrashThisTurn, 'power:', a.power, 'fame:', a.fame);
+      console.log('[圣眷衰减]', GameState.favorCrashThisTurn, 'power:', a.power, 'fame:', a.fame);
       return;
     }
   }
   
-  // 极端危险区：ef≥80 + 有权势可忌，15%概率暴跌（不再无条件触发）
+  // 极端危险区：ef>=80，50%概率每回合衰减（因果关联：权势越大衰减越多）
   if (ef >= 80) {
-    if (Math.random() < 0.15) {
-      var crash = -(Math.floor(Math.random() * 11) + 15); // -15~-25
-      GameState.emperor_feeling = ef + crash;
-      GameState.favorCrashThisTurn = '宠极生变' + crash;
+    if (Math.random() < 0.50) {
+      var decay = -(Math.floor(Math.random() * 4) + 3); // -3~-6 基础衰减
+      // 因果关联：权势极大或有强阵营时额外扣减
+      if (a.power >= 60 || countFactionsGTE(60) >= 1) {
+        decay -= (Math.floor(Math.random() * 8) + 8); // 额外-8~-15
+      }
+      GameState.emperor_feeling = ef + decay;
+      GameState.favorCrashThisTurn = '宠极生变' + decay;
       GameState.favorCrashRecentTurns = 3;
-      console.log('[圣眷暴跌]', GameState.favorCrashThisTurn, 'ef:', ef, 'power:', a.power);
+      console.log('[圣眷衰减]', GameState.favorCrashThisTurn, 'ef:', ef, 'power:', a.power);
       return;
     }
   }
   
-  // 危险区：ef 70~79，20%概率暴跌
+  // 危险区：ef 70~79，40%概率每回合衰减（因果关联：权势/声望越大衰减越多）
   if (ef >= 70 && ef < 80) {
-    if (Math.random() < 0.20) {
-      var crash = -(Math.floor(Math.random() * 11) + 20); // -20~-30
-      GameState.emperor_feeling = ef + crash;
-      GameState.favorCrashThisTurn = '宠极生厌' + crash;
+    if (Math.random() < 0.40) {
+      var decay = -(Math.floor(Math.random() * 4) + 5); // -5~-8 基础衰减
+      // 因果关联：权势或声望突出时额外扣减
+      if (a.power >= 60 || a.fame >= 50) {
+        decay -= (Math.floor(Math.random() * 6) + 5); // 额外-5~-10
+      }
+      GameState.emperor_feeling = ef + decay;
+      GameState.favorCrashThisTurn = '宠极生厌' + decay;
       GameState.favorCrashRecentTurns = 3;
-      console.log('[圣眷暴跌]', GameState.favorCrashThisTurn, 'power:', a.power, 'fame:', a.fame);
+      console.log('[圣眷衰减]', GameState.favorCrashThisTurn, 'power:', a.power, 'fame:', a.fame);
       return;
     }
   }
@@ -2714,4 +2765,149 @@ function plantFamilySeed(eventId) {
   
   GameState.seeds.push(seed);
   console.log('[家庭种子] 种下正面种子「' + type + '」（来源：家庭事件' + eventId + '）回合', turn);
+}
+
+
+// ========== v3.8.19: 阶段性成就系统（锚点达成评价） ==========
+// 触发时机：锚点完成后的第3个回合（turn === anchor.end + 3）
+// 三档评价：卓越(≥60)/稳健(40-59)/幸存(<40)，对应奖励+3/+2/+1
+// 防重复：通过 GameState.lastAnchorAchieved 记录已触发的锚点ID
+function generateAnchorAchievement(turn) {
+  // 检查是否是锚点完成后的缓冲回合
+  var targetAnchor = null;
+  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+    var a = HISTORY_ANCHORS[i];
+    if (turn === a.end + 3) {
+      targetAnchor = a;
+      break;
+    }
+  }
+  if (!targetAnchor) return null;
+  
+  // 防重复
+  if (GameState.lastAnchorAchieved === targetAnchor.id) return null;
+  GameState.lastAnchorAchieved = targetAnchor.id;
+  
+  // 计算评分（0-100）
+  // 评分维度：属性健康度 + 圣眷安全度 + 阵营稳定性
+  var a = GameState.attributes;
+  var f = GameState.factions;
+  var ef = GameState.emperor_feeling;
+  var score = 0;
+  
+  // 1. 属性健康度（40分满分）
+  // 综合评估：属性不极端（不全低也不全高），有一定积累
+  var attrAvg = (a.power + a.people + a.wisdom + a.bond + a.fame) / 5;
+  var attrScore = Math.min(40, Math.round(attrAvg * 0.4));
+  
+  // 2. 圣眷安全度（30分满分）
+  // ef在20-50区间最佳（太低危险，太高也危险）
+  var efScore = 0;
+  if (ef >= 20 && ef <= 50) efScore = 30;
+  else if (ef >= 10 && ef <= 60) efScore = 20;
+  else if (ef >= 0 && ef <= 70) efScore = 15;
+  else if (ef < -20) efScore = 5;
+  else if (ef > 70) efScore = 10; // 太高也有风险
+  else efScore = 8;
+  
+  // 3. 阵营稳定性（30分满分）
+  // 评估：没有极端阵营（没有>=70或<=-50），整体均衡
+  var factionStability = 0;
+  var extremeCount = 0;
+  for (var fk in f) {
+    if (Math.abs(f[fk]) >= 70) extremeCount++;
+    if (Math.abs(f[fk]) >= 50) factionStability -= 3;
+    else if (Math.abs(f[fk]) <= 40) factionStability += 6;
+  }
+  factionStability = Math.max(0, Math.min(30, 30 + factionStability - extremeCount * 10));
+  
+  score = attrScore + efScore + factionStability;
+  score = Math.max(0, Math.min(100, score));
+  
+  // 评价分档
+  var tier, bonus, bonusLabel, text;
+  if (score >= 60) {
+    tier = '卓越';
+    bonus = 3;
+    bonusLabel = '全属性';
+    text = '「' + targetAnchor.name + '」安然度过，表现卓越';
+  } else if (score >= 40) {
+    tier = '稳健';
+    bonus = 2;
+    bonusLabel = '随机属性';
+    text = '「' + targetAnchor.name + '」平稳度过，应对稳健';
+  } else {
+    tier = '幸存';
+    bonus = 1;
+    bonusLabel = '随机属性';
+    text = '「' + targetAnchor.name + '」险中求存，劫后余生';
+  }
+  
+  // 应用奖励
+  if (tier === '卓越') {
+    // 全属性+3
+    for (var ak in GameState.attributes) {
+      GameState.attributes[ak] = Math.min(100, GameState.attributes[ak] + bonus);
+    }
+  } else {
+    // 随机选2个属性+bonus
+    var attrKeys = Object.keys(GameState.attributes);
+    var shuffled = attrKeys.sort(function() { return 0.5 - Math.random(); });
+    for (var ri = 0; ri < 2; ri++) {
+      GameState.attributes[shuffled[ri]] = Math.min(100, GameState.attributes[shuffled[ri]] + bonus);
+    }
+  }
+  
+  console.log('[成就系统] 锚点「' + targetAnchor.name + '」达成评价：' + tier + '（' + score + '分）奖励：' + bonusLabel + '+' + bonus);
+  
+  return { text: text, bonus: bonus, bonusLabel: bonusLabel, tier: tier, score: score };
+}
+
+// ========== P2-5: 家庭成员AI命名机制 ==========
+function getFamilyNamingPrompt() {
+  if (!GameState.family) return '';
+  var unnamed = [];
+  var f = GameState.family;
+  if (f.spouse && !f.spouse.name) {
+    unnamed.push('\u59bb\u5b50\uff08\u80cc\u666f\uff1a' + (f.spouse.background || '\u672a\u77e5') + '\uff09');
+  }
+  if (f.parents.father && f.parents.father.status === '\u5728\u4e16' && !f.parents.father.name) {
+    unnamed.push('\u7236\u4eb2\uff08\u80cc\u666f\uff1a' + (f.parents.father.background || '\u672a\u77e5') + '\uff09');
+  }
+  if (f.parents.mother && f.parents.mother.status === '\u5728\u4e16' && !f.parents.mother.name) {
+    var motherDesc = '\u6bcd\u4eb2';
+    if (f.parents.mother.background) {
+      motherDesc += '\uff08\u80cc\u666f\uff1a' + f.parents.mother.background + '\uff09';
+    }
+    unnamed.push(motherDesc);
+  }
+  for (var i = 0; i < f.children.length; i++) {
+    if (!f.children[i].name) {
+      unnamed.push('\u7b2c' + (i + 1) + '\u4e2a\u5b69\u5b50\uff08' + (f.children[i].gender || '?') + '\uff09');
+    }
+  }
+  if (unnamed.length === 0) return '';
+  return '\u3010\u5bb6\u5ead\u547d\u540d\u3011\u4ee5\u4e0b\u5bb6\u5ead\u6210\u5458\u5c1a\u672a\u547d\u540d\uff0c\u8bf7\u5728\u53d9\u4e8b\u4e2d\u81ea\u7136\u63d0\u53ca\u540d\u5b57\uff0c\u5e76\u5728JSON\u4e2d\u7528 family_name_updates \u5b57\u6bb5\u56de\u5199\uff1a' +
+    '"family_name_updates": [{"target":"spouse","name":"\u5f20\u6c0f"},{"target":"child_0","name":"\u8d75\u660e"}]\u3002' +
+    '\u547d\u540d\u987b\u7b26\u5408\u660e\u4ee3\u98ce\u683c\uff08\u5982\u5f20\u6c0f\u3001\u674e\u6c0f\u3001\u8d75\u660e\u3001\u8d75\u5a49\u7b49\uff09\uff0c\u4e0e\u5bb6\u5ead\u80cc\u666f\u5339\u914d\u3002\u9700\u8981\u547d\u540d\u7684\u6210\u5458\uff1a' + unnamed.join('\u3001');
+}
+
+function processFamilyNames(familyNameUpdates) {
+  if (!familyNameUpdates || !Array.isArray(familyNameUpdates) || !GameState.family) return;
+  var f = GameState.family;
+  for (var i = 0; i < familyNameUpdates.length; i++) {
+    var u = familyNameUpdates[i];
+    if (u.target === 'spouse' && f.spouse) {
+      f.spouse.name = u.name;
+    } else if (u.target === 'father' && f.parents.father) {
+      f.parents.father.name = u.name;
+    } else if (u.target === 'mother' && f.parents.mother) {
+      f.parents.mother.name = u.name;
+    } else if (u.target && u.target.indexOf('child_') === 0) {
+      var idx = parseInt(u.target.split('_')[1]);
+      if (f.children[idx]) {
+        f.children[idx].name = u.name;
+      }
+    }
+  }
 }

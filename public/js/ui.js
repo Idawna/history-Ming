@@ -5,6 +5,8 @@ const floatingChanges = document.getElementById('floatingChanges');
 
 // ========== STATUS PANEL ==========
 let panelExpanded = false;
+var attrsExpanded = false;
+var factionsExpanded = false;
 
 function toggleStatusPanel() {
   panelExpanded = !panelExpanded;
@@ -35,6 +37,36 @@ function updateStatusPanel() {
     attrContainer.appendChild(row);
   }
   // 智谋隐藏提示（仅当wisdom有变化时通过叙事体现，不显示数值）
+
+  // ========== 改动1: 属性展开查看原始5维 ==========
+  var expandBtn = document.createElement('div');
+  expandBtn.className = 'attr-expand-btn';
+  expandBtn.textContent = attrsExpanded ? '▾ 收起详情' : '▸ 详情';
+  expandBtn.onclick = function(e) {
+    e.stopPropagation();
+    attrsExpanded = !attrsExpanded;
+    updateStatusPanel();
+  };
+  attrContainer.appendChild(expandBtn);
+
+  if (attrsExpanded) {
+    var RAW_ATTRS = [
+      { key: 'power', label: '权势', color: '#c9a45c' },
+      { key: 'people', label: '民心', color: '#7eb89a' },
+      { key: 'wisdom', label: '智谋', color: '#8b7ec8' },
+      { key: 'bond', label: '情义', color: '#c87e7e' },
+      { key: 'fame', label: '声望', color: '#7eb0c8' }
+    ];
+    RAW_ATTRS.forEach(function(raw) {
+      var val = Math.max(0, Math.min(100, GameState.attributes[raw.key]));
+      var row = document.createElement('div');
+      row.className = 'attr-row attr-row-detail';
+      row.innerHTML = '<span class="attr-label">' + raw.label + '</span>' +
+        '<div class="attr-bar-wrap"><div class="attr-bar" style="width:' + val + '%;background:' + raw.color + '"></div></div>' +
+        '<span class="attr-value">' + val + '</span>';
+      attrContainer.appendChild(row);
+    });
+  }
 
   // ========== P0-1: 阵营区域改造（5条→2条跷跷板+近臣独立） ==========
   const factionContainer = document.getElementById('factionRows');
@@ -82,6 +114,38 @@ function updateStatusPanel() {
   `;
   factionContainer.appendChild(jinchenRow);
 
+  // ========== 改动2: 阵营跷跷板展开显示绝对值+危险区间变色 ==========
+  var factionExpandBtn = document.createElement('div');
+  factionExpandBtn.className = 'faction-expand-btn';
+  factionExpandBtn.textContent = factionsExpanded ? '▾ 收起阵营详情' : '▸ 阵营详情';
+  factionExpandBtn.onclick = function(e) {
+    e.stopPropagation();
+    factionsExpanded = !factionsExpanded;
+    updateStatusPanel();
+  };
+  factionContainer.appendChild(factionExpandBtn);
+
+  if (factionsExpanded) {
+    var FACTION_KEYS = [
+      { key: 'huaixi', label: '淮西', color: '#c0392b' },
+      { key: 'zhedong', label: '浙东', color: '#2e6da4' },
+      { key: 'donggong', label: '东宫', color: '#27874a' },
+      { key: 'zhuwang', label: '诸王', color: '#7b4fa0' },
+      { key: 'jinchen', label: '近臣', color: '#b8860b' }
+    ];
+    FACTION_KEYS.forEach(function(fc) {
+      var val = Math.max(-100, Math.min(100, GameState.factions[fc.key]));
+      var valClass = 'faction-detail-val';
+      if (val >= 60) valClass += ' faction-danger';
+      else if (val <= -60) valClass += ' faction-safe-low';
+      var row = document.createElement('div');
+      row.className = 'faction-detail-item';
+      row.innerHTML = '<span class="faction-detail-label" style="color:' + fc.color + '">' + fc.label + '</span>' +
+        '<span class="' + valClass + '">' + (val > 0 ? '+' : '') + val + '</span>';
+      factionContainer.appendChild(row);
+    });
+  }
+
   // Emperor
   const empVal = Math.max(-100, Math.min(100, GameState.emperor_feeling));
   const empPct = (empVal + 100) / 2;
@@ -90,6 +154,30 @@ function updateStatusPanel() {
   empBar.style.left = empPositive ? '50%' : `${empPct}%`;
   empBar.style.width = `${Math.abs(empVal) / 2}%`;
   document.getElementById('emperorValue').textContent = `${empVal > 0 ? '+' : ''}${empVal}`;
+
+  // ========== 改动3: 圣眷条叙事化区间标记 ==========
+  var empZoneEl = document.getElementById('emperorZoneLabel');
+  if (!empZoneEl) {
+    empZoneEl = document.createElement('span');
+    empZoneEl.id = 'emperorZoneLabel';
+    empZoneEl.className = 'emperor-zone-label';
+    var empValueContainer = document.getElementById('emperorValue');
+    if (empValueContainer && empValueContainer.parentNode) {
+      empValueContainer.parentNode.appendChild(empZoneEl);
+    }
+  }
+  if (empZoneEl) {
+    var empLabel = '';
+    var empCls = 'emperor-zone-label ';
+    if (empVal >= 80) { empLabel = '宠极生危'; empCls += 'emperor-zone-critical'; }
+    else if (empVal >= 70) { empLabel = '伴君如虎'; empCls += 'emperor-zone-danger'; }
+    else if (empVal >= 40) { empLabel = '圣眷正隆'; empCls += 'emperor-zone-good'; }
+    else if (empVal >= 0) { empLabel = '中规中矩'; empCls += 'emperor-zone-neutral'; }
+    else if (empVal >= -30) { empLabel = '天威莫测'; empCls += 'emperor-zone-worry'; }
+    else { empLabel = '命悬一线'; empCls += 'emperor-zone-critical'; }
+    empZoneEl.className = empCls;
+    empZoneEl.textContent = empLabel;
+  }
 
   // P0-2: 危机徽章更新
   updateCrisisBadge();
@@ -1110,7 +1198,77 @@ function applyChanges(changes, narrative) {
     flashSeedBadge();
   }
 
+  // ========== v3.8.23: 建设即时回报浮动通知 ==========
+  if (GameState._buildingInstantBonus) {
+    var bib = GameState._buildingInstantBonus;
+    var bonusParts = [];
+    if (bib.power) bonusParts.push('权势+' + bib.power);
+    if (bib.people) bonusParts.push('民心+' + bib.people);
+    if (bonusParts.length > 0) {
+      seedDelay += 300;
+      (function(parts, delay) {
+        setTimeout(function() {
+          var el = document.createElement('div');
+          el.className = 'float-notify positive';
+          el.style.fontSize = '0.85rem';
+          el.style.padding = '6px 12px';
+          el.style.maxWidth = '260px';
+          el.style.whiteSpace = 'normal';
+          el.style.lineHeight = '1.4';
+          el.style.opacity = '0.85';
+          el.textContent = '🔧 基建初见成效：' + parts.join('、');
+          seedContainer.appendChild(el);
+          setTimeout(function() { el.remove(); }, 4000);
+        }, delay);
+      })(bonusParts, seedDelay);
+    }
+    GameState._buildingInstantBonus = null;
+  }
+
   // ef加成单独飘字提示
   if (Object.keys(efBonus).length > 0) showFloatingChanges({ attributes: efBonus });
 }
 
+
+// ========== 改动4: 结局卡片"一生回顾"数据面板 ==========
+function generateLifeReview() {
+  var a = GameState.attributes;
+  var f = GameState.family;
+  var review = {
+    turns: GameState.turn,
+    years: GameState.year - 1375,
+    finalPower: a.power,
+    finalPeople: a.people,
+    finalWisdom: a.wisdom,
+    finalBond: a.bond,
+    finalFame: a.fame,
+    finalEF: GameState.emperor_feeling,
+    childrenCount: f && f.children ? f.children.length : 0,
+    survivingChildren: f && f.children ? f.children.filter(function(c){ return c.status === '在世'; }).length : 0,
+    spouseName: f && f.spouse ? f.spouse.name || '无' : '无',
+    anchorsSurvived: GameState.completedAnchors ? GameState.completedAnchors.length : 0,
+    seedsTriggered: GameState.seeds_triggered ? GameState.seeds_triggered.length : 0,
+    deathWarnings: GameState.deathWarningCount || 0
+  };
+  return review;
+}
+
+function renderLifeReviewPanel(review) {
+  var html = '<div class="life-review-panel">';
+  html += '<div class="life-review-title">—— 一生回顾 ——</div>';
+  html += '<div class="life-review-grid">';
+  html += '<div class="lr-item"><span class="lr-label">宦海沉浮</span><span class="lr-value">' + review.turns + ' 回合（' + review.years + ' 年）</span></div>';
+  html += '<div class="lr-item"><span class="lr-label">最终权势</span><span class="lr-value">' + review.finalPower + '</span></div>';
+  html += '<div class="lr-item"><span class="lr-label">最终民心</span><span class="lr-value">' + review.finalPeople + '</span></div>';
+  html += '<div class="lr-item"><span class="lr-label">最终智谋</span><span class="lr-value">' + review.finalWisdom + '</span></div>';
+  html += '<div class="lr-item"><span class="lr-label">最终情义</span><span class="lr-value">' + review.finalBond + '</span></div>';
+  html += '<div class="lr-item"><span class="lr-label">最终声望</span><span class="lr-value">' + review.finalFame + '</span></div>';
+  html += '<div class="lr-item"><span class="lr-label">最终圣眷</span><span class="lr-value">' + (review.finalEF > 0 ? '+' : '') + review.finalEF + '</span></div>';
+  html += '<div class="lr-item"><span class="lr-label">度过锚点</span><span class="lr-value">' + review.anchorsSurvived + ' / 9</span></div>';
+  html += '<div class="lr-item"><span class="lr-label">引爆伏笔</span><span class="lr-value">' + review.seedsTriggered + ' 次</span></div>';
+  html += '<div class="lr-item"><span class="lr-label">死里逃生</span><span class="lr-value">' + review.deathWarnings + ' 次</span></div>';
+  html += '<div class="lr-item"><span class="lr-label">子女</span><span class="lr-value">' + review.survivingChildren + ' / ' + review.childrenCount + ' 在世</span></div>';
+  html += '<div class="lr-item"><span class="lr-label">配偶</span><span class="lr-value">' + review.spouseName + '</span></div>';
+  html += '</div></div>';
+  return html;
+}
