@@ -96,6 +96,9 @@ function updateStatusPanel() {
   
   // v3.8.18 P0-2: 伏笔区域更新
   renderSeedHints();
+  
+  // v3.8.21: 种子状态栏常驻指示器
+  updateSeedBadge();
 }
 
 // ========== P0-2: 危机徽章 ==========
@@ -191,6 +194,98 @@ function renderSeedHints() {
   if (seedSection) {
     seedSection.style.display = (container.children.length > 0) ? '' : 'none';
   }
+}
+
+// ========== v3.8.21: 种子状态栏常驻指示器 ==========
+var _seedPanelOpen = false;
+
+function updateSeedBadge() {
+  var badge = document.getElementById('statusSeed');
+  if (!badge) return;
+  var seeds = GameState.seeds || [];
+  var hasSeeds = seeds.length > 0;
+  
+  badge.style.display = hasSeeds ? '' : 'none';
+  
+  // 更新图标：正面种子多时显示✨，否则🌱
+  var positiveCount = seeds.filter(function(s) { return s.positive; }).length;
+  if (positiveCount > 0 && seeds.length > 1) {
+    badge.textContent = '🌱✨';
+  } else {
+    badge.textContent = '🌱';
+  }
+  
+  // 如果面板打开着，同步更新内容
+  if (_seedPanelOpen) {
+    renderSeedDetailPanel();
+  }
+}
+
+function toggleSeedPanel() {
+  _seedPanelOpen = !_seedPanelOpen;
+  var panel = document.getElementById('seedDetailPanel');
+  
+  if (!panel) {
+    // 首次创建浮动面板
+    panel = document.createElement('div');
+    panel.id = 'seedDetailPanel';
+    panel.className = 'seed-detail-panel';
+    document.body.appendChild(panel);
+  }
+  
+  if (_seedPanelOpen) {
+    renderSeedDetailPanel();
+    panel.classList.add('visible');
+  } else {
+    panel.classList.remove('visible');
+  }
+}
+
+function renderSeedDetailPanel() {
+  var panel = document.getElementById('seedDetailPanel');
+  if (!panel) return;
+  
+  var seeds = GameState.seeds || [];
+  if (seeds.length === 0) {
+    panel.innerHTML = '<div class="seed-detail-title">暂无暗线</div>';
+    return;
+  }
+  
+  var SEED_LABELS = {
+    '政治炸弹': '旧账未清', '把柄暴露': '暗处有眼', '谣言传播': '流言未息',
+    '盟友反水': '人心难测', '人情债': '恩情未还',
+    '贵人提携': '贵人暗助', '人心归附': '人心所向', '知己相交': '知己相托',
+    '声名渐起': '声名渐起'
+  };
+  
+  var html = '<div class="seed-detail-title">暗线伏笔 (' + seeds.length + ')</div>';
+  seeds.forEach(function(s) {
+    var label = SEED_LABELS[s.type] || s.type || '未知';
+    var cls = s.positive ? 'seed-positive' : 'seed-negative';
+    var icon = s.positive ? '✨' : '📌';
+    html += '<div class="seed-detail-item ' + cls + '">' + icon + ' ' + label + '</div>';
+  });
+  
+  panel.innerHTML = html;
+}
+
+// 点击其他区域时关闭种子面板
+document.addEventListener('click', function(e) {
+  if (!_seedPanelOpen) return;
+  var panel = document.getElementById('seedDetailPanel');
+  var badge = document.getElementById('statusSeed');
+  if (panel && !panel.contains(e.target) && badge && !badge.contains(e.target)) {
+    _seedPanelOpen = false;
+    panel.classList.remove('visible');
+  }
+});
+
+// v3.8.21: 种子引爆时状态栏高亮提示
+function flashSeedBadge() {
+  var badge = document.getElementById('statusSeed');
+  if (!badge) return;
+  badge.classList.add('seed-detonating');
+  setTimeout(function() { badge.classList.remove('seed-detonating'); }, 2000);
 }
 
 // ========== P0-2: 自救判定动画 ==========
@@ -1011,6 +1106,8 @@ function applyChanges(changes, narrative) {
       })(GameState._pendingSeedDetonations[sdi], seedDelay);
     }
     GameState._pendingSeedDetonations = null;
+    // v3.8.21: 引爆时状态栏种子图标高亮
+    flashSeedBadge();
   }
 
   // ef加成单独飘字提示

@@ -67,6 +67,31 @@ function collectRecentChoices() {
   return '【近期选项·严禁重复】以下选项最近已经给过或玩家已经选过，本回合3个固定选项必须是全新的行动方向，严禁原样重复或近义改写（如换个同义词再说一遍）；每个选项必须推动局面发生实质变化，严禁"静观其变/继续前行"这类选了毫无进展的凑数选项：\n' + texts.slice(-12).join('\n');
 }
 
+// v3.8.21: 收集最近3轮叙事的关键句，防止AI重复使用相同的叙事措辞和场景描写
+function collectRecentNarrativePhrases() {
+  const areas = gameContainer.querySelectorAll('.narrative-area .narrative-text');
+  if (!areas.length) return undefined;
+
+  const phrases = [];
+  // 提取最近3轮叙事的最后一句（通常是氛围描写或悬念）
+  for (let i = Math.max(0, areas.length - 3); i < areas.length; i++) {
+    const text = areas[i].textContent.trim();
+    if (text) {
+      // 按句号/叹号/问号分割，取最后一句（长度5-50字的）
+      const sentences = text.split(/[。！？]/).filter(function(s) { return s.trim().length > 5; });
+      if (sentences.length > 0) {
+        const lastSentence = sentences[sentences.length - 1].trim();
+        if (lastSentence.length > 5 && lastSentence.length < 50) {
+          phrases.push(lastSentence + '。');
+        }
+      }
+    }
+  }
+
+  if (!phrases.length) return undefined;
+  return '【近期叙事关键句·严禁重复以下句式/措辞/场景描述】以下句子在最近叙事中已经出现过，本回合严禁使用相同的句式结构、比喻手法或场景描写：\n' + phrases.join('\n');
+}
+
 // ========== 历史锚点节奏引擎（前端硬控，不再依赖AI自觉） ==========
 // 锚点表按历史年份严格排序（v3.8.9修正：胡惟庸案1380→空印案1382）
 const HISTORY_ANCHORS = [
@@ -1907,8 +1932,9 @@ function getLegacyEnding() {
   if (!GameState.family) return null;
   var f = GameState.family;
 
-  // 族灭型死亡（CRISIS_EVENTS type 0）直接覆盖传承结局——满门抄斩没有"家族兴旺"
-  if (GameState.deathCountdownType === 0 || GameState.deathWarningType === 0) {
+  // v3.8.21修复：族灭型死亡（CRISIS_EVENTS type 0）——只有当倒计时结束（真正死亡）时才返回"满门抄斩"
+  // 防止：曾触发满门抄斩警告但活下来后，存活结局仍错误显示"满门抄斩"
+  if (GameState.deathCountdownType === 0 && GameState.deathCountdown <= 0) {
     return { name: '满门抄斩', desc: '满门抄斩，鸡犬不留。你的家族在这场政治风暴中被连根拔起——妻子、儿女、老幼，无一幸免。百年之后，没有人记得你的家族曾经存在过。在这个时代，有些姓氏注定要从大地上被抹去。' };
   }
 

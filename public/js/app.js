@@ -115,6 +115,8 @@ async function streamBotAPI(userMessage, streamTarget, options) {
       : undefined,
     recent_plot: collectRecentPlot(8),
     recent_choices: collectRecentChoices(),
+    // v3.8.21: 叙事反重复——提取最近3轮叙事关键句传给AI
+    recent_narrative_phrases: collectRecentNarrativePhrases(),
     current_state: {
       turn: GameState.turn,
       year: GameState.year,
@@ -937,9 +939,8 @@ function showEnding(ending, narrative) {
     template += '</div>';
     epitaphHtml = template;
   }
-  const narrativeHtml = narrative
-    ? `<div class="ending-narrative">${narrative.replace(/\n/g, '<br>')}</div>`
-    : '';
+  // v3.8.21修复：不再在结局卡片里重复渲染narrative（叙事已在上方正常显示）
+  // 保留narrative参数仅用于提取墓志铭（见上方逻辑）
   // v3.8.17: 双维度结局——事业+传承
   var legacyHtml = '';
   if (ending.legacy && ending.legacy.title) {
@@ -952,7 +953,6 @@ function showEnding(ending, narrative) {
   div.innerHTML = `
     <h2 class="ending-title">◆ 仕途终局 ◆</h2>
     <h3 class="ending-career-name">${ending.title || '终章'}</h3>
-    ${narrativeHtml}
     <p class="ending-verdict">${ending.description || '你的故事到此结束。'}</p>
     ${legacyHtml}
     ${epitaphHtml}
@@ -971,12 +971,6 @@ function showEnding(ending, narrative) {
     .ending-legacy-title { font-size: 1.0em; color: #b8956a; text-align: center; margin-bottom: 0.5em; }
     .ending-legacy-name { font-size: 1.1em; color: #d4b88c; text-align: center; font-weight: 600; margin-bottom: 0.3em; }
     .ending-legacy-desc { font-size: 0.9em; color: #a89070; text-align: center; line-height: 1.6; font-style: italic; }
-    .ending-narrative {
-      max-height: 40vh; overflow-y: auto; padding: 1em;
-      background: rgba(255,255,255,0.05); border-radius: 8px;
-      margin: 0.8em 0; font-size: 0.95em; line-height: 1.8;
-      color: #ccc; text-align: left; white-space: pre-wrap;
-    }
     .ending-verdict {
       font-style: italic; color: #a89070; text-align: center;
       margin: 1em 0; padding: 0 1em; line-height: 1.6;
