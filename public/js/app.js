@@ -360,6 +360,7 @@ async function streamBotAPI(userMessage, streamTarget, options) {
     // 读取流式响应
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
+    let dividerFound = false; // v3.8.25 hotfix: 分隔符出现后锁定显示，防止结构化数据闪现
 
     while (true) {
       const { done, value } = await reader.read();
@@ -368,26 +369,43 @@ async function streamBotAPI(userMessage, streamTarget, options) {
       const chunk = decoder.decode(value, { stream: true });
       fullText += chunk;
 
-      // v3.8.23 P1-1: 流式增量解析优化 — 避免每个chunk全量重算
+      // v3.8.23 P1-1 + v3.8.25 hotfix: 流式增量解析 — 分隔符出现后锁定显示
       if (streamTarget && !buffered) {
-        // 快速判断：新增内容是否可能包含JSON开头或分隔符
-        const needsFullRescan = /[`{]/.test(chunk) || /\n[-—]/.test(chunk);
-        if (needsFullRescan) {
-          // 结构可能变化，全量重算（低频触发）
-          let displayText = fullText;
-          const dividerRe = /\n[ \t]*(?:[-]{2,6}|[—]{2,6}|[-—]{2,6})[ \t]*\n/;
-          const dividerMatch = fullText.match(dividerRe);
-          if (dividerMatch) displayText = fullText.substring(0, dividerMatch.index);
-          displayText = displayText
-            .replace(/`{3,4}\s*(?:json)?\s*[\s\S]*?(?:`{3,4}|$)/gi, '')
-            .replace(/\{\s*[\s\S]*?(?:\}\s*(?:,?\s*\n|\s*$))/gm, '')
-            .trim();
-          streamTarget.textContent = displayText;
-        } else {
-          // 安全追加模式（高频路径，纯叙事文字直接追加）
-          streamTarget.textContent += chunk;
+        const dividerRe = /\n[ \t]*(?:[-]{2,6}|[—]{2,6}|[-—]{2,6})[ \t]*\n/;
+        if (!dividerFound) {
+          if (dividerRe.test(fullText)) {
+            // 分隔符刚出现，锁定显示，只显示叙事部分
+            dividerFound = true;
+            const dividerMatch = fullText.match(dividerRe);
+            let displayText = fullText.substring(0, dividerMatch.index);
+            displayText = displayText
+              .replace(/`{3,4}\s*(?:json)?\s*[\s\S]*?(?:`{3,4}|$)/gi, '')
+              .replace(/\{\s*[\s\S]*?(?:\}\s*(?:,?\s*\n|\s*$))/gm, '')
+              .trim();
+            streamTarget.textContent = displayText;
+          } else {
+            // 分隔符未出现，检查chunk安全性
+            const needsFullRescan = /[`{]/.test(chunk) || /\n[-—]/.test(chunk);
+            if (needsFullRescan) {
+              let displayText = fullText;
+              const dividerMatch = fullText.match(dividerRe);
+              if (dividerMatch) {
+                dividerFound = true;
+                displayText = fullText.substring(0, dividerMatch.index);
+              }
+              displayText = displayText
+                .replace(/`{3,4}\s*(?:json)?\s*[\s\S]*?(?:`{3,4}|$)/gi, '')
+                .replace(/\{\s*[\s\S]*?(?:\}\s*(?:,?\s*\n|\s*$))/gm, '')
+                .trim();
+              streamTarget.textContent = displayText;
+            } else {
+              // 安全追加：纯叙事文字
+              streamTarget.textContent += chunk;
+            }
+          }
         }
-        // 节流滚动：每 150ms 最多滚一次，避免性能问题；用户主动滚动时暂停自动滚动
+        // dividerFound=true 时不更新显示，保持干净的叙事文本
+        // 节流滚动：每 150ms 最多滚一次
         const now = Date.now();
         if (now - lastScrollTime > 150 && !userScrolling) {
           scrollToBottom();
