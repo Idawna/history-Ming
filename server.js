@@ -104,10 +104,7 @@ app.post('/api/chat', async (req, res) => {
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
-    res.setHeader('X-Model', MODEL);  // 方便 F12 查看当前模型
-
-    // SSE 注释行（以 : 开头），前端不会显示，但 F12 Network Response 里可见
-    res.write(`: model=${MODEL}\n\n`);
+    res.setHeader('X-Model', MODEL);  // F12 → Network → Headers → Response Headers 可查看
 
     const reader = llmResponse.body.getReader();
     const decoder = new TextDecoder();
