@@ -208,6 +208,10 @@ async function streamBotAPI(userMessage, streamTarget, options) {
       degradationType: GameState.degradationType || 0,
       faction_decay: (function(){ return GameState.factionDecayThisTurn ? '【阵营衰减】上回合因阵营关系过度深入（绝对值>80），自然回落：' + GameState.factionDecayThisTurn + '。叙事中可体现"树大招风""功高遭忌后关系微妙疏远"等意象，但不可直接提及数值' : ''; })(),
       favor_crash: (function(){ return GameState.favorCrashThisTurn ? '【圣眷暴跌】' + GameState.favorCrashThisTurn + '——朱元璋猜忌加深，圣眷骤降。叙事中必须体现"帝王心术""天威难测""昨日恩宠今日猜忌"等紧张意象，可描写朝臣态度转变、皇帝冷淡等细节' : ''; })(),
+      // v3.9.0: 情感锚点注入
+      emotional_anchor: (typeof getEmotionalAnchorDirective === 'function') ? getEmotionalAnchorDirective(getNextTurn(), GameState.character.background) : '',
+      // v3.9.0: 情感记忆摘要（让玩家过去的选择影响后续叙事）
+      emotional_memory: (typeof getEmotionalMemorySummary === 'function') ? getEmotionalMemorySummary() : '',
       // v3.8.15: 生活事件注入（P2-G Phase 1）
       life_event: (function(){
         var le = GameState.currentLifeEvent;
@@ -826,6 +830,16 @@ async function processAITurn(userChoice) {
     note.className = 'history-choice-made';
     note.textContent = `▸ ${choice}`;
     gameContainer.appendChild(note);
+    // v3.9.0: 情感锚点选择记录
+    if (GameState.currentEmotionalAnchor && typeof recordEmotionalChoice === 'function') {
+      var anchor = GameState.currentEmotionalAnchor;
+      for (var ei = 0; ei < anchor.choices.length; ei++) {
+        if (anchor.choices[ei].text === choice || choice.indexOf(anchor.choices[ei].text) !== -1) {
+          recordEmotionalChoice(anchor.choices[ei].label);
+          break;
+        }
+      }
+    }
     // 下一回合计发给 AI（驳回后的选择仍然作为新的行动输入）
     processAITurn(choice);
   });

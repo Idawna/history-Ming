@@ -304,6 +304,7 @@ var LIFE_EVENTS = [
   // v3.8.17 P1-4修复：turnWindow从[5,12]扩展到[5,22]，解决书生线child1窗口与scholar_marriage[8-15]严重错位问题
   { id: 'child1', turnWindow: [5, 22], probability: 0.35, category: '生子',
     requiresSpouse: true,
+    backgroundMinTurn: { '淮西武将之后': 11 }, // v3.9.0: 为EA-HW-3(T10)"初为人父"留叙事空间
     effects: { bond: 5, people: 2 },
     narrative: '第一个孩子出生。根据出身交代生产场景，写出初为人父/母的感受。2-3句即可。' },
   // ---- 父亲去世（有在世父亲的出身）----
@@ -311,6 +312,7 @@ var LIFE_EVENTS = [
     backgrounds: ['淮西武将之后', '应天府商贾之子'],
     probability: 0.30, category: '丧亲',
     requiresFatherAlive: true,
+    backgroundMinTurn: { '应天府商贾之子': 11 }, // v3.9.0: 为EA-SG-3(T10)"传灯"留叙事空间
     effects: { bond: -8, people: 3 },
     narrative: '父亲去世。写出丧礼和角色的悲痛。根据出身不同，丧礼规格不同（武将简朴/商人铺张）。叙事可融入对父亲一生的回忆。' },
   // ---- 第二个孩子 ----
@@ -327,6 +329,7 @@ var LIFE_EVENTS = [
   // ---- 母亲去世 ----
   { id: 'mother_death', turnWindow: [15, 25], probability: 0.30, category: '丧亲',
     requiresMotherAlive: true,
+    backgroundExcludes: ['落魄前元官员之后'], // v3.9.0: 前元线情感核心依赖母亲存活到T47
     effects: { bond: -6, wisdom: 3 },
     narrative: '母亲去世。根据母亲的身份不同，丧礼氛围不同。前元出身→母亲身份敏感，丧事需低调；武将→军中旧交来吊唁；商人→铺张。' },
   // ---- 子女早夭 ----
@@ -531,6 +534,14 @@ function checkLifeEvents(turn) {
   var bg = GameState.character.background;
   var family = GameState.family;
   
+  // v3.9.0: 情感锚点回合不触发生活事件（叙事密度已经够高）
+  if (typeof EMOTIONAL_ANCHORS !== 'undefined' && EMOTIONAL_ANCHORS[bg]) {
+    var eaForBg = EMOTIONAL_ANCHORS[bg];
+    for (var eai = 0; eai < eaForBg.length; eai++) {
+      if (eaForBg[eai].triggerTurn === turn) return;
+    }
+  }
+  
   // 遍历所有事件，找到当前可触发的
   for (var i = 0; i < LIFE_EVENTS.length; i++) {
     var evt = LIFE_EVENTS[i];
@@ -543,6 +554,11 @@ function checkLifeEvents(turn) {
     
     // 出身限制检查
     if (evt.backgrounds && evt.backgrounds.indexOf(bg) < 0) continue;
+    
+    // v3.9.0: 出身排除检查（情感锚点冲突修复）
+    if (evt.backgroundExcludes && evt.backgroundExcludes.indexOf(bg) >= 0) continue;
+    // v3.9.0: 出身专属最小回合（情感锚点冲突修复）
+    if (evt.backgroundMinTurn && evt.backgroundMinTurn[bg] && turn < evt.backgroundMinTurn[bg]) continue;
     
     // 需要配偶？
     if (evt.requiresSpouse && (!family.spouse || family.spouse.status !== '在世')) continue;
@@ -2910,4 +2926,141 @@ function processFamilyNames(familyNameUpdates) {
       }
     }
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// v3.9.0: 情感锚点系统 (Emotional Anchors)
+// ═══════════════════════════════════════════════════════════════════
+
+// 初始化情感记忆存储
+if (typeof GameState.emotionalMemory === 'undefined') {
+  GameState.emotionalMemory = [];
+}
+
+/**
+ * 检测当前回合是否触发情感锚点，返回格式化指令供AI使用
+ * @param {number} turn - 当前回合
+ * @param {string} background - 玩家出身背景
+ * @returns {string} 格式化指令，无匹配返回空字符串
+ */
+function getEmotionalAnchorDirective(turn, background) {
+  if (typeof EMOTIONAL_ANCHORS === 'undefined' || !EMOTIONAL_ANCHORS[background]) return '';
+
+  var anchors = EMOTIONAL_ANCHORS[background];
+  var matched = null;
+  for (var i = 0; i < anchors.length; i++) {
+    if (anchors[i].triggerTurn === turn) {
+      matched = anchors[i];
+      break;
+    }
+  }
+  if (!matched) return '';
+
+  // 构建指令
+  var lines = [];
+  lines.push('═══════════════════════════════════════');
+  lines.push('【情感锚点·' + matched.title + '】');
+  lines.push('═══════════════════════════════════════');
+  lines.push('');
+  lines.push('NPC：' + matched.npc);
+  lines.push('');
+  lines.push('【场景】');
+  lines.push(matched.scene);
+  lines.push('');
+  lines.push('【核心对话】');
+  lines.push(matched.dialogue);
+
+  // 条件对话
+  if (matched.conditionalDialogue && matched.conditionalDialogue.length > 0) {
+    lines.push('');
+    lines.push('【条件对话·根据玩家历史选择触发】');
+    for (var j = 0; j < matched.conditionalDialogue.length; j++) {
+      var cd = matched.conditionalDialogue[j];
+      lines.push('  若' + cd.condition + '→' + cd.text);
+    }
+  }
+
+  // 选项
+  lines.push('');
+  lines.push('【玩家选项·必须原样呈现给玩家】');
+  for (var k = 0; k < matched.choices.length; k++) {
+    var ch = matched.choices[k];
+    lines.push(ch.label + '. ' + ch.text);
+  }
+
+  lines.push('');
+  lines.push('【叙事要求】');
+  lines.push('1. 以以上内容为骨架，用你的文风重新演绎，不要机械复述');
+  lines.push('2. 节奏放慢，注重细节和留白');
+  lines.push('3. 选项必须在叙事结束后同时呈现');
+  lines.push('4. 玩家选择后，在stateBlock中标记"emotional_anchor_choice": "' +
+    matched.choices.map(function(c){ return c.label; }).join('/') + '"');
+  lines.push('5. 情感意象"' + matched.memoryItem + '"必须在场景中自然出现');
+  lines.push('');
+  lines.push('【设计意图·仅供你理解精神】');
+  lines.push(matched.designNote || '');
+
+  // 标记当前触发状态，供前端记录
+  GameState.currentEmotionalAnchor = {
+    id: matched.id,
+    turn: turn,
+    npc: matched.npc,
+    memoryItem: matched.memoryItem,
+    choices: matched.choices,
+    linksTo: matched.linksTo || null
+  };
+
+  return lines.join('\n');
+}
+
+/**
+ * 记录玩家的情感锚点选择及其余波
+ * @param {string} choiceLabel - 玩家选择的标签（A/B/C）
+ */
+function recordEmotionalChoice(choiceLabel) {
+  if (!GameState.currentEmotionalAnchor) return;
+
+  var anchor = GameState.currentEmotionalAnchor;
+  var choiceData = null;
+  for (var i = 0; i < anchor.choices.length; i++) {
+    if (anchor.choices[i].label === choiceLabel) {
+      choiceData = anchor.choices[i];
+      break;
+    }
+  }
+
+  // 记录到情感记忆
+  if (!GameState.emotionalMemory) GameState.emotionalMemory = [];
+  GameState.emotionalMemory.push({
+    anchorId: anchor.id,
+    turn: anchor.turn,
+    npc: anchor.npc,
+    choice: choiceLabel,
+    ripple: choiceData ? choiceData.ripple : '',
+    memoryItem: anchor.memoryItem,
+    linksTo: anchor.linksTo
+  });
+
+  console.log('[情感锚点] 记录选择：' + anchor.id + ' → ' + choiceLabel +
+    (choiceData ? ' | 余波：' + choiceData.ripple : ''));
+
+  // 清除当前触发状态
+  GameState.currentEmotionalAnchor = null;
+}
+
+/**
+ * 获取情感记忆摘要，用于后续叙事引用
+ * @returns {string} 情感记忆摘要
+ */
+function getEmotionalMemorySummary() {
+  if (!GameState.emotionalMemory || GameState.emotionalMemory.length === 0) return '';
+
+  var lines = ['【情感记忆·你曾做出的选择】'];
+  for (var i = 0; i < GameState.emotionalMemory.length; i++) {
+    var m = GameState.emotionalMemory[i];
+    lines.push('· 第' + m.turn + '回合·' + m.npc + '：' + m.ripple);
+  }
+  lines.push('');
+  lines.push('在后续叙事中，请自然引用这些记忆——不要直接复述，而是通过细节、动作、对话回响。');
+  return lines.join('\n');
 }
