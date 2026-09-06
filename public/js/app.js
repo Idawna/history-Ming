@@ -751,6 +751,46 @@ async function processAITurn(userChoice) {
     choices = DEFAULT_CHOICES;
   }
 
+  // v3.10.0: P1-1 出身策略注入——确保每回合至少1个出身特色选项
+  if (typeof ORIGIN_STRATEGIES !== 'undefined' && GameState.character.background) {
+    var bg = GameState.character.background;
+    var strategy = ORIGIN_STRATEGIES[bg];
+    if (strategy) {
+      // 检查AI选项是否已包含出身特色内容（通过关键词匹配）
+      var hasOriginOption = false;
+      var allKeywords = [];
+      for (var ti = 0; ti < strategy.templates.length; ti++) {
+        var kws = strategy.templates[ti].keywords;
+        for (var ki = 0; ki < kws.length; ki++) {
+          if (allKeywords.indexOf(kws[ki]) < 0) allKeywords.push(kws[ki]);
+        }
+      }
+      // 只检查前3个固定选项（不含自由行动）
+      for (var ci = 0; ci < Math.min(choices.length, 3); ci++) {
+        var choiceText = choices[ci] || '';
+        if (choiceText.indexOf('自由行动') >= 0) continue;
+        for (var ki = 0; ki < allKeywords.length; ki++) {
+          if (choiceText.indexOf(allKeywords[ki]) >= 0) {
+            hasOriginOption = true;
+            break;
+          }
+        }
+        if (hasOriginOption) break;
+      }
+      // 若无出身特色选项，将第3个选项替换为出身策略选项（保留AI前2个选项）
+      if (!hasOriginOption) {
+        var templates = strategy.templates;
+        var pickIdx = Math.floor(Math.random() * templates.length);
+        var originText = templates[pickIdx].text;
+        // 替换第3个选项（索引2），如果第3个是自由行动则替换第2个（索引1）
+        var replaceIdx = (choices.length >= 3 && choices[2] && choices[2].indexOf('自由行动') < 0) ? 2 : 1;
+        if (replaceIdx < choices.length) {
+          choices[replaceIdx] = originText;
+        }
+      }
+    }
+  }
+
   // v3.8.11: 存档当前选项用于断点恢复
   GameState.pendingChoices = choices.slice();
 
@@ -1009,6 +1049,10 @@ function showEnding(ending, narrative) {
     var template = '<div class="ending-epitaph" id="epitaph-card">\u2014\u2014 ' + epitaphBase;
     if (aiEpitaph) {
       template += '<br>' + aiEpitaph.replace(/\n/g, '<br>');
+    } else if (typeof generateDynamicEpitaph === 'function') {
+      // v3.10.0: 动态墓志铭保底——AI未提供续写时，代码根据玩家一生行为生成
+      var dynamicEpitaph = generateDynamicEpitaph(ending.title || '');
+      template += '<br>' + dynamicEpitaph;
     } else {
       template += '<br><span class="epitaph-loading">⏳ 正在镌刻墓志铭…</span>';
     }
@@ -1442,6 +1486,8 @@ function applySnapshot(save) {
   GameState.familyCrisisTriggeredThisAnchor = gs.familyCrisisTriggeredThisAnchor || false;
   GameState.lastFamilyCrisisAnchor = gs.lastFamilyCrisisAnchor || 0;
   GameState.familyCrisisOutcome = gs.familyCrisisOutcome || {};
+  // v3.9.2: 恢复成就数据（兼容旧存档）
+  GameState.achievements = Array.isArray(gs.achievements) ? gs.achievements : [];
 
   updateStatusPanel();
   clearContainer();

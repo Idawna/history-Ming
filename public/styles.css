@@ -2005,3 +2005,119 @@ body {
     padding: 8px;
   }
 }
+
+/* ========== v3.9.2: 成就收集面板 ========== */
+.ach-panel-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7); z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  animation: ach-fadein 0.2s ease;
+}
+@keyframes ach-fadein { from { opacity: 0; } to { opacity: 1; } }
+.ach-panel {
+  background: linear-gradient(145deg, #1a1410 0%, #2a1f15 50%, #1a1410 100%);
+  border: 1px solid rgba(196,168,130,0.35);
+  border-radius: 10px;
+  padding: 24px;
+  max-width: 420px; width: 90%;
+  max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(196,168,130,0.1);
+  font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+}
+.ach-panel-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 16px; padding-bottom: 12px;
+  border-bottom: 1px solid rgba(196,168,130,0.2);
+}
+.ach-panel-title {
+  font-size: 1.2em; color: #d4a574; letter-spacing: 3px;
+  font-weight: 600;
+}
+.ach-panel-close {
+  background: none; border: 1px solid rgba(196,168,130,0.3);
+  color: #a89070; font-size: 14px; cursor: pointer;
+  border-radius: 4px; padding: 2px 8px;
+  transition: all 0.2s;
+}
+.ach-panel-close:hover { color: #d4a574; border-color: #d4a574; }
+.ach-section { margin-bottom: 18px; }
+.ach-section-title {
+  font-size: 0.85em; color: #b8956a; letter-spacing: 2px;
+  margin-bottom: 10px;
+}
+.ach-section-subtitle {
+  font-size: 0.78em; color: #7a6a55; letter-spacing: 1px;
+  margin: 12px 0 8px;
+}
+.ach-stats {
+  display: flex; gap: 12px; margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.ach-stat {
+  font-size: 0.82em; padding: 4px 10px;
+  border-radius: 4px; border: 1px solid rgba(255,255,255,0.1);
+}
+.ach-stat.excellent { color: #f0c040; border-color: rgba(240,192,64,0.3); background: rgba(240,192,64,0.08); }
+.ach-stat.steady { color: #5dade2; border-color: rgba(93,173,226,0.3); background: rgba(93,173,226,0.08); }
+.ach-stat.survived { color: #a89070; border-color: rgba(168,144,112,0.3); background: rgba(168,144,112,0.08); }
+.ach-list { display: flex; flex-direction: column; gap: 6px; }
+.ach-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.02);
+  font-size: 0.85em;
+}
+.ach-item.tier-excellent { border-left: 3px solid #f0c040; }
+.ach-item.tier-steady { border-left: 3px solid #5dade2; }
+.ach-item.tier-survived { border-left: 3px solid #a89070; }
+.ach-item.ach-locked { opacity: 0.45; border-left: 3px solid rgba(255,255,255,0.1); }
+.ach-tier { font-weight: 600; min-width: 32px; text-align: center; }
+.tier-excellent .ach-tier { color: #f0c040; }
+.tier-steady .ach-tier { color: #5dade2; }
+.tier-survived .ach-tier { color: #a89070; }
+.ach-locked .ach-tier { color: #5a4a3a; }
+.ach-name { color: #d4c4a0; flex: 1; }
+.ach-locked .ach-name { color: #7a6a55; }
+.ach-score { color: #a89070; font-size: 0.85em; font-variant-numeric: tabular-nums; }
+.ach-turn { color: #7a6a55; font-size: 0.8em; }
+.ach-desc { color: #6a5a4a; font-size: 0.8em; font-style: italic; }
+.ach-item.ach-history { opacity: 0.6; }
+
+/* 终局成就展示（嵌入一生回顾面板） */
+.lr-achievements {
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid rgba(196,168,130,0.2);
+}
+.lr-ach-title {
+  font-size: 13px; color: #d4a574; text-align: center;
+  letter-spacing: 2px; margin-bottom: 8px;
+}
+.lr-ach-summary {
+  display: flex; justify-content: center; gap: 10px; margin-bottom: 8px;
+}
+.lr-ach-badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 3px;
+}
+.lr-ach-badge.excellent { color: #f0c040; background: rgba(240,192,64,0.1); }
+.lr-ach-badge.steady { color: #5dade2; background: rgba(93,173,226,0.1); }
+.lr-ach-badge.survived { color: #a89070; background: rgba(168,144,112,0.1); }
+.lr-ach-list { display: flex; flex-direction: column; gap: 4px; }
+.lr-ach-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 8px; font-size: 11px; border-radius: 4px;
+  background: rgba(255,255,255,0.02);
+}
+.lr-ach-item.tier-excellent { color: #f0c040; }
+.lr-ach-item.tier-steady { color: #5dade2; }
+.lr-ach-item.tier-survived { color: #a89070; }
+.lr-ach-score { margin-left: auto; opacity: 0.7; }
+
+/* 成就面板 - 手机端适配 */
+@media (max-width: 480px) {
+  .ach-panel { padding: 16px; max-width: 95%; }
+  .ach-panel-title { font-size: 1em; }
+  .ach-stats { gap: 8px; }
+  .ach-stat { font-size: 0.75em; padding: 3px 8px; }
+  .ach-item { padding: 6px 8px; font-size: 0.8em; }
+}

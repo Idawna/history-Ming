@@ -466,6 +466,17 @@ function checkFamilyCrisis(turn) {
   }
   if (!currentAnchor) return;
   
+  // v3.9.1: 情感锚点回合不触发家庭危机（避免叙事重复）
+  if (typeof EMOTIONAL_ANCHORS !== 'undefined' && EMOTIONAL_ANCHORS[bg]) {
+    var eaForCrisis = EMOTIONAL_ANCHORS[bg];
+    for (var eaci = 0; eaci < eaForCrisis.length; eaci++) {
+      if (eaForCrisis[eaci].triggerTurn === turn) {
+        console.log('[家庭危机] 跳过：当前回合有情感锚点 ' + eaForCrisis[eaci].id);
+        return;
+      }
+    }
+  }
+  
   // 遍历家庭牵连事件表
   for (var i = 0; i < FAMILY_CRISIS_EVENTS.length; i++) {
     var evt = FAMILY_CRISIS_EVENTS[i];
@@ -967,6 +978,7 @@ function getActionHint() {
 // ========== v3.6: background-anchor mapping, ending paths, surveillance ==========
 
 // v3.8.10-fix A4: 出身锚点提示表重建为 1-9 全键，与 HISTORY_ANCHORS id 严格对应
+// v3.10.0: P2-3 每条锚点新增 infoFragment 信息碎片——出身独有的情报收集线索
 const BACKGROUND_ANCHOR_MAP = {
   '淮西武将之后': {
     core_interest: '军权、旧部存亡、出征机会',
@@ -980,6 +992,17 @@ const BACKGROUND_ANCHOR_MAP = {
       7: '舅舅蓝玉被诛——全书最高潮，亲情与自保的抉择',
       8: '锦衣卫大肆搜捕军中旧交，武将几近灭绝',
       9: '朱元璋驾崩，旧时代终结。新帝削藩，武将被卷入新一轮站队'
+    },
+    infoFragments: {
+      1: '你在老营帐中发现一封旧信——朱元璋亲笔，要求将领"自报家底"。这是清洗的前兆',
+      2: '胡惟庸府上的幕僚偷偷传话：丞相在拉拢淮西武将，名单上有你的名字',
+      3: '军中屯田账目对不上——有人侵吞了军粮，而空印案正好在查这个',
+      4: '户部拨付的军费比账面少了三成——郭桓案揭开的不只是贪腐，还有军费去向',
+      5: '李善长的管家被拿了，他手里有一本账册，记着淮西勋贵之间的往来',
+      6: '燕王派人秘密接触淮西旧将——他在为将来布局，你需要决定站哪边',
+      7: '蓝玉被捕前夜，有人从府中递出一封血书，收件人是你——内容是"快走"',
+      8: '锦衣卫的名簿上，你看到了许多熟悉的名字——他们不是通敌，只是"淮西人"',
+      9: '新帝削藩令下，北平那边有动静——武将们被要求表态，你必须在忠旧与顺新之间选'
     }
   },
   '浙东寒门书生': {
@@ -994,6 +1017,17 @@ const BACKGROUND_ANCHOR_MAP = {
       7: '蓝玉案后文官噤声，朝堂万马齐喑，书生面临恐怖中的坚守',
       8: '锦衣卫搜捕异己，文字狱风声鹤唳',
       9: '新帝即位，文治还是武功？书生以笔为剑的新篇章'
+    },
+    infoFragments: {
+      1: '整理刘伯温遗物时发现一封未寄出的信——写给朱元璋，论"功臣之祸"。这封信若被人看到，师门危矣',
+      2: '胡惟庸案中牵出一份文人名单，浙东同门有三人在列——罪名是"以文结党"',
+      3: '同门写了一篇议论空印案的文章，被御史抄送御前——文章是忠言，但可能被解读为"怨望"',
+      4: '郭桓案后户部清理文书，你发现一份旧档记录了浙东文官的举荐关系网',
+      5: '李善长案牵连出的供词中提到"浙东学派"——师门正在被当作一个"派系"来清算',
+      6: '太子生前曾托人转告浙东文人"安心治学"——如今太子不在了，这话还算数吗',
+      7: '一位同门因私藏"违禁文字"被拿——他的书房里只有刘伯温的注疏',
+      8: '锦衣卫在搜查中抄走了一批书——其中有你师门的文集，这些书可能成为"罪证"',
+      9: '新帝下诏求贤——但诏书中"严辨学术正邪"几个字让浙东文人心惊'
     }
   },
   '应天府商贾之子': {
@@ -1008,6 +1042,17 @@ const BACKGROUND_ANCHOR_MAP = {
       7: '蓝玉案中商人被牵连（资助淮西嫌疑），军需采购被查',
       8: '锦衣卫搜查商号，以"通敌"之名勒索',
       9: '新朝经济政策洗牌，最终商业格局定格'
+    },
+    infoFragments: {
+      1: '你从商路上得到消息：有人在囤积军需物资，价格异常——这是朝局变动的先兆',
+      2: '你的一个商业伙伴被锦衣卫约谈——他和你都跟胡惟庸府上的管事有过生意',
+      3: '户部要求你交出近三年的商号账簿——空印案正在查账，你的账目是否经得起查',
+      4: '郭桓案的名单上有一个你认识的名字——他帮你做过一笔"灰色"的盐引生意',
+      5: '两派都在拉拢商人筹款——你需要决定把银子押在哪边，还是两边都押',
+      6: '宝钞贬值的消息在商圈传开——太子在世时曾压制通胀，现在谁来稳住币值',
+      7: '军需采购被查，你发现经手的丝绸和铁器订单——最终流向了蓝玉的军中',
+      8: '锦衣卫以"通敌"之名搜查你的商号——你知道他们真正要的是你和某位大人的账目往来',
+      9: '新帝推行新的商税政策——旧的商业格局被打破，你需要在新秩序中找到位置'
     }
   },
   '落魄前元官员之后': {
@@ -1022,6 +1067,17 @@ const BACKGROUND_ANCHOR_MAP = {
       7: '蓝玉案大清洗气氛，监视压力达到顶峰，前朝身份随时被清算',
       8: '锦衣卫大肆搜捕，前朝身份问题面临最终清算',
       9: '新帝是否接纳前朝余孽？最终命运定格'
+    },
+    infoFragments: {
+      1: '你在旧箱底发现父亲的元朝官印——这东西若被锦衣卫看到，全家性命难保',
+      2: '胡案排查中，有人举报你的邻居是"前元余孽"——你意识到自己也随时可能被举报',
+      3: '代笔文书时你注意到一个规律：被推出来的替罪羊都有一个共同特征——"非洪武旧臣"',
+      4: '户部被清洗的名单中，前元旧臣占了七成——这不是反腐，这是按出身清洗',
+      5: '你的保护人因李善长案被牵连——他倒台后，你失去了一层身份屏障',
+      6: '太子在世时曾暗中保护过几个前元旧臣——现在太子不在了，这层保护还在吗',
+      7: '蓝玉案期间锦衣卫挨户排查，你在门后听到了他们翻找的声音——他们在找"前朝证据"',
+      8: '锦衣卫掌握了你的真实身份——但他们没有立即动手，而是在等你"主动交代"',
+      9: '新帝即位后大赦天下——但赦令中有一行小字："前元伪官不在赦例"'
     }
   }
 };
@@ -1033,7 +1089,12 @@ function getBackgroundAnchorHint(bg, t) {
     var a = HISTORY_ANCHORS[i];
     if (t >= a.start - 3 && t <= a.end + 2) {
       var h = m.anchors[a.id] || '';
-      return '\u3010' + a.name + '\u00b7\u4f60\u7684\u5207\u8eab\u89d2\u5ea6\u3011' + h + '\uff08\u4f60\u7684\u6838\u5fc3\u5229\u76ca\uff1a' + m.core_interest + '\u3002\u9009\u9879\u5fc5\u987b\u4ece\u6b64\u89d2\u5ea6\u5207\u5165\uff0c\u81f3\u5c111\u4e2a\u9009\u9879\u76f4\u63a5\u5173\u8054\u6b64\u5229\u76ca\uff09';
+      var result = '【' + a.name + '·你的切身利益】' + h + '（你的核心利益：' + m.core_interest + '。选项必须从此角度切入，至少1个选项直接关联此利益）';
+      // v3.10.0: P2-3 信息碎片注入
+      if (m.infoFragments && m.infoFragments[a.id]) {
+        result += '\n【信息碎片·仅你可知】' + m.infoFragments[a.id];
+      }
+      return result;
     }
   }
   return '';
@@ -1237,6 +1298,95 @@ var EPITAPHS = {
   '墨史归一': '完美平衡，万世太平。',
   '靖难先声': '预见未来，择木而栖。'
 };
+
+// v3.10.0: P1-2A 动态墓志铭——根据玩家一生行为生成差异化墓志铭
+// 在AI续写墓志铭失败/缺失时，由代码生成保底墓志铭
+function generateDynamicEpitaph(endingTitle) {
+  var a = GameState.attributes;
+  var ef = GameState.emperor_feeling;
+  var bg = GameState.character.background || '';
+  var parts = [];
+
+  // 1. 基于最高属性确定人物基调
+  var maxAttr = 'bond', maxVal = a.bond;
+  var attrNames = { power: '权势', people: '民心', wisdom: '智谋', bond: '情义', fame: '声望' };
+  for (var k in a) {
+    if (a[k] > maxVal) { maxVal = a[k]; maxAttr = k; }
+  }
+  var traitLines = {
+    power: ['权倾一时', '纵横捭阖', '以势立身'],
+    people: ['德被乡里', '民心思之', '以仁处世'],
+    wisdom: ['谋深虑远', '明察秋毫', '以智全身'],
+    bond: ['重情重义', '不负故交', '以义立世'],
+    fame: ['名动天下', '清名远播', '以文传世']
+  };
+  var traitPool = traitLines[maxAttr] || traitLines.bond;
+  parts.push(traitPool[Math.floor(Math.random() * traitPool.length)]);
+
+  // 2. 基于阵营倾向补充
+  var f = GameState.factions;
+  if (f.huaixi > f.zhedong + 20) {
+    parts.push('淮西旧臣，始终未背袍泽');
+  } else if (f.zhedong > f.huaixi + 20) {
+    parts.push('浙东一脉，笔耕不辍');
+  } else if (Math.abs(f.huaixi - f.zhedong) <= 15) {
+    parts.push('游走两党之间，独善其身');
+  }
+
+  // 3. 基于圣眷定性结局
+  if (ef >= 40) {
+    parts.push('圣眷优渥，善终於家');
+  } else if (ef <= -30) {
+    parts.push('天威难测，终见猜忌');
+  }
+
+  // 4. 基于出身线特色
+  var originEndings = {
+    '淮西武将之后': '马上得功名',
+    '浙东寒门书生': '笔下写春秋',
+    '应天府商贾之子': '商道通天下',
+    '落魄前元官员之后': '洗心以立命'
+  };
+  if (originEndings[bg]) parts.push(originEndings[bg]);
+
+  // 5. 基于情感记忆（若有）
+  if (GameState.emotionalMemory && GameState.emotionalMemory.length >= 3) {
+    var lastMem = GameState.emotionalMemory[GameState.emotionalMemory.length - 1];
+    if (lastMem && lastMem.ripple) {
+      parts.push('一生所系，不过情义二字');
+    }
+  }
+
+  // 组装：取2-3句
+  var result = parts.slice(0, Math.min(parts.length, 3)).join('。') + '。';
+  return result;
+}
+
+// v3.10.0: P1-2B 情感记忆回响——生成终局情感摘要
+// 选取2-3个关键情感记忆点，用于终局叙事指令中注入
+function getEmotionalEchoForFinale() {
+  if (!GameState.emotionalMemory || GameState.emotionalMemory.length === 0) return '';
+  var mems = GameState.emotionalMemory;
+  // 选取策略：取第1个（开局）、中间1个、最后1个，最多3个
+  var selected = [];
+  if (mems.length === 1) {
+    selected.push(mems[0]);
+  } else if (mems.length === 2) {
+    selected.push(mems[0], mems[1]);
+  } else {
+    selected.push(mems[0]);
+    var midIdx = Math.floor(mems.length / 2);
+    selected.push(mems[midIdx]);
+    selected.push(mems[mems.length - 1]);
+  }
+  var lines = ['【情感记忆回响——终局须回响这些关键时刻】'];
+  for (var i = 0; i < selected.length; i++) {
+    var m = selected[i];
+    lines.push('· ' + (m.npc || '故人') + '：' + (m.ripple || '那段选择') + '（' + (m.memoryItem || '') + '）');
+  }
+  lines.push('终局叙事中须自然回响上述记忆——不是直接复述，而是通过意象、道具、对话的呼应，让读者感受到"一路走来"的厚重。');
+  return lines.join('\n');
+}
 
 function maxFaction() {
   var f = GameState.factions, mx = -999;
@@ -2164,6 +2314,9 @@ function getFinaleHint() {
   var year = GameState.year;
   var isDeathEnding = (GameState.deathCountdown > 0 && GameState.deathCountdownType > 0) ||
                       (GameState.deathWarning > 0 && GameState.deathWarningType > 0);
+  // v3.10.0: 情感记忆回响——终局注入
+  var echoHint = (typeof getEmotionalEchoForFinale === 'function') ? getEmotionalEchoForFinale() : '';
+  var echoSuffix = echoHint ? '\n' + echoHint : '';
   // 在终局窗口（回合>=55 或 年份>=1393）注入提示
   if (turn >= 55 || year >= 1393) {
     var pred = predictFinaleEnding();
@@ -2171,15 +2324,15 @@ function getFinaleHint() {
     var legacyHint = (pred.legacy && pred.legacy.title) ? '；门楣传承结局为「' + pred.legacy.title + '」（家族维度，叙事中需简要交代家族最终状态）' : '';
     if (pred.title && pred.title !== '未定') {
       if (isDeathEnding) {
-        return '【终局将至】游戏即将进入最终回合。最可能的仕途结局是「' + pred.title + '」' + legacyHint + '。终局叙事必须做到：(1)本回合为死亡结局——叙事应聚焦于角色临终前的心理活动、一生回忆闪回、周围人物的反应与哀恸，**严禁直接描写死亡过程本身**（死因定性与临终场景由系统单独展示，重复会破坏体验）；(2)回顾本局关键抉择与转折；(3)在叙事最末尾另起一行写【墓志铭】后接2-3句对人物一生的个性化评价（系统会自动提取展示，不会混入叙事正文，总计不超过100字）。';
+        return '【终局将至】游戏即将进入最终回合。最可能的仕途结局是「' + pred.title + '」' + legacyHint + '。终局叙事必须做到：(1)本回合为死亡结局——叙事应聚焦于角色临终前的心理活动、一生回忆闪回、周围人物的反应与哀恸，**严禁直接描写死亡过程本身**（死因定性与临终场景由系统单独展示，重复会破坏体验）；(2)回顾本局关键抉择与转折；(3)在叙事最末尾另起一行写【墓志铭】后接2-3句对人物一生的个性化评价（系统会自动提取展示，不会混入叙事正文，总计不超过100字）。' + echoSuffix;
       } else {
-        return '【终局将至】游戏即将进入最终回合。最可能的仕途结局是「' + pred.title + '」' + legacyHint + '。终局叙事必须做到：(1)明确交代人物最终归宿与人生收束；(2)同时交代家族/家庭的最终状态（传承维度）；(3)回顾本局关键抉择与转折；(4)在叙事最末尾另起一行写【墓志铭】后接2-3句对人物一生的个性化评价（系统会自动提取展示，不会混入叙事正文，总计不超过100字）。';
+        return '【终局将至】游戏即将进入最终回合。最可能的仕途结局是「' + pred.title + '」' + legacyHint + '。终局叙事必须做到：(1)明确交代人物最终归宿与人生收束；(2)同时交代家族/家庭的最终状态（传承维度）；(3)回顾本局关键抉择与转折；(4)在叙事最末尾另起一行写【墓志铭】后接2-3句对人物一生的个性化评价（系统会自动提取展示，不会混入叙事正文，总计不超过100字）。' + echoSuffix;
       }
     } else if (pred.hint) {
       if (isDeathEnding) {
-        return '【终局将至】游戏即将进入最终回合。' + pred.hint + '。当前命运已濒临绝境，叙事应聚焦于角色临终前的心理活动、一生回忆闪回、周围人物的反应，**严禁直接描写死亡过程**（死因定性由系统单独展示）。终局叙事末尾另起一行写【墓志铭】后接2-3句个性化总结（系统自动提取展示）。';
+        return '【终局将至】游戏即将进入最终回合。' + pred.hint + '。当前命运已濒临绝境，叙事应聚焦于角色临终前的心理活动、一生回忆闪回、周围人物的反应，**严禁直接描写死亡过程**（死因定性由系统单独展示）。终局叙事末尾另起一行写【墓志铭】后接2-3句个性化总结（系统自动提取展示）。' + echoSuffix;
       } else {
-        return '【终局将至】游戏即将进入最终回合。' + pred.hint + '。终局叙事必须明确交代人物最终命运与归宿，并在叙事最末尾另起一行写【墓志铭】后接2-3句个性化总结（系统自动提取展示）。';
+        return '【终局将至】游戏即将进入最终回合。' + pred.hint + '。终局叙事必须明确交代人物最终命运与归宿，并在叙事最末尾另起一行写【墓志铭】后接2-3句个性化总结（系统自动提取展示）。' + echoSuffix;
       }
     }
   }
@@ -2187,7 +2340,7 @@ function getFinaleHint() {
   if (GameState.deathCountdown === 1 && GameState.deathCountdownType > 0) {
     var deathTypeIdx = GameState.deathCountdownType - 1;
     if (deathTypeIdx >= 0 && deathTypeIdx < DEATH_NAMES.length) {
-      return '【命悬一线】死亡已不可避免——最可能的结局是「' + DEATH_NAMES[deathTypeIdx] + '」。本回合叙事必须聚焦于角色临终前的心理活动、走马灯式的回忆闪回、周围人物的反应与哀恸，写出大厦将倾的绝望感。**严禁直接描写死亡过程本身**——死因定性与临终场景由系统单独展示，重复描写会破坏体验。不要在叙事中写【墓志铭】标记——若角色确认死亡，系统会单独展示完整墓志铭。';
+      return '【命悬一线】死亡已不可避免——最可能的结局是「' + DEATH_NAMES[deathTypeIdx] + '」。本回合叙事必须聚焦于角色临终前的心理活动、走马灯式的回忆闪回、周围人物的反应与哀恸，写出大厦将倾的绝望感。**严禁直接描写死亡过程本身**——死因定性与临终场景由系统单独展示，重复描写会破坏体验。不要在叙事中写【墓志铭】标记——若角色确认死亡，系统会单独展示完整墓志铭。' + echoSuffix;
     }
   }
   return '';
@@ -2568,83 +2721,7 @@ function validateDeadNPCs(rawOutput, year) {
 }
 // ========== v3.8.14 死人校验 END ==========
 
-// ========== v3.8.19 阶段性成就系统 START ==========
-/**
- * 检测锚点切换并生成阶段性成就评价
- * 触发条件：当前 turn 从一个锚点的 end+2 跨入下一锚点的 start-3（缓冲期）
- * @param {number} turn - 当前回合号
- * @returns {object|null} - 成就信息 { anchorName, tier, text, bonus } 或 null
- */
-function generateAnchorAchievement(turn) {
-  if (!GameState.lastAnchorAchieved && GameState.lastAnchorAchieved !== 0) {
-    GameState.lastAnchorAchieved = 0;
-  }
-
-  // 找到刚完成的锚点：turn == anchor.end + 3（即完成后的第一个缓冲回合）
-  var completedAnchor = null;
-  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
-    var a = HISTORY_ANCHORS[i];
-    // 锚点在 end+2 被标记完成，成就在 end+3 触发（即进入缓冲期第一回合）
-    if (turn === a.end + 3 && GameState.lastAnchorAchieved !== a.id) {
-      completedAnchor = a;
-      break;
-    }
-  }
-
-  if (!completedAnchor) return null;
-
-  // 找到玩家当前属性最高值及对应名称
-  var attrs = GameState.attributes;
-  var attrEntries = [
-    { key: 'power',  label: '权势' },
-    { key: 'people', label: '民心' },
-    { key: 'wisdom', label: '智谋' },
-    { key: 'bond',   label: '情义' },
-    { key: 'fame',   label: '声望' }
-  ];
-  var maxAttr = attrEntries[0];
-  for (var j = 1; j < attrEntries.length; j++) {
-    if (attrs[attrEntries[j].key] > attrs[maxAttr.key]) {
-      maxAttr = attrEntries[j];
-    }
-  }
-  var maxVal = attrs[maxAttr.key];
-
-  // 根据最高属性值生成成就文案
-  var tier, text, bonus;
-  if (maxVal >= 60) {
-    tier = '卓越';
-    text = '你在「' + completedAnchor.name + '」中展现了卓越的' + maxAttr.label + '，声望远播朝野。';
-    bonus = 3;
-  } else if (maxVal >= 40) {
-    tier = '稳健';
-    text = '你在「' + completedAnchor.name + '」中全身而退，积累了不少经验。';
-    bonus = 2;
-  } else {
-    tier = '幸存';
-    text = '「' + completedAnchor.name + '」的风波让你心有余悸，但你活了下来。';
-    bonus = 1;
-  }
-
-  // 应用奖励：最高属性 +bonus
-  attrs[maxAttr.key] = Math.min(100, attrs[maxAttr.key] + bonus);
-
-  // 记录已触发，防止重复
-  GameState.lastAnchorAchieved = completedAnchor.id;
-
-  console.log('[成就] 锚点「' + completedAnchor.name + '」完成，成就等级：' + tier + '，' + maxAttr.label + '+' + bonus);
-
-  return {
-    anchorName: completedAnchor.name,
-    anchorId: completedAnchor.id,
-    tier: tier,
-    text: text,
-    bonusAttr: maxAttr.key,
-    bonusLabel: maxAttr.label,
-    bonus: bonus
-  };
-}
-// ========== v3.8.19 阶段性成就系统 END ==========
+// v3.9.2: 已删除旧版 generateAnchorAchievement（v3.8.19最高属性版），保留下方评分版（v3.8.20）
 
 // ========== v3.8.20: 家庭上下文注入 + 氛围系统 + 种子联动 ==========
 
@@ -2876,6 +2953,27 @@ function generateAnchorAchievement(turn) {
   
   console.log('[成就系统] 锚点「' + targetAnchor.name + '」达成评价：' + tier + '（' + score + '分）奖励：' + bonusLabel + '+' + bonus);
   
+  // ===== v3.9.2: 成就持久化 =====
+  var achRecord = {
+    anchorId: targetAnchor.id,
+    anchorName: targetAnchor.name,
+    tier: tier,
+    score: score,
+    text: text,
+    bonus: bonus,
+    bonusLabel: bonusLabel,
+    earnedTurn: GameState.turn
+  };
+  // 记录到本局 GameState
+  if (!Array.isArray(GameState.achievements)) GameState.achievements = [];
+  GameState.achievements.push(achRecord);
+  // 跨局持久化：累积所有历史成就（新游戏也保留）
+  try {
+    var allAch = JSON.parse(localStorage.getItem('mingshi_all_achievements') || '[]');
+    allAch.push(achRecord);
+    localStorage.setItem('mingshi_all_achievements', JSON.stringify(allAch));
+  } catch (e) { console.warn('[成就] localStorage写入失败:', e); }
+  
   return { text: text, bonus: bonus, bonusLabel: bonusLabel, tier: tier, score: score };
 }
 
@@ -3043,6 +3141,25 @@ function recordEmotionalChoice(choiceLabel) {
 
   console.log('[情感锚点] 记录选择：' + anchor.id + ' → ' + choiceLabel +
     (choiceData ? ' | 余波：' + choiceData.ripple : ''));
+
+  // v3.9.1: EA-HW-3"初为人父"特殊处理——同步更新family状态，防止child1重复触发
+  if (anchor.id === 'EA-HW-3' && GameState.family) {
+    // 标记child1为已触发，防止后续生活事件再触发"第一个孩子"
+    if (GameState.lifeEventsTriggered.indexOf('child1') < 0) {
+      GameState.lifeEventsTriggered.push('child1');
+    }
+    // 将孩子加入family.children
+    var hasChild = GameState.family.children.some(function(c) { return c.order === 1; });
+    if (!hasChild) {
+      GameState.family.children.push({
+        name: '', birthTurn: anchor.turn, birthYear: anchor.turn === 10 ? (GameState.year || 1380) : GameState.year,
+        gender: Math.random() > 0.5 ? '男' : '女',
+        status: '在世', order: 1,
+        source: 'EA-HW-3'  // 标记来源，便于调试
+      });
+      console.log('[情感锚点] EA-HW-3同步：添加第一个孩子到family');
+    }
+  }
 
   // 清除当前触发状态
   GameState.currentEmotionalAnchor = null;

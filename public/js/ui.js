@@ -1248,7 +1248,9 @@ function generateLifeReview() {
     spouseName: f && f.spouse ? f.spouse.name || '无' : '无',
     anchorsSurvived: GameState.completedAnchors ? GameState.completedAnchors.length : 0,
     seedsTriggered: GameState.seeds_triggered ? GameState.seeds_triggered.length : 0,
-    deathWarnings: GameState.deathWarningCount || 0
+    deathWarnings: GameState.deathWarningCount || 0,
+    // v3.9.2: 成就数据
+    achievements: Array.isArray(GameState.achievements) ? GameState.achievements : []
   };
   return review;
 }
@@ -1269,6 +1271,141 @@ function renderLifeReviewPanel(review) {
   html += '<div class="lr-item"><span class="lr-label">死里逃生</span><span class="lr-value">' + review.deathWarnings + ' 次</span></div>';
   html += '<div class="lr-item"><span class="lr-label">子女</span><span class="lr-value">' + review.survivingChildren + ' / ' + review.childrenCount + ' 在世</span></div>';
   html += '<div class="lr-item"><span class="lr-label">配偶</span><span class="lr-value">' + review.spouseName + '</span></div>';
-  html += '</div></div>';
+  html += '</div>';
+  // v3.9.2: 成就展示
+  var achs = review.achievements || [];
+  if (achs.length > 0) {
+    var ex = 0, st = 0, sv = 0;
+    for (var i = 0; i < achs.length; i++) {
+      if (achs[i].tier === '卓越') ex++;
+      else if (achs[i].tier === '稳健') st++;
+      else sv++;
+    }
+    html += '<div class="lr-achievements">';
+    html += '<div class="lr-ach-title">🏆 功业录</div>';
+    html += '<div class="lr-ach-summary">';
+    if (ex > 0) html += '<span class="lr-ach-badge excellent">卓越×' + ex + '</span>';
+    if (st > 0) html += '<span class="lr-ach-badge steady">稳健×' + st + '</span>';
+    if (sv > 0) html += '<span class="lr-ach-badge survived">幸存×' + sv + '</span>';
+    html += '</div>';
+    html += '<div class="lr-ach-list">';
+    for (var i = 0; i < achs.length; i++) {
+      var tc = achs[i].tier === '卓越' ? 'tier-excellent' : (achs[i].tier === '稳健' ? 'tier-steady' : 'tier-survived');
+      html += '<div class="lr-ach-item ' + tc + '"><span>' + achs[i].tier + '</span> 「' + achs[i].anchorName + '」<span class="lr-ach-score">' + achs[i].score + '分</span></div>';
+    }
+    html += '</div></div>';
+  }
+  html += '</div>';
   return html;
+}
+
+// ========== v3.9.2: 成就收集面板 ==========
+
+/**
+ * 打开成就收集面板（非模态，可关闭）
+ * 显示本局已获得的成就 + 跨局累积的历史成就
+ */
+function showAchievementPanel() {
+  // 移除已存在的面板
+  var existing = document.getElementById('achievement-panel-overlay');
+  if (existing) { existing.remove(); return; }
+
+  var currentAch = Array.isArray(GameState.achievements) ? GameState.achievements : [];
+  var allAch = [];
+  try { allAch = JSON.parse(localStorage.getItem('mingshi_all_achievements') || '[]'); } catch(e) {}
+
+  // 统计
+  var excellent = 0, steady = 0, survived = 0;
+  for (var i = 0; i < currentAch.length; i++) {
+    if (currentAch[i].tier === '卓越') excellent++;
+    else if (currentAch[i].tier === '稳健') steady++;
+    else survived++;
+  }
+
+  var html = '<div class="ach-panel-overlay" id="achievement-panel-overlay" onclick="if(event.target===this)closeAchievementPanel()">';
+  html += '<div class="ach-panel">';
+  html += '<div class="ach-panel-header">';
+  html += '<span class="ach-panel-title">🏆 功业录</span>';
+  html += '<button class="ach-panel-close" onclick="closeAchievementPanel()">✕</button>';
+  html += '</div>';
+
+  // 本局成就
+  html += '<div class="ach-section">';
+  html += '<div class="ach-section-title">本局成就（' + currentAch.length + ' / 9）</div>';
+  html += '<div class="ach-stats">';
+  html += '<span class="ach-stat excellent">卓越 ×' + excellent + '</span>';
+  html += '<span class="ach-stat steady">稳健 ×' + steady + '</span>';
+  html += '<span class="ach-stat survived">幸存 ×' + survived + '</span>';
+  html += '</div>';
+
+  // 已获得成就列表
+  if (currentAch.length > 0) {
+    html += '<div class="ach-list">';
+    for (var i = 0; i < currentAch.length; i++) {
+      var a = currentAch[i];
+      var tierClass = a.tier === '卓越' ? 'tier-excellent' : (a.tier === '稳健' ? 'tier-steady' : 'tier-survived');
+      html += '<div class="ach-item ' + tierClass + '">';
+      html += '<span class="ach-tier">' + a.tier + '</span>';
+      html += '<span class="ach-name">「' + a.anchorName + '」</span>';
+      html += '<span class="ach-score">' + a.score + '分</span>';
+      html += '<span class="ach-turn">第' + a.earnedTurn + '回合</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  // 未获得的锚点（灰色）
+  var earnedIds = {};
+  for (var i = 0; i < currentAch.length; i++) { earnedIds[currentAch[i].anchorId] = true; }
+  var lockedHtml = '';
+  if (typeof HISTORY_ANCHORS !== 'undefined') {
+    for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+      var ha = HISTORY_ANCHORS[i];
+      if (!earnedIds[ha.id]) {
+        lockedHtml += '<div class="ach-item ach-locked"><span class="ach-tier">🔒</span><span class="ach-name">「' + ha.name + '」</span><span class="ach-desc">' + ha.desc + '</span></div>';
+      }
+    }
+  }
+  if (lockedHtml) {
+    html += '<div class="ach-section-subtitle">未达成</div>';
+    html += '<div class="ach-list">' + lockedHtml + '</div>';
+  }
+  html += '</div>';
+
+  // 跨局累积成就（如果有）
+  if (allAch.length > currentAch.length) {
+    html += '<div class="ach-section">';
+    html += '<div class="ach-section-title">历世功业（累计 ' + allAch.length + ' 枚）</div>';
+    html += '<div class="ach-list">';
+    // 显示最近10条（不包括本局已显示的）
+    var displayed = 0;
+    for (var i = allAch.length - 1; i >= 0 && displayed < 10; i--) {
+      var a = allAch[i];
+      // 跳过本局已显示的
+      var isCurrent = false;
+      for (var j = 0; j < currentAch.length; j++) {
+        if (currentAch[j].anchorId === a.anchorId && currentAch[j].earnedTurn === a.earnedTurn) { isCurrent = true; break; }
+      }
+      if (isCurrent) continue;
+      var tierClass = a.tier === '卓越' ? 'tier-excellent' : (a.tier === '稳健' ? 'tier-steady' : 'tier-survived');
+      html += '<div class="ach-item ach-history ' + tierClass + '">';
+      html += '<span class="ach-tier">' + a.tier + '</span>';
+      html += '<span class="ach-name">「' + a.anchorName + '」</span>';
+      html += '<span class="ach-score">' + a.score + '分</span>';
+      html += '</div>';
+      displayed++;
+    }
+    html += '</div></div>';
+  }
+
+  html += '</div></div>';
+
+  var overlay = document.createElement('div');
+  overlay.innerHTML = html;
+  document.body.appendChild(overlay);
+}
+
+function closeAchievementPanel() {
+  var el = document.getElementById('achievement-panel-overlay');
+  if (el) el.remove();
 }
