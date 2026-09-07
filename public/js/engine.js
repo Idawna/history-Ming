@@ -268,23 +268,27 @@ function initFamily(background) {
   switch (background) {
     case '淮西武将之后':
       family.spouse = { name: '', relation: '妻', background: '淮西同阵营武将之女', status: '在世', marriedTurn: 0 };
-      family.parents.father = { name: '', relation: '父', background: '淮西老将', status: '在世', deathTurn: 0 };
-      family.parents.mother = { name: '', relation: '母', status: '在世', deathTurn: 0 };
+      // v3.11.0b: 父在世但鄱阳湖重伤卧病（为father_death和crisis_li_father铺垫），母已故（与身世小传一致）
+      family.parents.father = { name: '', relation: '父', background: '淮西老将（鄱阳湖重伤致残，归乡卧病）', status: '在世', deathTurn: 0 };
+      family.parents.mother = { name: '', relation: '母', background: '蓝氏（积劳早逝）', status: '已故', deathTurn: 0 };
       break;
     case '浙东寒门书生':
-      // 未婚，父早亡，母亲在世
-      family.parents.father = { name: '', relation: '父', background: '寒门秀才（早亡）', status: '已故', deathTurn: 0 };
-      family.parents.mother = { name: '', relation: '母', status: '在世', deathTurn: 0 };
+      // v3.11.0b: 修复与身世小传矛盾——父在世（乡中开馆授徒），母已故（自幼丧母）
+      family.parents.father = { name: '', relation: '父', background: '寒门秀才（乡中开馆授徒）', status: '在世', deathTurn: 0 };
+      family.parents.mother = { name: '', relation: '母', background: '早亡', status: '已故', deathTurn: 0 };
       break;
     case '应天府商贾之子':
-      family.spouse = { name: '', relation: '妻', background: '商贾联姻', status: '在世', marriedTurn: 0 };
-      family.parents.father = { name: '', relation: '父', background: '应天商人', status: '在世', deathTurn: 0 };
-      family.parents.mother = { name: '', relation: '母', status: '在世', deathTurn: 0 };
+      family.spouse = { name: '', relation: '妻', background: '商贾联姻（精明能干）', status: '在世', marriedTurn: 0 };
+      // v3.11.0b: 父亲升级为有完整恐惧弧线的角色
+      family.parents.father = { name: '', relation: '父', background: '应天绸缎商（从商入仕的总设计师，洪武朝商人恐惧的缩影）', status: '在世', deathTurn: 0 };
+      // v3.11.0b: 母亲从空白到有弧线
+      family.parents.mother = { name: '', relation: '母', background: '娘家商贾出身（初期娇弱，后与儿媳联手撑起家业）', status: '在世', deathTurn: 0 };
       break;
     case '落魄前元官员之后':
-      family.spouse = { name: '', relation: '妻', background: '前元同僚之女', status: '在世', marriedTurn: 0 };
-      family.parents.father = { name: '', relation: '父', background: '前元旧臣', status: '已故', deathTurn: 0 };
-      family.parents.mother = { name: '', relation: '母', background: '前元旧臣之妻（身份敏感）', status: '在世', deathTurn: 0 };
+      // v3.11.0c: 三人三种恐惧——父亲悔恨归顺、母亲恐惧暴露、妻子愤怒不甘
+      family.spouse = { name: '', relation: '妻', background: '前元降臣后代（与旧臣家族有来往，情绪激烈，不甘心隐藏身份）', status: '在世', marriedTurn: 0 };
+      family.parents.father = { name: '', relation: '父', background: '前元汉人翰林待制（降臣恐惧缩影，经历弹劾羞辱，临终醉后表露后悔归顺）', status: '已故', deathTurn: 0 };
+      family.parents.mother = { name: '', relation: '母', background: '北元贵族后裔（亲眼见过张昶式悲剧，恐惧到夹紧尾巴伪装，假扮杭州汉人二十余年）', status: '在世', deathTurn: 0 };
       break;
     default:
       console.log('[生活事件] 未知出身，家庭留空');
@@ -307,6 +311,27 @@ var LIFE_EVENTS = [
     backgroundMinTurn: { '淮西武将之后': 11 }, // v3.9.0: 为EA-HW-3(T10)"初为人父"留叙事空间
     effects: { bond: 5, people: 2 },
     narrative: '第一个孩子出生。根据出身交代生产场景，写出初为人父/母的感受。2-3句即可。' },
+  // ---- 宝钞贬值（商贾专属，T4-6）----
+  // v3.11.0b: 商贾线父亲恐惧弧线第一环——宝钞崩盘
+  { id: 'baochao_collapse_merchant', turnWindow: [4, 6],
+    backgrounds: ['应天府商贾之子'],
+    probability: 0.35, category: '家计',
+    effects: { wisdom: 2, bond: -2 },
+    narrative: '宝钞剧烈贬值。父亲库里几万贯宝钞一夜之间只值原来三成——绸缎铺子的货款收回来全是废纸。他在账房坐了一整夜，第二天白了几根头发。母亲慌了，问"怎么办"，父亲只说"别动银子，先看看"。你站在门口，第一次看到父亲的手在抖——不是冷，是怕。写出洪武朝商人对朝廷货币政策毫无抵抗力的恐惧。' },
+  // ---- 锦衣卫勒索（商贾专属，T6-8）----
+  // v3.11.0b: 商贾线父亲恐惧弧线第二环——权力碾压+母亲觉醒
+  { id: 'jinyiwei_extortion_merchant', turnWindow: [6, 8],
+    backgrounds: ['应天府商贾之子'],
+    probability: 0.30, category: '家计',
+    effects: { power: -3, wisdom: 3 },
+    narrative: '锦衣卫以"通敌"之名上门，说父亲跟张士诚旧部有生意来往。父亲陪笑、递茶、塞银子——五百两才打发走。当晚父亲在书房摔了茶杯，母亲吓得不敢出声。但母亲偷偷做了件事：把家里真正的暗账缝进了棉衣夹层——这是她第一次意识到"账本可能害死全家"。写母亲从娇弱到开始有保护意识的转变。' },
+  // ---- 同行被抄家（商贾专属，T8-10）----
+  // v3.11.0b: 商贾线父亲恐惧弧线第三环——父亲病倒+母亲请缨
+  { id: 'peer_seized_merchant', turnWindow: [8, 10],
+    backgrounds: ['应天府商贾之子'],
+    probability: 0.35, category: '家计',
+    effects: { bond: -5, wisdom: 3 },
+    narrative: '父亲的旧交、秦淮河畔最大的绸缎商被抄家——家产充公，全家流放。父亲去送行，回来一病不起。他对你说："捐监生、托差事……我花了多少银子，就是想让你走出这条路。现在看来，做官也不安全。"母亲端药进书房，手抖得药碗差点摔了——但这次她没哭，而是问了一句："老爷，铺子的事我来管吧。"父亲看了她很久，点了头。这是母亲第一次主动管铺子的事。' },
   // ---- 父亲去世（有在世父亲的出身）----
   { id: 'father_death', turnWindow: [8, 18],
     backgrounds: ['淮西武将之后', '应天府商贾之子'],
@@ -314,7 +339,15 @@ var LIFE_EVENTS = [
     requiresFatherAlive: true,
     backgroundMinTurn: { '应天府商贾之子': 11 }, // v3.9.0: 为EA-SG-3(T10)"传灯"留叙事空间
     effects: { bond: -8, people: 3 },
-    narrative: '父亲去世。写出丧礼和角色的悲痛。根据出身不同，丧礼规格不同（武将简朴/商人铺张）。叙事可融入对父亲一生的回忆。' },
+    narrative: '父亲去世。武将出身：丧礼简朴，军中旧交来吊唁。商贾出身：他走的时候，账房的灯还亮着——桌上摊着没看完的账本。丧礼办得很大，秦淮河畔的商人都来了，但母亲没有哭。她只是站在书房门口，看着那面曾经挂满账本的墙——现在只剩半面了。"账本合上了，但账还没清。"叙事融入父亲一生的恐惧与算计——一个商人用一辈子给儿子铺路，最终还是没能算过朝廷。' },
+  // ---- 父亲去世（书生专属，T10-20）----
+  // v3.11.0b: 书生线父亲开馆授徒但完全隐形，补上叙事弧线
+  { id: 'father_death_scholar', turnWindow: [10, 20],
+    backgrounds: ['浙东寒门书生'],
+    probability: 0.30, category: '丧亲',
+    requiresFatherAlive: true,
+    effects: { bond: -8, wisdom: 3 },
+    narrative: '父亲在乡间病逝。可能是多年清苦教书积劳成疾，也可能是某次文字狱风波后的惊悸成病。叙事写出寒门丧礼的清冷——没有淮西的军中旧交吊唁，没有商贾的铺张体面，只有几个乡邻和昔日学生的素服。可融入父亲一生的回忆：一个教了一辈子书的老秀才，留下的只有几箱旧书和满墙墨迹。' },
   // ---- 第二个孩子 ----
   { id: 'child2', turnWindow: [10, 20], probability: 0.20, category: '生子',
     requiresSpouse: true, minChildren: 1,
@@ -366,6 +399,20 @@ var LIFE_EVENTS = [
   { id: 'old_age_reflection', turnWindow: [48, 56], probability: 0.35, category: '晚年',
     effects: { wisdom: 5 },
     narrative: '角色渐入半百之年。叙事中写角色回望一生、思考传承的场景。注意措辞用"渐入暮年"或"半百之年"，不要用"暮年"——角色可能才四十多岁。' },
+  // ---- 父亲被羞辱往事（前元专属，T3-6）----
+  // v3.11.0c: 前元线父亲恐惧弧线——通过母亲讲述呈现（父亲已故）
+  { id: 'father_humiliation_qy', turnWindow: [3, 6],
+    backgrounds: ['落魄前元官员之后'],
+    probability: 0.35, category: '往事',
+    effects: { wisdom: 3, bond: 2 },
+    narrative: '母亲在一个阴雨天主动提起了父亲生前的事。她说你父亲在翰林院做待诏时，有一次被叫到堂上，有人上疏说"前元降臣不宜留在翰林院"。你父亲被当众质问"你当年为什么不跟元顺帝走"——他一个字也答不上来。回到家后他把那件翰林待制的官服从箱子里拿出来看了很久，然后又锁了回去。母亲说："从那以后，你父亲就再也没提过\'官\'这个字。"她说完沉默了很久，又补了一句："你父亲这辈子最怕的事，就是被人翻出旧账。"写出降臣之后从母亲口中得知父亲屈辱往事的感受。' },
+  // ---- 前元降臣被牵连（前元专属，T12-18）----
+  // v3.11.0c: 前元线恐惧升级——降臣封侯仍不免，妻子愤怒+母亲恐惧
+  { id: 'peer_implicated_qy', turnWindow: [12, 18],
+    backgrounds: ['落魄前元官员之后'],
+    probability: 0.30, category: '时事',
+    effects: { wisdom: 2, bond: -2 },
+    narrative: '一个前元降臣家族被牵连的消息传来——这家人表面上在新朝做官，暗地里与旧臣来往，被人举报"心思塞北"。全家被锦衣卫带走。你的妻子听到消息后脸色铁青，说"他们也配？封了侯又怎样，到头来还是刀下鬼"——她的愤怒不是针对朝廷，是针对这个逼人要藏要装的世界。母亲则吓得当天就把家里最后几件旧物烧了，手抖得火折子都拿不稳。两个女人，一个愤怒，一个恐惧，但恐惧的方式完全不同。写出这种反差。' },
   // ---- Phase 2: 书生婚姻选择（回合8-15）----
   { id: 'scholar_marriage', turnWindow: [8, 15], backgrounds: ['浙东寒门书生'],
     probability: 0.35, category: '婚姻', requiresNoSpouse: true,
@@ -389,8 +436,8 @@ var MARRIAGE_PROPOSALS = [
 // ========== Phase 3: 家庭牵连危机系统 ==========
 // 在政治大案期间，家人可能被牵连——产生"保人vs自保"的抉择
 var FAMILY_CRISIS_EVENTS = [
-  // 胡惟庸案期间（锚点2，turn 12-15）
-  { id: 'crisis_hu_spouse', anchorId: 2, backgrounds: ['淮西武将之后', '应天府商贾之子', '落魄前元官员之后'],
+  // 胡惟庸案期间（锚点2，turn 12-15）——通用版（淮西+商贾）
+  { id: 'crisis_hu_spouse', anchorId: 2, backgrounds: ['淮西武将之后', '应天府商贾之子'],
     target: 'spouse', probability: 0.20,
     title: '妻子被牵连',
     desc: '胡惟庸案大清洗中，你妻子的娘家被查出与胡党有牵连。锦衣卫已登门问话。',
@@ -398,6 +445,18 @@ var FAMILY_CRISIS_EVENTS = [
       { text: '变卖家产打点关系，保全妻子娘家', effects: { power: -8, bond: 10, people: 3 }, outcome: '保人' },
       { text: '主动休妻切割，向朝廷表忠心', effects: { power: 5, bond: -15, fame: -5 }, outcome: '自保' },
       { text: '暗中转移妻子，表面配合调查', effects: { wisdom: 5, power: -5, bond: 8 }, outcome: '两全' }
+    ]
+  },
+  // 胡惟庸案期间——前元线特殊（妻子前元身份暴露风险）
+  // v3.11.0c: 妻子也是前元后裔，与旧臣有来往，危机=双重暴露
+  { id: 'crisis_hu_spouse_qianyuan', anchorId: 2, backgrounds: ['落魄前元官员之后'],
+    target: 'spouse', probability: 0.30,
+    title: '妻子的前元圈子被清查',
+    desc: '胡惟庸案大清洗中，锦衣卫追查与前元旧臣有来往的人家。你妻子娘家与多个前元降臣家族有来往——其中包括被卷入此案的人家。妻子的愤怒爆发了："藏了这么多年，到头来还是不放过我们！"而母亲则吓得要立刻烧掉所有旧物。两个女人第一次正面冲突——妻子说"烧什么烧？烧了就干净了？"母亲说"你想死别拉上全家。"你夹在中间。',
+    choices: [
+      { text: '连夜转移妻子，安排她藏到远亲家中', effects: { power: -10, bond: 8, wisdom: 5 }, outcome: '保人' },
+      { text: '让妻子主动与那些家族断绝来往，写保证书', effects: { power: 3, bond: -12, wisdom: 3 }, outcome: '自保' },
+      { text: '贿赂锦衣卫中认识的人，让妻子的名字从名单上消失', effects: { power: -8, bond: 5, wisdom: 3 }, outcome: '两全' }
     ]
   },
   // 胡惟庸案期间——书生出身特殊（老师宋濂被牵连）
@@ -422,6 +481,18 @@ var FAMILY_CRISIS_EVENTS = [
       { text: '送父亲回乡避风头，表面配合', effects: { wisdom: 5, power: -5, bond: 8 }, outcome: '两全' }
     ]
   },
+  // 李善长案期间——书生出身特殊（父亲被文字狱波及）
+  // v3.11.0b: 书生父亲是乡间老秀才，文字狱时代天然靶子
+  { id: 'crisis_li_father_scholar', anchorId: 5, backgrounds: ['浙东寒门书生'],
+    target: 'father', probability: 0.25, requiresFatherAlive: true,
+    title: '父亲被文字狱波及',
+    desc: '李善长案株连甚广，锦衣卫追查"浙东学派"渊源。你的父亲在乡间开馆数十年，教出的学生遍布朝野——如今这成了罪名。有人举报他"以讲学为名结党营私"，锦衣卫已往青田县派人。',
+    choices: [
+      { text: '立刻回乡接父亲入京，藏在同门家中', effects: { power: -8, bond: 12, wisdom: 5 }, outcome: '保人' },
+      { text: '上书自辩，证明父亲不过一介寒儒', effects: { fame: 8, bond: 5, power: -10 }, outcome: '两全' },
+      { text: '断绝父子来往记录，撇清关系', effects: { power: 5, bond: -15, fame: -5 }, outcome: '自保' }
+    ]
+  },
   // 蓝玉案期间（锚点7，turn 47-49）——淮西武将的终极危机
   { id: 'crisis_lan_clan', anchorId: 7, backgrounds: ['淮西武将之后'],
     target: 'clan', probability: 0.35,
@@ -442,6 +513,18 @@ var FAMILY_CRISIS_EVENTS = [
       { text: '重金贿赂锦衣卫，掩盖母亲身份', effects: { power: -10, bond: 8, wisdom: 3 }, outcome: '保人' },
       { text: '主动举报母亲"前朝余孽"身份', effects: { power: 5, bond: -18, fame: -5 }, outcome: '自保' },
       { text: '安排母亲隐匿，自己出面应对盘查', effects: { wisdom: 8, power: -8, bond: 10 }, outcome: '两全' }
+    ]
+  },
+  // 胡惟庸案期间——商贾线特殊：母亲与婉清联手撑家
+  // v3.11.0b: 两个女人撑起富商家业
+  { id: 'crisis_hu_mothers_merchant', anchorId: 2, backgrounds: ['应天府商贾之子'],
+    target: 'mother', probability: 0.30,
+    title: '母亲与婉清撑起家业',
+    desc: '胡惟庸案风暴中，父亲已病倒或去世，家中群龙无首。锦衣卫在附近搜查商人宅邸，刁奴趁机转移家产，忠仆陈三被打伤。母亲第一次没有慌——她叫来婉清，两人在账房对坐，把家产清单一条一条理出来。母亲说："陈三不能丢。铺子可以关，人不能散。"婉清看了婆婆一眼，第一次叫她"娘"而不是"婆婆"。',
+    choices: [
+      { text: '让母亲主持大局，自己在衙门配合', effects: { power: -5, bond: 10, wisdom: 5 }, outcome: '母媳守家' },
+      { text: '自己赶回去处理，让母亲和婉清别出门', effects: { power: -8, bond: 5 }, outcome: '独扛' },
+      { text: '放弃部分铺子保全家人', effects: { power: -12, bond: 8, wisdom: 8 }, outcome: '断尾求生' }
     ]
   }
 ];
@@ -2115,9 +2198,11 @@ function getCommonEnding() {
 function getLegacyEnding() {
   if (!GameState.family) return null;
   var f = GameState.family;
+  var bg = GameState.character.background;
+  var ft = GameState.familyTrust || 50;
+  var trustTier = ft >= 60 ? 'high' : (ft >= 30 ? 'mid' : 'low');
 
-  // v3.8.21修复：族灭型死亡（CRISIS_EVENTS type 0）——只有当倒计时结束（真正死亡）时才返回"满门抄斩"
-  // 防止：曾触发满门抄斩警告但活下来后，存活结局仍错误显示"满门抄斩"
+  // v3.8.21修复：族灭型死亡（CRISIS_EVENTS type 0）
   if (GameState.deathCountdownType === 0 && GameState.deathCountdown <= 0) {
     return { name: '满门抄斩', desc: '满门抄斩，鸡犬不留。你的家族在这场政治风暴中被连根拔起——妻子、儿女、老幼，无一幸免。百年之后，没有人记得你的家族曾经存在过。在这个时代，有些姓氏注定要从大地上被抹去。' };
   }
@@ -2127,11 +2212,45 @@ function getLegacyEnding() {
   var hasGrandchild = GameState.lifeEventsTriggered.indexOf('grandchild') >= 0;
   var hasChildMarried = GameState.lifeEventsTriggered.indexOf('child_marriage') >= 0;
   if (livingChildren.length >= 3 && (hasGrandchild || hasChildMarried)) {
+    // v3.11.0d: 出身×信任度 差异化描述
+    if (bg === '淮西老将之后') {
+      if (trustTier === 'high') {
+        return { name: '家族兴旺', desc: '子孙满堂，刀剑入库。你在凤阳老家置下的几亩薄田，如今已成了儿孙绕膝的庄园。曾经的淮西老兄弟偶尔来信，说起当年鄱阳湖的血战，你只是笑笑。你的孩子们不一定要上战场了——这恰恰是你当年拼命的意义。' };
+      } else if (trustTier === 'mid') {
+        return { name: '家族兴旺', desc: '子孙满堂，但家里的酒桌上总空着一个位子。孩子们敬畏你，却不太敢靠近。你建起了一个家族，但没能建起一个家。' };
+      } else {
+        return { name: '家族兴旺', desc: '儿孙们逢年过节会来行礼，但没人愿意多留。你保住了家族的壳，但壳里的温度早就散了。有时候你想：当年那些切割、那些自保，到底保住了什么？' };
+      }
+    } else if (bg === '浙东寒门书生') {
+      if (trustTier === 'high') {
+        return { name: '家族兴旺', desc: '你的孩子们在书香中长大，孙子们开始参加科考。寒门不再寒了。乡间老屋的墙上挂着你父亲写的对联，墨迹已经泛黄，但每个经过的人都会多看一眼。' };
+      } else if (trustTier === 'mid') {
+        return { name: '家族兴旺', desc: '子孙们读了书，有的考取了功名，有的还在苦读。家族在缓慢地上升，但你和孩子们之间总有一层说不清的东西——也许是父亲太忙，也许是那些年在朝堂上学到的算计，不知不觉也带回了家。' };
+      } else {
+        return { name: '家族兴旺', desc: '你的孩子们成了读书人，但他们看你的眼神里有审视。他们读了太多关于忠孝节义的文章，然后在回家时默默对比你的行为。知识给了他们判断力，也给了你一面不舒服的镜子。' };
+      }
+    } else if (bg === '应天府商贾之子') {
+      if (trustTier === 'high') {
+        return { name: '家族兴旺', desc: '账本传到了第三代。秦淮河畔的铺子还在，但招牌已经换了——不再是你的名字，而是你儿子的。婉清和母亲当年缝在棉衣夹层里的暗账，如今成了正经的商号总账。从恐惧到从容，这个家用了三十年。' };
+      } else if (trustTier === 'mid') {
+        return { name: '家族兴旺', desc: '铺子还在，账还在算，但家里的饭桌上越来越安静。你给了子孙财富，但没给他们一个可以放松的家。' };
+      } else {
+        return { name: '家族兴旺', desc: '银子还在，铺子还在，但婉清看你的眼神变了。当年那些选择——放弃铺子保人、还是切割亲人自保——她都没忘。商人的账本记得很清楚，家里的账也算得很清楚。' };
+      }
+    } else if (bg === '落魄前元官员之后') {
+      if (trustTier === 'high') {
+        return { name: '家族兴旺', desc: '这家人终于不用再藏了。你的孩子们生在新地方、长在新地方，说着流利的官话，交着不看出身的朋友。母亲那只锁了二十多年的木箱，被你女儿打开了——里面的锦袍已经褪色，但她只是笑了笑说：「原来奶奶以前是这样的。」恐惧终于在这一代结束了。' };
+      } else if (trustTier === 'mid') {
+        return { name: '家族兴旺', desc: '孩子们不再像你们那样提心吊胆了，但母亲偶尔还是会从梦中惊醒。你保住了一家人，但没能完全保住他们的信任——那些年你在「保」和「舍」之间的犹豫，他们看在眼里。' };
+      } else {
+        return { name: '家族兴旺', desc: '你们活了下来，但「活下来」和「活得好」是两回事。妻子偶尔会提起当年你做的选择，语气平静，但你听得出来她没有忘。母亲的伪装传给了下一代——不是伪装身份，而是伪装没事。' };
+      }
+    }
+    // 兜底（未匹配出身）
     return { name: '家族兴旺', desc: '子孙满堂，家道昌盛。你建立了一个完整的家族——孩子们都已成家立业，孙辈在堂前嬉戏。在这个命如草芥的洪武朝，你能把血脉延续下去，让家族开枝散叶，这本身就是一种胜利。百年之后，你的牌位会被子孙供奉，你的家训会被后人传诵。这比任何庙堂功名都更持久。' };
   }
 
-  // v3.8.18修复：家道中落必须在孤身来去之前检查——曾有家庭但全失去 ≠ 从未有家庭
-  // 家道中落：所有家庭成员已死/离异，且曾经有过家庭（优先级高于孤身来去）
+  // 家道中落：所有家庭成员已死/离异
   var hasSpouse = f.spouse && (f.spouse.status === '在世');
   var hasChildren = f.children && f.children.filter(function(c){ return c.status === '在世'; }).length > 0;
   var hasParent = (f.parents.father && f.parents.father.status === '在世')
@@ -2141,20 +2260,99 @@ function getLegacyEnding() {
   var fatherDead = !f.parents.father || f.parents.father.status === '已故';
   var motherDead = !f.parents.mother || f.parents.mother.status === '已故';
   if (spouseDead && allChildrenDead && fatherDead && motherDead && (f.children.length > 0 || f.spouse)) {
+    // v3.11.0d: 家道中落不分trust档，按出身差异化
+    if (bg === '淮西老将之后') {
+      return { name: '家道中落', desc: '淮西的刀放下了，但没有人接住。你的最后一个孩子在某个冬天走了，军中旧交的名字一个个从花名册上划去。凤阳老家的田地荒了，野草长得比人高。这个家族从战场上活了过来，却没能在和平中延续下去。' };
+    } else if (bg === '浙东寒门书生') {
+      return { name: '家道中落', desc: '书香断了。你父亲留下的那些旧书，在最后一次搬家时散尽了。乡间老屋的门锁了，再也没有人去开。一个教了一辈子书的老秀才的孙子，没能把书读下去——这也许是这个时代最安静也最残酷的结局。' };
+    } else if (bg === '应天府商贾之子') {
+      return { name: '家道中落', desc: '秦淮河畔的灯还在亮，但已经不是为你亮的了。铺子早就关了，账本被虫蛀了，陈三的后人也不知道去了哪里。一个商人家族的消亡，安静得像一笔烂账被核销——没有人记得，因为没有人记得。' };
+    } else if (bg === '落魄前元官员之后') {
+      return { name: '家道中落', desc: '恐惧最终赢了。从大都到南方，从伪装到暴露，从挣扎到放弃——这个家族走了六十年的路，最终回到了原点：没有人记得你们是谁，也没有人在乎你们曾经是谁。母亲那只木箱不知道被谁拿走了，里面的锦袍大概被当了三文钱。' };
+    }
     return { name: '家道中落', desc: '家族凋零，门庭冷落。你眼睁睁看着至亲之人一个个离去——妻子、孩子、父母，都走在了你前面。你建立的家庭最终只剩你一人。这份孤独比任何政治失败都更沉重。当最后一个亲人离你而去时，你突然明白：在这个时代，拥有家庭和失去家庭，都是需要勇气的事。' };
   }
 
-  // 孤身来去：无配偶、无子女、无在世父母（且从未有过家庭，否则应该匹配家道中落）
+  // 孤身来去：无配偶、无子女、无在世父母（四条线统一）
   if (!hasSpouse && !hasChildren && !hasParent) {
     return { name: '孤身来去', desc: '来时无牵无挂，去时孑然一身。你没有留下子嗣，没有人为你续香火。在这个重视传宗接代的时代，你的选择或许会被视为遗憾。但你自己清楚——在这个随时可能族灭的洪武朝，不留下血脉，也许是对后代最大的保护。你的名字会随着你的离去而消散，仿佛从未存在过。这未必是坏事。' };
   }
 
   // 兜底：平淡传家——有家庭但没达到以上任何条件
   if (f.spouse || livingChildren.length > 0 || hasParent) {
+    // v3.11.0d: 平淡传家按出身差异化
+    if (bg === '淮西老将之后') {
+      return { name: '平淡传家', desc: '凤阳的田地不大不小，够吃。儿孙们逢年过节来磕个头，坐一坐就走了。你偶尔在门口看他们远去，想起父亲说过的话：「刀放下容易，日子过下去难。」你做到了。' };
+    } else if (bg === '浙东寒门书生') {
+      return { name: '平淡传家', desc: '书还在读，课还在上。乡间老屋的墙上换了你写的新对联。没有大富大贵，也没有家破人亡。一个寒门能走到这一步，已经算是体面了。' };
+    } else if (bg === '应天府商贾之子') {
+      return { name: '平淡传家', desc: '铺子不大不小，账本一页一页翻。日子就这样过着，不好不坏。秦淮河上的灯火还是那么亮，你站在门口看了一会儿，然后转身回了账房。' };
+    } else if (bg === '落魄前元官员之后') {
+      return { name: '平淡传家', desc: '木箱还在，但不再锁了。锦袍偶尔拿出来晒一晒，孩子们知道那是奶奶的旧物，但已经不太害怕了。恐惧在慢慢消散，像大雾天里慢慢透出的一点光。不算明朗，但够走路。' };
+    }
     return { name: '平淡传家', desc: '家族不大不小，平平淡淡延续了下去。没有显赫，也没有衰败，就像千千万万的洪武朝人家一样。日子一天天过，孩子慢慢长大，老人渐渐离去。你没能给家族带来惊天动地的荣耀，但也没有让它在你手中断绝。这份平凡，在洪武朝已经是难得的幸运。' };
   }
 
   return null;
+}
+
+// ========== v3.11.0d: 家庭叙事回响系统 — EA上下文注入 ==========
+/**
+ * 根据 familyCrisisOutcome 和 familyTrust 为 EA 注入家庭回响上下文
+ * @param {string} eaId - EA的ID（如 'EA-HW-3', 'EA-QY-5'）
+ * @returns {string} 家庭回响上下文字符串，无内容返回空字符串
+ */
+function getFamilyContextForEA(eaId) {
+  var fco = GameState.familyCrisisOutcome;
+  var ft = GameState.familyTrust || 50;
+  if (!fco || Object.keys(fco).length === 0) return '';
+
+  var parts = [];
+
+  // 前元线：妻子相关EA检查crisis_hu_spouse_qianyuan的结果
+  if (eaId.indexOf('QY') >= 0 && fco['crisis_hu_spouse_qianyuan']) {
+    var outcome = fco['crisis_hu_spouse_qianyuan'];
+    if (outcome === '保人') parts.push('【家庭回响】你曾连夜转移妻子保全了她。她对那次经历记忆深刻——信任你，但也更坚定了「不能一直躲」的信念。');
+    else if (outcome === '自保') parts.push('【家庭回响】你曾让妻子与旧家族断绝来往。她没有原谅你。从此她在家里变得沉默，但眼神里的火没有灭。');
+    else if (outcome === '两全') parts.push('【家庭回响】你曾贿赂锦衣卫让妻子的名字从名单消失。她不知道你做了什么，但那种被追查的恐惧让她更加焦躁。');
+  }
+
+  // 淮西线：妻子/父亲相关EA
+  if (eaId.indexOf('HW') >= 0) {
+    if (fco['crisis_hu_spouse']) {
+      var o = fco['crisis_hu_spouse'];
+      if (o === '保人') parts.push('【家庭回响】你曾变卖家产保全了妻子娘家。这份情义她记着，但娘家的「牵连」也成了你们之间一个不敢碰的话题。');
+      else if (o === '自保') parts.push('【家庭回响】你曾休妻自保。（如妻子已离异则不再出场；如在世则说明后来复合，但裂痕永远在。）');
+    }
+    if (fco['crisis_li_father'] && fco['crisis_li_father'] === '自保') {
+      parts.push('【家庭回响】你曾告发父亲以求自保。这件事只有你和锦衣卫知道。但你每次回家看到卧病的父亲，都觉得他在看着你。');
+    }
+  }
+
+  // 书生线：老师/父亲相关EA
+  if (eaId.indexOf('ZD') >= 0) {
+    if (fco['crisis_hu_teacher'] && fco['crisis_hu_teacher'] === '自保') {
+      parts.push('【家庭回响】你曾断绝了与恩师宋濂的来往。每当经筵上读到宋濂的文章，你都会不自觉地跳过他的名字。');
+    }
+    if (fco['crisis_li_father_scholar'] && fco['crisis_li_father_scholar'] === '自保') {
+      parts.push('【家庭回响】你曾断绝了与父亲的来往记录。后来父亲来了京城，你们见了面，但没有提起那件事。有些裂痕不需要说出口——它就在那里。');
+    }
+  }
+
+  // 商贾线：母亲/妻子相关EA
+  if (eaId.indexOf('SG') >= 0) {
+    if (fco['crisis_hu_mothers_merchant']) {
+      var om = fco['crisis_hu_mothers_merchant'];
+      if (om === '母媳守家') parts.push('【家庭回响】当年母亲和婉清联手撑住了家业。从那以后，婉清做生意的底气更足了，母亲也真正把她当成了自己人。');
+      else if (om === '独扛') parts.push('【家庭回响】你当年选择独自扛下一切。母亲和婉清没有说什么，但你感觉得到——她们觉得被排斥在了家族决策之外。');
+    }
+  }
+
+  // familyTrust总影响（通用）
+  if (ft < 30) parts.push('【家庭氛围】家中气氛低沉。你的家人们彼此说话时都很小心，像是在走钢丝。');
+  else if (ft >= 70) parts.push('【家庭氛围】家中气氛温暖。经历了这么多风暴，你的家人反而更紧密了。');
+
+  return parts.join('\n');
 }
 
 function getHiddenEnding() {
@@ -3058,11 +3256,20 @@ function getEmotionalAnchorDirective(turn, background) {
   // 判断格式：新格式（导演指令模式） vs 旧格式（完整剧本模式）
   var isNewFormat = !!(matched.coreEvent && matched.sceneDirective);
 
+  var result;
   if (isNewFormat) {
-    return _buildDirectorDirective(matched, turn);
+    result = _buildDirectorDirective(matched, turn);
   } else {
-    return _buildLegacyDirective(matched, turn);
+    result = _buildLegacyDirective(matched, turn);
   }
+
+  // v3.11.0d: 家庭叙事回响——为EA注入家庭危机选择上下文
+  var familyCtx = getFamilyContextForEA(matched.id);
+  if (familyCtx) {
+    result += '\n\n' + familyCtx;
+  }
+
+  return result;
 }
 
 /**

@@ -1106,6 +1106,17 @@ function applyChanges(changes, narrative) {
       // 记录选择结果
       if (!GameState.familyCrisisOutcome) GameState.familyCrisisOutcome = {};
       GameState.familyCrisisOutcome[crisis.id] = selectedChoice.outcome;
+      // v3.11.0d: 家庭信任度更新（家庭叙事回响系统）
+      var trustDelta = 0;
+      if (selectedChoice.outcome === '保人') trustDelta = 12;
+      else if (selectedChoice.outcome === '两全') trustDelta = 3;
+      else if (selectedChoice.outcome === '逃亡') trustDelta = -5;
+      else if (selectedChoice.outcome === '自保') trustDelta = -15;
+      else if (selectedChoice.outcome === '母媳守家') trustDelta = 10;
+      else if (selectedChoice.outcome === '独扛') trustDelta = -3;
+      else if (selectedChoice.outcome === '断尾求生') trustDelta = 5;
+      GameState.familyTrust = Math.max(0, Math.min(100, (GameState.familyTrust || 50) + trustDelta));
+      console.log('[家庭信任度] ' + (trustDelta >= 0 ? '+' : '') + trustDelta + ' → ' + GameState.familyTrust);
       // 根据选择结果更新家庭数据
       if (selectedChoice.outcome === '自保' || selectedChoice.outcome === '逃亡') {
         // 自保/逃亡结局可能导致家庭成员状态变化

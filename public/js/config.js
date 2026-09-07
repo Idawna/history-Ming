@@ -65,6 +65,8 @@ const GameState = {
   familyCrisisTriggeredThisAnchor: false, // 当前锚点期间是否已触发家庭危机
   lastFamilyCrisisAnchor: 0,    // 上次触发家庭危机的锚点ID
   familyCrisisOutcome: {},      // 家庭危机选择结果记录 { crisisId: outcome }
+  // v3.11.0d: 家庭信任度（家庭叙事回响系统）
+  familyTrust: 50,              // 家庭信任度：0-100，50为中性起点
   // v3.8.5: 圣眷风险追踪
   consecutiveHighEfTurns: 0,
   favorCrashThisTurn: null,
@@ -1907,7 +1909,7 @@ const EMOTIONAL_ANCHORS = {
         '父亲正色：「做官比做生意更要紧——你得把账算清楚。不是算别人的账，是算自己的」',
         '递出账本：「你爹这辈子虽然铜臭，但账是干净的」'
       ],
-      requiredNPCs: ['李昌年'],
+      requiredNPCs: ['父亲'],
       memoryItem: '发黄的账本',
       sceneDirective: {
         location: '李家书房——没有书，只有账本。满墙按年份排列，每本包了牛皮纸',
@@ -1917,7 +1919,7 @@ const EMOTIONAL_ANCHORS = {
         forbiddenPatterns: ['心中涌起暖流', '热泪盈眶', '你知道吗其实我', '父爱如山']
       },
       characterDirective: {
-        '李昌年': {
+        '父亲': {
           state: '中年商人，儿子即将入仕，骄傲但克制。厚道了一辈子，最在意的是「账干净」',
           speechStyle: '厚道平稳。不煽情。用数字和故事代替感情。笑着说最重的话',
           physicalDetails: ['手上有老茧', '衣服洗得发白但干净', '翻账本的动作极熟练']
@@ -1942,7 +1944,7 @@ const EMOTIONAL_ANCHORS = {
           direction: '嫌弃拒绝——做了官不需要这些铜臭东西',
           emotionalNote: '不是坏答案，是年轻人的傲慢。但父亲会沉默',
           effect: { bond: -5, power: 3 },
-          rippleHint: '李昌年没说什么，把账本收了回去。那晚他一个人在书房坐了很久。婉清来传话：「公公让你明天去吃饭。别拒绝。」',
+          rippleHint: '父亲没说什么，把账本收了回去。那晚他一个人在书房坐了很久。婉清来传话：「公公让你明天去吃饭。别拒绝。」',
           condition: null
         },
         {
@@ -1950,13 +1952,13 @@ const EMOTIONAL_ANCHORS = {
           direction: '追问——「爹，这里面有没有……不那么干净的账？」',
           emotionalNote: '尖锐但真实。父子之间第一次说真话',
           effect: { wisdom: 5 },
-          rippleHint: '李昌年脸色变了。「有。但我都改了。改了就干净了。」——这句话在T28翻账本时会被记起',
+          rippleHint: '父亲脸色变了。「有。但我都改了。改了就干净了。」——这句话在T28翻账本时会被记起',
           condition: null
         }
       ],
       memoryTemplate: {
         format: '{npc}在{location}说了「{keyQuote}」——{protagonist}记住了{memoryItem}',
-        extractionRule: '从李昌年的对话中，提取关于「账/干净/做官」主题的一句原话作为keyQuote'
+        extractionRule: '从父亲的对话中，提取关于「账/干净/做官」主题的一句原话作为keyQuote'
       },
       linksTo: null,
       designNote: 'v2微调：增加陈三提及——「铺子里老陈帮我看了二十年账」。为T26陈三被出卖建立基础。账本是商贾线核心道具，从此处贯穿至T55。'
@@ -2043,7 +2045,7 @@ const EMOTIONAL_ANCHORS = {
         '拿出二十年积蓄的包袱和信：「每一两都来得不容易……在该花的时候花」',
         '最后的嘱托：「你走了我走不了的路。别走歪了。」'
       ],
-      requiredNPCs: ['李昌年'],
+      requiredNPCs: ['父亲'],
       memoryItem: '包袱里的银子',
       sceneDirective: {
         location: '李家书房——账本少了半墙，气氛冷清',
@@ -2053,7 +2055,7 @@ const EMOTIONAL_ANCHORS = {
         forbiddenPatterns: ['抱头痛哭', '天塌了', '你知道吗其实我', '父亲的眼泪']
       },
       characterDirective: {
-        '李昌年': {
+        '父亲': {
           state: '被举报囤粮抬价，可能倾家荡产甚至入罪。老了很多，但依然沉稳',
           speechStyle: '用最朴实的话做最重的嘱托。不流泪，不诉苦。交代数字和嘱咐',
           physicalDetails: ['手抖得比上次厉害', '衣服没换——说明一整天没离开书房', '鬓角白了许多']
@@ -2092,7 +2094,7 @@ const EMOTIONAL_ANCHORS = {
       ],
       memoryTemplate: {
         format: '{npc}在{location}说了「{keyQuote}」——{protagonist}记住了{memoryItem}',
-        extractionRule: '从李昌年的嘱托中，提取关于「路/干净/别走歪」主题的一句原话作为keyQuote'
+        extractionRule: '从父亲的嘱托中，提取关于「路/干净/别走歪」主题的一句原话作为keyQuote'
       },
       linksTo: null,
       designNote: 'v2微调：增加陈三「跑了一整天找关系」的提及。陈三通过T1/T2/T3三次出现，逐步建立存在感。父亲的「别走歪了」与T26主角交出名单形成最痛对照。'
@@ -2548,7 +2550,7 @@ const EMOTIONAL_ANCHORS = {
         '拿起笔，在旁边加了一行：「账清了。」',
         '合上账本。低声说：「爹。账清了。」'
       ],
-      requiredNPCs: ['李昌年（回忆）'],
+      requiredNPCs: ['父亲（回忆）'],
       memoryItem: '账本最后一页',
       sceneDirective: {
         location: '家中书房，桌上只有一本账本和一盏油灯',
@@ -2558,7 +2560,7 @@ const EMOTIONAL_ANCHORS = {
         forbiddenPatterns: ['热泪盈眶', '回忆杀式的闪回描写', '爹啊你在天之灵', '感慨万千']
       },
       characterDirective: {
-        '李昌年（回忆）': {
+        '父亲（回忆）': {
           state: '已故。但他的字在账本上——「此为最后一笔」。他在回忆中出现，不是幻觉，是记忆',
           speechStyle: '只通过账本上的字出现。厚道、干净、一笔一划',
           physicalDetails: ['发黄的字迹', '一笔一划很工整', '墨迹已淡但还看得清']
@@ -2611,13 +2613,13 @@ const EMOTIONAL_ANCHORS = {
       title: '旧木箱',
       triggerTurn: 3,
       year: 1375,
-      coreEvent: '除夕夜，主角发现母亲深夜在院中对旧木箱中的前元锦袍低语——那是父亲做御史时穿的官服，是大都城门口的最后一眼。',
+      coreEvent: '除夕夜，主角发现母亲深夜在院中对旧木箱中的前元锦袍低语——那是父亲做翰林待制时穿的官服，是他来南方后唯一一次穿上又脱下的衣裳。',
       emotionalArc: '疑惑→心疼→震动',
       keyBeats: [
         '半夜醒来发现母亲不在房中，院子里传来细微声响',
         '母亲蹲在地上，面前是旧木箱，手在摸着袍子上的补子，嘴唇在动',
         '发现主角后手一抖——「这是你父亲的。他做御史的时候穿的。」',
-        '「我最后一次看他穿这个，是在大都城门口。他出门的时候回头看了我一眼。然后……就再也没回来。」'
+        '「那是他来南方后，唯一一次重新穿上这身衣裳——去翰林院赴任那天。回来的时候，他把袍子脱了下来，锁进了箱子。他说——让过去留在这里吧。从此再也没穿过。」'
       ],
       requiredNPCs: ['陈秀英'],
       memoryItem: '旧锦袍',
@@ -2630,7 +2632,7 @@ const EMOTIONAL_ANCHORS = {
       },
       characterDirective: {
         '陈秀英': {
-          state: '被儿子撞见祭亡夫旧物，惊恐与倾诉欲并存',
+          state: '被儿子撞见深夜对着亡夫旧袍低语，惊恐与倾诉欲并存。话到深处会说起丈夫来南方后唯一一次穿上官服去翰林院赴任、回来后便锁起再没穿过的事',
           speechStyle: '声音轻，语句不完整。提到丈夫时语速更慢，像在回忆一个不敢回忆的画面',
           physicalDetails: ['手在抖', '嘴唇在动（像在跟袍子说话）', '蹲在地上']
         }
@@ -2669,7 +2671,7 @@ const EMOTIONAL_ANCHORS = {
       conditionalBeats: [],
       memoryTemplate: {
         format: '{npc}在{location}说了「{keyQuote}」——{protagonist}记住了{memoryItem}',
-        extractionRule: '从陈秀英的对话中，提取关于「父亲/大都/回头看了一眼」的一句原话作为keyQuote'
+        extractionRule: '从陈秀英的对话中，提取关于「父亲/翰林院/穿上又脱下/让过去留在这里」的一句原话作为keyQuote'
       },
       linksTo: null,
       designNote: '旧木箱是前元线的核心叙事道具。锁着的不是衣服，是一个被抹去的身份。'
@@ -2753,9 +2755,10 @@ const EMOTIONAL_ANCHORS = {
         '陌生人送来密信——信封上的元人文字写着母亲的名字',
         '母亲看第一行脸色就变，当即烧信——「不要再提这件事。」',
         '坦白：那人是父亲在大都时的同僚，「他不该来的」',
+        '隔壁传来声响——妻子站在门口，脸色苍白。她显然也看到了信封上的文字',
         '最后的信任之问——「儿子。你信不信我？」'
       ],
-      requiredNPCs: ['陈秀英'],
+      requiredNPCs: ['陈秀英', '妻子'],
       memoryItem: '烧掉的信',
       sceneDirective: {
         location: '家中',
@@ -2769,6 +2772,11 @@ const EMOTIONAL_ANCHORS = {
           state: '极度恐慌——密信触碰了她隐藏最深的秘密网络，涉及亡夫的前元同僚',
           speechStyle: '急促但压低声音，话说到一半会停，看门外',
           physicalDetails: ['脸色苍白', '手在抖', '迅速烧信']
+        },
+        '妻子': {
+          state: '震惊中带着一丝不甘——又是这种事，又是这种恐惧。她攥紧了门框',
+          speechStyle: '比母亲更直接。可能会说一句让母亲脸色更难看的话',
+          physicalDetails: ['站在门口', '脸色苍白', '手攥门框']
         }
       },
       toneDirective: {
@@ -2782,7 +2790,7 @@ const EMOTIONAL_ANCHORS = {
           direction: '信母亲，但追问真相——她到底在怕什么',
           emotionalNote: '信任但不再盲从。儿子长大了，需要知道全貌',
           effect: { wisdom: 8, bond: -3 },
-          rippleHint: '母亲告诉你：前元旧臣在暗中联络，如果被锦衣卫发现和这些人有来往，全家都完了。「我怕的不是他们。我怕的是——你。你还年轻，你还有路要走。我不能让你因为我，走不下去了。」',
+          rippleHint: '母亲告诉你：前元旧臣在暗中联络，如果被锦衣卫发现和这些人有来往，全家都完了。「我怕的不是他们。我怕的是——你。你还年轻，你还有路要走。我不能让你因为我，走不下去了。」妻子在隔壁听到，低声说了一句：「怕有什么用？怕了一辈子，他们放过我们了吗？」',
           condition: null
         },
         {
@@ -2790,7 +2798,7 @@ const EMOTIONAL_ANCHORS = {
           direction: '无条件信任母亲——你说不提就不提',
           emotionalNote: '回到孩子的角色，让母亲安心',
           effect: { bond: 8 },
-          rippleHint: '母亲松了口气。「你是个好孩子。」她摸了摸你的头——像摸一个十岁的孩子。但你知道，在她眼里你永远是那个除夕夜看到她蹲在院子里的小孩',
+          rippleHint: '母亲松了口气。「你是个好孩子。」她摸了摸你的头——像摸一个十岁的孩子。妻子站在门口看了你们一眼，没说话，转身回了屋。但你知道她听见了',
           condition: null
         },
         {
@@ -2798,7 +2806,7 @@ const EMOTIONAL_ANCHORS = {
           direction: '暗中调查故人的真实身份',
           emotionalNote: '不信任表面的答案，要自己挖到底',
           effect: { wisdom: 10, bond: -5 },
-          rippleHint: '你查到了——故人是前元残余势力的联络人。母亲可能不只是「前朝遗孀」，她可能一直在替前元旧臣传递消息。你的血凉了。但你没有证据——母亲把信烧了',
+          rippleHint: '你查到了——故人是前元残余势力的联络人。母亲可能不只是「前朝遗孀」，她可能一直在替前元旧臣传递消息。你的血凉了。但你没有证据——母亲把信烧了。妻子那天晚上对你说：「你查到了什么？告诉我。我不想被蒙在鼓里。」',
           condition: null
         }
       ],

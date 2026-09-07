@@ -1540,6 +1540,8 @@ function applySnapshot(save) {
   GameState.familyCrisisTriggeredThisAnchor = gs.familyCrisisTriggeredThisAnchor || false;
   GameState.lastFamilyCrisisAnchor = gs.lastFamilyCrisisAnchor || 0;
   GameState.familyCrisisOutcome = gs.familyCrisisOutcome || {};
+  // v3.11.0d: 恢复家庭信任度（兼容旧存档——无此字段默认50）
+  GameState.familyTrust = gs.familyTrust || 50;
   // v3.9.2: 恢复成就数据（兼容旧存档）
   GameState.achievements = Array.isArray(gs.achievements) ? gs.achievements : [];
 
