@@ -3097,6 +3097,8 @@ function _buildDirectorDirective(matched, turn) {
   if (sd.forbiddenPatterns && sd.forbiddenPatterns.length > 0) {
     lines.push('  禁用表达：' + sd.forbiddenPatterns.join('、'));
   }
+  // v3.11.0b: 场景接续约束——强制AI保持时间线连贯
+  lines.push('  ★接续约束：本场景必须紧接上回合叙事结尾的时间与情境，不得出现时间矛盾（如上回合白天回家，本回合不可变成晚归）');
   lines.push('');
 
   // 4. 角色指令

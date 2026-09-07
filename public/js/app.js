@@ -823,6 +823,8 @@ async function processAITurn(userChoice) {
 
   // v3.8.11: 存档当前选项用于断点恢复
   GameState.pendingChoices = choices.slice();
+  // v3.11.0b: 选项更新后立即重新存档，修复退出重进显示上一回合选项的bug
+  autoSave();
 
   // P0-2: 危机回合——替换为自救选项
   var isRescueTurn = (GameState.deathCountdown > 0 || GameState.deathWarning > 0)
@@ -914,7 +916,7 @@ async function processAITurn(userChoice) {
             break;
           }
         }
-      } else {
+      } else if (anchor.choices && anchor.choices.length > 0) {
         // 旧格式：通过config.js中的固定text匹配label
         for (var ei = 0; ei < anchor.choices.length; ei++) {
           if (anchor.choices[ei].text === choice || choice.indexOf(anchor.choices[ei].text) !== -1) {
@@ -922,6 +924,9 @@ async function processAITurn(userChoice) {
             break;
           }
         }
+      } else if (anchor.choiceDirections && anchor.choiceDirections.length > 0) {
+        // 新格式但_pendingEaOptions未就绪：按choiceDirections顺序取第一个可用
+        recordEmotionalChoice(anchor.choiceDirections[0].label);
       }
     }
     // 下一回合计发给 AI（驳回后的选择仍然作为新的行动输入）
@@ -1519,6 +1524,11 @@ function applySnapshot(save) {
   GameState.completedAnchors = Array.isArray(gs.completedAnchors) ? [...gs.completedAnchors] : [];
   // v3.9.1: 恢复待选选项（修复"继续前行"重做后读档选项丢失）
   GameState.pendingChoices = Array.isArray(gs.pendingChoices) ? [...gs.pendingChoices] : [];
+  // v3.11.0b: 恢复EA导演指令模式临时变量（修复退出重进后EA上下文丢失）
+  GameState._pendingEaOptions = gs._pendingEaOptions || null;
+  GameState._pendingEaMemoryQuote = gs._pendingEaMemoryQuote || null;
+  GameState._pendingEaRipple = gs._pendingEaRipple || null;
+  GameState.currentEmotionalAnchor = gs.currentEmotionalAnchor || null;
   // v3.8.15: 恢复家庭数据（兼容旧存档——旧存档没有family字段，下次updateDeathTracking会自动初始化）
   GameState.family = gs.family || null;
   GameState.lifeEventLastTurn = gs.lifeEventLastTurn || 0;
