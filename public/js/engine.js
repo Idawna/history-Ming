@@ -2133,6 +2133,26 @@ function updateDeathTracking(narrative) {
       GameState.lastFamilyCrisisAnchor = 0;
     }
   }
+  // v3.12.0: 生死危机事件层——每回合检查是否触发危机故事事件
+  if (typeof checkCrisisStoryEvent === 'function') {
+    checkCrisisStoryEvent();
+  }
+  // v3.12.0: 自然恢复检查（每5回合）
+  if (typeof naturalRecoveryCheck === 'function') {
+    naturalRecoveryCheck();
+  }
+  // v3.12.0: 清理过期危机标签
+  if (GameState.crisisTags) {
+    for (var _ct in GameState.crisisTags) {
+      if (GameState.crisisTags.hasOwnProperty(_ct)) {
+        var _tag = GameState.crisisTags[_ct];
+        if (!_tag.permanent && _tag.expiresAt && _tag.expiresAt <= turn) {
+          delete GameState.crisisTags[_ct];
+          console.log('[危机标签] 过期清除: ' + _ct);
+        }
+      }
+    }
+  }
 }
 
 function getCommonEnding() {
@@ -2524,7 +2544,7 @@ function getFinaleHint() {
       if (isDeathEnding) {
         return '【终局将至】游戏即将进入最终回合。最可能的仕途结局是「' + pred.title + '」' + legacyHint + '。终局叙事必须做到：(1)本回合为死亡结局——叙事应聚焦于角色临终前的心理活动、一生回忆闪回、周围人物的反应与哀恸，**严禁直接描写死亡过程本身**（死因定性与临终场景由系统单独展示，重复会破坏体验）；(2)回顾本局关键抉择与转折；(3)在叙事最末尾另起一行写【墓志铭】后接2-3句对人物一生的个性化评价（系统会自动提取展示，不会混入叙事正文，总计不超过100字）。' + echoSuffix;
       } else {
-        return '【终局将至】游戏即将进入最终回合。最可能的仕途结局是「' + pred.title + '」' + legacyHint + '。终局叙事必须做到：(1)明确交代人物最终归宿与人生收束；(2)同时交代家族/家庭的最终状态（传承维度）；(3)回顾本局关键抉择与转折；(4)在叙事最末尾另起一行写【墓志铭】后接2-3句对人物一生的个性化评价（系统会自动提取展示，不会混入叙事正文，总计不超过100字）。' + echoSuffix;
+        return '【终局将至】游戏即将进入最终回合。最可能的仕途结局是「' + pred.title + '」' + legacyHint + '。终局叙事必须做到：(1)明确交代人物最终归宿与人生收束；(2)同时交代家族/家庭的最终状态（传承维度）；(3)回顾本局关键抉择与转折；(4)在叙事最末尾另起一行写【墓志铭】后接2-3句对人物一生的个性化评价（系统会自动提取展示，不会混入叙事正文，总计不超过100字）；(5)【v3.12.1强制】若本回合为驾崩/人生终局回合，JSON状态块必须输出 ending 结局字段（对象格式：{"ending": {"title": "结局名", "description": "结局描述20-50字"}}），输出 ending 后不得再给选项。' + echoSuffix;
       }
     } else if (pred.hint) {
       if (isDeathEnding) {
@@ -2761,6 +2781,35 @@ var ANCHOR_EXACT_PHRASES = {
   9: ['朱元璋驾崩', '太祖驾崩', '太祖崩', '皇上驾崩',
       '朱元璋病逝', '太祖晏驾']
 };
+
+// v3.12.1: 终局驾崩检测——AI在终局叙事中已写"驾崩"但忘记输出 ending 字段时的兜底触发
+// 仅在终局窗口（processAITurn 中 turn >= 55 判定）内启用，避免误伤早期叙事
+// 覆盖场景：AI 在锚点9窗口内/前提前写驾崩、或输出格式缺失 ending，导致结局不触发、选项照常渲染
+function detectEmperorDeath(text) {
+  if (!text) return false;
+  // 1) 皇帝驾崩专用短语——直接命中
+  var direct = [
+    '朱元璋驾崩', '太祖驾崩', '太祖崩', '皇上驾崩', '朱元璋病逝', '太祖晏驾',
+    '龙驭上宾', '大行皇帝', '圣上殡天', '皇帝殡天',
+    '殡天', '宾天', '山陵崩'
+  ];
+  for (var i = 0; i < direct.length; i++) {
+    if (text.indexOf(direct[i]) >= 0) return true;
+  }
+  // 2) 裸"驾崩/晏驾"——排除"太子驾崩/朱标驾崩/储君晏驾"等历史回顾（朱标死于锚点6，终局窗口内只作回顾）
+  var generic = ['驾崩', '晏驾'];
+  for (var g = 0; g < generic.length; g++) {
+    var idx = text.indexOf(generic[g]);
+    while (idx >= 0) {
+      var prev = text.substring(Math.max(0, idx - 4), idx);
+      if (prev.indexOf('太子') < 0 && prev.indexOf('朱标') < 0 && prev.indexOf('储君') < 0 && prev.indexOf('先帝') < 0) {
+        return true;
+      }
+      idx = text.indexOf(generic[g], idx + 1);
+    }
+  }
+  return false;
+}
 
 // 获取当前允许的最大锚点ID（第一个未完成的锚点）
 function getAllowedMaxAnchorId() {
@@ -3586,3 +3635,604 @@ function getEmotionalMemorySummary() {
   lines.push('在后续叙事中，请自然引用这些记忆——不要直接复述，而是通过细节、动作、对话回响。');
   return lines.join('\n');
 }
+
+
+// ========================================================================
+// ========== v3.12.0 生死危机事件层 — Phase 1 MVP ========================
+// ========================================================================
+
+// ---------- 枚举常量 ----------
+var HEALTH_LEVELS = ['健康', '受伤', '重伤', '濒死'];
+var MENTAL_LEVELS = ['稳定', '焦虑', '崩溃边缘', '崩溃'];
+
+// ---------- 调度器配置 ----------
+var CRISIS_SCHEDULER = {
+  windows: [
+    { group: 1, eventIds: ['crisis_1', 'crisis_2'], windowStart: 3,  windowEnd: 8,  label: '早期·刘伯温之死前后' },
+    { group: 2, eventIds: ['crisis_3'],               windowStart: 10, windowEnd: 19, label: '胡惟庸案前奏' }
+    // Phase 2 追加 group 3-7
+  ],
+  constraints: {
+    minIntervalBetweenCrisis: 3,
+    minIntervalFromAnchor: 2,
+    hardDeadline: 57,
+    noCrisisAfter: 57
+  }
+};
+
+// ---------- 前3个危机事件配置 ----------
+var CRISIS_STORY_EVENTS = [
+  // ===== crisis_1: 血溅庆功宴 =====
+  {
+    id: 'crisis_1',
+    title: '血溅庆功宴',
+    type: 'C',
+    window: { start: 3, end: 8 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: null,
+    triggerCondition: function(gs) { return true; },
+    triggerProbability: 0.85,
+    originVariants: {
+      '淮西武将之后': { conflictDesc: '冲突双方是你的同袍，你被迫站队', npcName: '赵百户', relation: '淮西旧部' },
+      '浙东寒门书生': { conflictDesc: '你是被羞辱的弱势方，锦衣卫在观察每个人的反应', npcName: '钱主事', relation: '浙东同僚' },
+      '应天府商贾之子': { conflictDesc: '你的父亲在宴上被人当众嘲笑「商贾贱类」', npcName: '赵百户', relation: '淮西武将' },
+      '落魄前元官员之后': { conflictDesc: '有人翻出你家的前朝旧事，锦衣卫的笔已经蘸好了墨', npcName: '钱主事', relation: '暗中窥探者' }
+    },
+    backgroundStory: '洪武五年秋，南京城外大校场。朝廷为平定蜀地的将士举办庆功宴，你作为低品级官员列席。宴席过半，两名淮西勋贵因座次之争发生口角。赵百户醉后掀桌，碎瓷片划破了钱主事的面颊。鲜血溅在御赐的宴席上。全场死寂。锦衣卫的暗哨已经在记录每个人的反应。',
+    sceneDescription: '碎瓷上的血迹还未干涸，锦衣卫校尉的笔已经蘸好了墨。他看向你的眼神，像屠夫打量牲口。',
+    narrativeDirective: '这是玩家第一次体验「被权力碾压」的感觉。无论选择什么，都要让玩家感受到——在这个世界里，不说话也可能有罪。',
+    choices: [
+      {
+        id: 'A', label: '据实禀报——如实描述事件经过，不偏不倚',
+        primaryAttr: 'wisdom', threshold: 50, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '锦衣卫记录在案，两方都不满意但你保全了名声', effects: { fame: 3 } },
+          normal: { desc: '双方都觉得你多事，但没有深究', effects: { fame: -2, power: -1 } },
+          unfavorable: { desc: '双方都认为你「不识趣」，权势受损', effects: { power: -4, fame: -3 } }
+        },
+        tags: { '锦衣卫档案·多事': { permanent: true, affectsCrises: ['crisis_5', 'crisis_10'] } },
+        healthImpact: null,
+        mentalImpact: '焦虑'
+      },
+      {
+        id: 'B', label: '替赵百户圆场——声称是「同袍酒后嬉戏」',
+        primaryAttr: 'power', threshold: 45, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '赵百户感激，权势提升', effects: { power: 4, huaixi: 5 } },
+          normal: { desc: '圆场成功但锦衣卫起疑', effects: { power: 1, jinchen: -3 } },
+          unfavorable: { desc: '锦衣卫认为你作伪证，记入黑名单', effects: { power: -5, jinchen: -5 } }
+        },
+        tags: { '淮西人情': { expiresAt: 20, affectsCrises: ['crisis_3'] } },
+        healthImpact: null, mentalImpact: null
+      },
+      {
+        id: 'C', label: '沉默不语——以「品级低微不敢妄言」推脱',
+        primaryAttr: 'wisdom', threshold: 45, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '锦衣卫对你的谨慎印象深刻', effects: { wisdom: 2, fame: 1 } },
+          normal: { desc: '上峰不满但未发作', effects: { fame: -1 } },
+          unfavorable: { desc: '上峰当众斥责你「枉为朝廷命官」', effects: { fame: -4, bond: -2 } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      }
+    ],
+    chainsTo: ['crisis_5', 'crisis_10'],
+    chainEffect: function(gs, choiceId, outcome) {
+      if (choiceId === 'A' && gs.crisisTags && gs.crisisTags['锦衣卫档案·多事']) {
+        return { crisis_5: { difficultyMod: 1 }, crisis_10: { difficultyMod: 1 } };
+      }
+      return {};
+    }
+  },
+
+  // ===== crisis_2: 老仆蒙冤 =====
+  {
+    id: 'crisis_2',
+    title: '老仆蒙冤',
+    type: 'A',
+    window: { start: 4, end: 8 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: { type: 'originNPC', key: '老仆', states_alive: ['alive'] },
+    triggerCondition: function(gs) { return gs.turn >= 4; },
+    triggerProbability: 0.80,
+    originVariants: {
+      '淮西武将之后': { npcName: '赵福', relation: '跟了舅舅蓝玉三十年的老仆' },
+      '浙东寒门书生': { npcName: '福伯', relation: '恩师宋濂介绍来的老家仆' },
+      '应天府商贾之子': { npcName: '阿贵', relation: '老伙计陈三的徒弟' },
+      '落魄前元官员之后': { npcName: '陈伯', relation: '母亲的前元旧仆' }
+    },
+    backgroundStory: '你收到消息时正在吃晚饭——家中年过六旬的老仆被锦衣卫抓走了。罪名骇人听闻：「私通倭寇，出卖海防水利图」。锦衣卫声称在老仆的包袱里搜出了一幅海防图。你知道老仆大字不识几个，根本画不出那种图。但锦衣卫不管——他们正在借刘伯温案的余波大索「浙东党」和「通倭嫌疑」。',
+    sceneDescription: '诏狱的铁门在身后合上。黑暗中传来一个老人的呻吟——你认得那个声音，他叫你「少爷」叫了三十年。',
+    narrativeDirective: '这是玩家第一次面对「亲密NPC可能真的会死」。必须让玩家感受到诏狱的恐怖和时间的紧迫。',
+    countdownTurns: 5,
+    countdownDescription: '老仆在诏狱中的状况逐回合恶化',
+    countdownStates: [
+      { turn: 0, desc: '被上夹棍，手指可能骨折' },
+      { turn: 1, desc: '被灌辣椒水，昏迷' },
+      { turn: 2, desc: '被威胁「不招就杀」，开始说胡话' },
+      { turn: 3, desc: '被认定「拒不招供」，准备移交刑部' },
+      { turn: 4, desc: '移交刑部，翻案概率降至10%' }
+    ],
+    choices: [
+      {
+        id: 'A', label: '动用一切人脉打探消息，找出是谁举报了老仆',
+        primaryAttr: 'power', threshold: 40, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '发现是仇家构陷，找到证据翻案', effects: { power: -3, bond: 5 }, npcFate: '获释但终身残疾' },
+          normal: { desc: '打探到部分信息，勉强翻案', effects: { power: -5 }, npcFate: '获释但断两根肋骨' },
+          unfavorable: { desc: '打探行为被锦衣卫发现，自己也被列入嫌疑', effects: { power: -6, jinchen: -8 }, npcFate: '未救出' }
+        },
+        tags: {}, healthImpact: null,
+        mentalImpact: function(outcome) { return outcome === 'unfavorable' ? '崩溃边缘' : '焦虑'; }
+      },
+      {
+        id: 'B', label: '买通看守送药送食，给老仆续命',
+        primaryAttr: 'wisdom', threshold: 50, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '老仆撑住没被屈打成招，争取到时间', effects: { wisdom: -2, bond: 3 }, npcFate: '获释但终身残疾' },
+          normal: { desc: '看守收了钱但效果有限', effects: { power: -2 }, npcFate: '获释但重伤' },
+          unfavorable: { desc: '看守是锦衣卫的人，被视为干扰办案', effects: { power: -5, jinchen: -5 }, npcFate: '未救出' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'C', label: '直接递交保状——以「家仆清白」为由',
+        primaryAttr: 'people', threshold: 50, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '坦诚打动锦衣卫千户，同意暂缓', effects: { people: -3, fame: 3 }, npcFate: '获释但受伤' },
+          normal: { desc: '保状被接受但从缓处理', effects: { people: -2 }, npcFate: '获释但受伤' },
+          unfavorable: { desc: '保状被驳回，暴露了与嫌疑犯的关系', effects: { people: -4, jinchen: -5 }, npcFate: '未救出' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      }
+    ],
+    npcDeathConsequence: {
+      tag: '丧亲之痛', permanent: true,
+      effectOnWisdom: -5,
+      narrativeImpact: '所有涉及忠仆/老人/亲情的场景'
+    },
+    chainsTo: [],
+    chainEffect: null
+  },
+
+  // ===== crisis_3: 站队之祸 =====
+  {
+    id: 'crisis_3',
+    title: '站队之祸',
+    type: 'C',
+    window: { start: 10, end: 19 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: ['胡惟庸'],
+    triggerCondition: function(gs) { return true; },
+    triggerProbability: 0.75,
+    originVariants: {
+      '淮西武将之后': { conflictDesc: '胡惟庸是你的「淮西同乡」，他认为你天然应该站他这边' },
+      '浙东寒门书生': { conflictDesc: '你是「浙东党」的嫌疑对象，胡惟庸怀疑你对他不利' },
+      '应天府商贾之子': { conflictDesc: '胡惟庸看中了你家的财力，要你的家族「赞助」' },
+      '落魄前元官员之后': { conflictDesc: '胡惟庸需要一个「不是淮西也不是浙东」的人表忠心' }
+    },
+    backgroundStory: '胡惟庸的幕僚在一家酒肆的雅间里摆了一桌酒。在座的还有六位和你品级相近的中低品官员。幕僚不紧不慢地说了三件事：胡丞相最近要举荐一批「干练之才」；需要各位在朝会上「共同呈递一份奏疏」；奏疏的内容不重要，重要的是——署名。签了名，你就是「胡党」的人。但你也听说——皇帝最近对胡惟庸的「结党」越来越不满。',
+    sceneDescription: '笔尖悬在纸上。六双眼睛盯着你。胡惟庸幕僚的笑容像一把没出鞘的刀。',
+    narrativeDirective: '这是第一个「政治站队」事件。核心恐怖不在于当下的选择，而在于你知道——胡惟庸迟早要倒。选对了或选错了，都是在定时炸弹上跳舞。',
+    choices: [
+      {
+        id: 'A', label: '签名入伙——在奏疏上署名',
+        primaryAttr: 'power', threshold: 0, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '胡党接纳你，权势大增', effects: { power: 5, huaixi: 3 } },
+          normal: { desc: '签名成功，但锦衣卫记住了你的脸', effects: { power: 3, jinchen: -5 } },
+          unfavorable: { desc: '签名后才发现这是个试探局，你被记入名单', effects: { power: -2, jinchen: -8 } }
+        },
+        tags: { '胡党嫌疑': { permanent: true, affectsCrises: ['crisis_4'] } },
+        healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'B', label: '装醉推脱——声称醉酒，拿不稳笔',
+        primaryAttr: 'wisdom', threshold: 55, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '幕僚冷笑但没追究，你获得「骑墙」空间', effects: { wisdom: 2 } },
+          normal: { desc: '推脱成功但被冷眼相待', effects: { fame: -1 } },
+          unfavorable: { desc: '幕僚当场泼了你一杯冷水「醒酒」，全场哄笑', effects: { fame: -4, power: -3 } }
+        },
+        tags: { '骑墙者': { expiresAt: 25, affectsCrises: ['crisis_4'] } },
+        healthImpact: null, mentalImpact: function(outcome) { return outcome === 'unfavorable' ? '崩溃边缘' : null; }
+      },
+      {
+        id: 'C', label: '当众拒绝——直言「此事不合体制」',
+        primaryAttr: 'wisdom', threshold: 60, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '你的刚正令其他官员暗暗敬佩', effects: { people: 3, fame: 3 } },
+          normal: { desc: '拒绝被接受，但气氛冰冷', effects: { fame: 1, power: -2 } },
+          unfavorable: { desc: '幕僚记下你的名字，列入「不合作」名单', effects: { power: -4, jinchen: -3 } }
+        },
+        tags: { '清流之名': { permanent: true } },
+        healthImpact: null, mentalImpact: null
+      }
+    ],
+    chainsTo: ['crisis_4'],
+    chainEffect: function(gs, choiceId, outcome) {
+      if (choiceId === 'A' && gs.crisisTags && gs.crisisTags['胡党嫌疑']) {
+        return { crisis_4: { difficultyMod: 2 } };
+      }
+      return {};
+    }
+  }
+];
+
+// 快速索引：id → event object
+var _crisisEventMap = {};
+(function() {
+  for (var i = 0; i < CRISIS_STORY_EVENTS.length; i++) {
+    _crisisEventMap[CRISIS_STORY_EVENTS[i].id] = CRISIS_STORY_EVENTS[i];
+  }
+})();
+
+// ---------- canTriggerCrisis() ----------
+function canTriggerCrisis(turn) {
+  // 条件1：冷却期（距上次危机至少3回合）
+  if (GameState.lastCrisisTurn > 0 && (turn - GameState.lastCrisisTurn) < CRISIS_SCHEDULER.constraints.minIntervalBetweenCrisis) {
+    return false;
+  }
+  // 条件2：距上次锚点至少2回合
+  if (GameState.lastAnchorTurn > 0 && (turn - GameState.lastAnchorTurn) < CRISIS_SCHEDULER.constraints.minIntervalFromAnchor) {
+    return false;
+  }
+  // 条件3：当前不在锚点窗口内
+  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+    var a = HISTORY_ANCHORS[i];
+    if (turn >= a.start && turn <= a.end) return false;
+  }
+  // 条件4：不在锚点前1回合（紧迫节奏期）
+  for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
+    if (HISTORY_ANCHORS[i].start - turn === 1) return false;
+  }
+  // 条件5：当前回合不能有EA正在触发
+  var bg = GameState.character.background;
+  if (typeof EMOTIONAL_ANCHORS !== 'undefined' && EMOTIONAL_ANCHORS[bg]) {
+    var eaList = EMOTIONAL_ANCHORS[bg];
+    for (var i = 0; i < eaList.length; i++) {
+      if (eaList[i].triggerTurn === turn) return false;
+    }
+  }
+  // 条件6：pacing不为紧迫/反转/沉淀
+  var pacing = GameState.pacing;
+  if (pacing === '紧迫' || pacing === '反转' || pacing === '沉淀') return false;
+
+  return true;
+}
+
+// ---------- isCrisisNPCAlive() ----------
+function isCrisisNPCAlive(evt, turn) {
+  if (!evt.requiredNPCs) return true;
+  var reqs = evt.requiredNPCs;
+
+  // 格式：出身线NPC检查
+  if (reqs.type === 'originNPC') {
+    var npcState = GameState.originNPCState[reqs.key];
+    if (!npcState) return true; // 未记录=默认存活
+    return reqs.states_alive.indexOf(npcState) !== -1;
+  }
+
+  // 格式：字符串数组或对象数组
+  for (var i = 0; i < reqs.length; i++) {
+    var req = reqs[i];
+    var npcName, allowStates;
+    if (typeof req === 'string') {
+      npcName = req;
+      allowStates = null;
+    } else {
+      npcName = req.name;
+      allowStates = req.allowStates || null;
+    }
+
+    // 优先级1: npcCrisisState
+    if (GameState.npcCrisisState[npcName]) {
+      var cs = GameState.npcCrisisState[npcName];
+      if (cs === 'dead') return false;
+      if (allowStates && allowStates.indexOf(cs) === -1) return false;
+      continue;
+    }
+    // 优先级2: NPC_BIRTH_DEATH
+    if (typeof NPC_BIRTH_DEATH !== 'undefined' && NPC_BIRTH_DEATH[npcName]) {
+      var npcInfo = NPC_BIRTH_DEATH[npcName];
+      if (npcInfo.death) {
+        var deathTurn = _crisisYearToTurn(npcInfo.death);
+        if (turn > deathTurn) return false;
+      }
+    }
+  }
+  return true;
+}
+
+// 辅助：年份→回合号（基于HISTORY_ANCHORS插值）
+function _crisisYearToTurn(year) {
+  // 锚点映射：T2-4→1375, T12-15→1380, T21-22→1382, T27-29→1385,
+  //          T38-40→1390, T43-44→1392, T47-49→1393, T52-53→1396, T57-60→1398
+  // 线性近似：turn ≈ (year - 1373) * 2.85
+  return Math.round((year - 1373) * 2.85);
+}
+
+// ---------- getEligibleEvents() ----------
+function getEligibleEvents(turn) {
+  var eligible = [];
+  for (var w = 0; w < CRISIS_SCHEDULER.windows.length; w++) {
+    var win = CRISIS_SCHEDULER.windows[w];
+    if (turn < win.windowStart || turn > win.windowEnd) continue;
+    for (var e = 0; e < win.eventIds.length; e++) {
+      var evtId = win.eventIds[e];
+      var evt = _crisisEventMap[evtId];
+      if (!evt) continue;
+      // 已触发跳过
+      if (GameState.crisisEventsTriggered.indexOf(evt.id) !== -1) continue;
+      // 自定义条件
+      if (evt.triggerCondition && !evt.triggerCondition(GameState)) continue;
+      // NPC存活
+      if (!isCrisisNPCAlive(evt, turn)) continue;
+      eligible.push(evt);
+    }
+    if (eligible.length > 0) break;
+  }
+  return eligible;
+}
+
+// ---------- activateCrisisEvent() ----------
+function activateCrisisEvent(evt) {
+  var turn = GameState.turn;
+  GameState.crisisEventsTriggered.push(evt.id);
+  GameState.lastCrisisTurn = turn;
+  GameState.activeCrisisEvent = {
+    eventId: evt.id,
+    data: evt,
+    startTurn: turn,
+    countdown: evt.countdownTurns || 0,
+    choices: evt.choices
+  };
+  console.log('[生死危机] 触发「' + evt.title + '」(id=' + evt.id + ') at T' + turn);
+  return GameState.activeCrisisEvent;
+}
+
+// ---------- checkCrisisStoryEvent() ----------
+function checkCrisisStoryEvent() {
+  var turn = GameState.turn;
+  // 终局危机 T57-60（Phase 2实现，此处占位）
+  if (turn >= 57 && turn <= 60) return null;
+  // 硬截止
+  if (turn >= 57) return null;
+  // 当前有活跃危机
+  if (GameState.activeCrisisEvent) return null;
+  // 冷却+屏蔽
+  if (!canTriggerCrisis(turn)) return null;
+  // 获取合格事件
+  var eligible = getEligibleEvents(turn);
+  if (eligible.length === 0) return null;
+  // 概率触发 + 窗口末尾保底（越接近窗口末尾概率越高）
+  for (var i = 0; i < eligible.length; i++) {
+    var evt = eligible[i];
+    var baseProb = evt.triggerProbability || 0.75;
+    // 窗口末尾概率递增
+    var distToEnd = evt.window.end - turn;
+    var windowSize = evt.window.end - evt.window.start + 1;
+    var endBonus = (windowSize > 1) ? (1 - distToEnd / windowSize) * 0.3 : 0;
+    var finalProb = Math.min(1.0, baseProb + endBonus);
+    // 窗口最后一回合100%触发
+    if (distToEnd === 0) finalProb = 1.0;
+    if (Math.random() < finalProb) {
+      return activateCrisisEvent(evt);
+    }
+  }
+  return null;
+}
+
+// ---------- applyHealthImpact() ----------
+function applyHealthImpact(impact) {
+  var currentIdx = HEALTH_LEVELS.indexOf(GameState.health);
+  if (currentIdx === -1) currentIdx = 0;
+  var delta = 0;
+  switch (impact) {
+    case '轻伤': delta = 1; break;
+    case '重伤': delta = 2; break;
+    case '濒死': delta = 3; break;
+    case '休养恢复': delta = -1; break;
+    case '充分恢复': delta = -2; break;
+    default: delta = 0;
+  }
+  var newIdx = Math.max(0, Math.min(HEALTH_LEVELS.length - 1, currentIdx + delta));
+  var oldHealth = GameState.health;
+  GameState.health = HEALTH_LEVELS[newIdx];
+  if (delta > 0) GameState.permanentBodyDamage += delta * 2;
+  console.log('[health] ' + oldHealth + ' → ' + GameState.health + ' (impact: ' + impact + ')');
+  return { from: oldHealth, to: GameState.health };
+}
+
+// ---------- applyMentalStateImpact() ----------
+function applyMentalStateImpact(impact) {
+  if (typeof impact === 'function') return { from: GameState.mentalState, to: GameState.mentalState };
+  if (!impact) return { from: GameState.mentalState, to: GameState.mentalState };
+  var currentIdx = MENTAL_LEVELS.indexOf(GameState.mentalState);
+  if (currentIdx === -1) currentIdx = 0;
+  var delta = 0;
+  switch (impact) {
+    case '焦虑': delta = 1; break;
+    case '崩溃边缘': delta = 2; break;
+    case '崩溃': delta = 3; break;
+    case '沉淀恢复': delta = -1; break;
+    case '充分恢复': delta = -2; break;
+    default: delta = 0;
+  }
+  var newIdx = Math.max(0, Math.min(MENTAL_LEVELS.length - 1, currentIdx + delta));
+  var oldState = GameState.mentalState;
+  GameState.mentalState = MENTAL_LEVELS[newIdx];
+  if (delta > 0) GameState.permanentMentalDamage += delta * 2;
+  console.log('[mentalState] ' + oldState + ' → ' + GameState.mentalState + ' (impact: ' + impact + ')');
+  return { from: oldState, to: GameState.mentalState };
+}
+
+// ---------- resolveCrisisJudgment() ----------
+function resolveCrisisJudgment(choiceId) {
+  var crisis = GameState.activeCrisisEvent;
+  if (!crisis) return null;
+  var evt = crisis.data;
+  var choice = null;
+  for (var i = 0; i < evt.choices.length; i++) {
+    if (evt.choices[i].id === choiceId) { choice = evt.choices[i]; break; }
+  }
+  if (!choice) return null;
+
+  // 属性判定
+  var attrVal = GameState.attributes[choice.primaryAttr] || 50;
+  // 永久伤害惩罚
+  if (choice.primaryAttr === 'power' || choice.primaryAttr === 'people' || choice.primaryAttr === 'bond') {
+    attrVal = Math.max(0, attrVal - Math.floor(GameState.permanentBodyDamage / 2));
+  }
+  var threshold = choice.threshold || 50;
+  var diff = attrVal - threshold;
+
+  // 标签修正
+  var tagMod = 0;
+  if (evt.chainEffect && typeof evt.chainEffect === 'function') {
+    // 已有标签增加难度
+    for (var tag in GameState.crisisTags) {
+      if (GameState.crisisTags[tag] && GameState.crisisTags[tag].affectsCrises) {
+        if (GameState.crisisTags[tag].affectsCrises.indexOf(evt.id) !== -1) {
+          tagMod -= 5;
+        }
+      }
+    }
+  }
+  diff += tagMod;
+
+  // 概率池判定
+  var pool, result;
+  if (diff >= 10) {
+    pool = 'favorable';
+    result = Math.random() < 0.70 ? 'favorable' : 'normal';
+  } else if (diff >= -10) {
+    pool = 'normal';
+    result = Math.random() < 0.50 ? 'favorable' : 'unfavorable';
+  } else {
+    pool = 'unfavorable';
+    result = Math.random() < 0.25 ? 'favorable' : 'unfavorable';
+  }
+
+  var outcome = choice.outcomes[result] || choice.outcomes.normal;
+  var effects = outcome.effects || {};
+
+  // 应用属性效果
+  for (var key in effects) {
+    if (effects.hasOwnProperty(key)) {
+      if (GameState.attributes[key] !== undefined) {
+        GameState.attributes[key] = Math.max(0, Math.min(100, GameState.attributes[key] + effects[key]));
+      } else if (GameState.factions[key] !== undefined) {
+        GameState.factions[key] = Math.max(-100, Math.min(100, GameState.factions[key] + effects[key]));
+      }
+    }
+  }
+
+  // 应用健康/精神状态效果
+  if (choice.healthImpact) applyHealthImpact(choice.healthImpact);
+  var mentalImp = choice.mentalImpact;
+  if (typeof mentalImp === 'function') mentalImp = mentalImp(result);
+  if (mentalImp) applyMentalStateImpact(mentalImp);
+
+  // 应用标签
+  if (choice.tags) {
+    for (var tagName in choice.tags) {
+      if (choice.tags.hasOwnProperty(tagName)) {
+        var tagData = choice.tags[tagName];
+        GameState.crisisTags[tagName] = {
+          turn: GameState.turn,
+          expiresAt: tagData.expiresAt || null,
+          permanent: tagData.permanent || false,
+          affectsCrises: tagData.affectsCrises || []
+        };
+      }
+    }
+  }
+
+  // NPC命运
+  var npcFate = outcome.npcFate || null;
+  if (npcFate && evt.requiredNPCs && evt.requiredNPCs.type === 'originNPC') {
+    if (npcFate.indexOf('未救出') !== -1) {
+      GameState.originNPCState[evt.requiredNPCs.key] = 'dead';
+      // NPC死亡后果
+      if (evt.npcDeathConsequence) {
+        var nc = evt.npcDeathConsequence;
+        GameState.crisisTags[nc.tag] = { turn: GameState.turn, permanent: true, affectsCrises: [] };
+        if (nc.effectOnWisdom) {
+          GameState.attributes.wisdom = Math.max(0, GameState.attributes.wisdom + nc.effectOnWisdom);
+        }
+      }
+    } else {
+      GameState.originNPCState[evt.requiredNPCs.key] = 'rescued';
+    }
+  }
+
+  // 完成危机事件
+  GameState.crisisEventsCompleted.push(evt.id);
+  GameState.activeCrisisEvent = null;
+  GameState.crisisJudgmentPending = false;
+
+  console.log('[生死危机] 完成「' + evt.title + '」选择=' + choiceId + ' 池=' + pool + ' 结果=' + result);
+
+  return {
+    eventId: evt.id,
+    eventTitle: evt.title,
+    choiceId: choiceId,
+    choiceLabel: choice.label,
+    pool: pool,
+    result: result,
+    outcome: outcome,
+    effects: effects,
+    npcFate: npcFate,
+    healthChange: GameState.health,
+    mentalChange: GameState.mentalState
+  };
+}
+
+// ---------- spendFatePoint() ----------
+function spendFatePoint(crisisId, reason) {
+  if (GameState.fatePoints <= 0) return { spent: false, reason: '天命值不足' };
+  GameState.fatePoints -= 1;
+  GameState.fatePointsSpent.push({ turn: GameState.turn, eventId: crisisId, reason: reason || '' });
+  console.log('[天命值] 消耗1点，剩余' + GameState.fatePoints + '点');
+  return { spent: true, remaining: GameState.fatePoints };
+}
+
+// ---------- naturalRecoveryCheck() ----------
+function naturalRecoveryCheck() {
+  if (GameState.turn % 5 !== 0) return;
+  var pacing = GameState.pacing;
+  if (pacing === '缓冲' || pacing === '日常' || pacing === '沉淀') {
+    if (GameState.health !== '健康' && GameState.attributes.bond >= 30) {
+      applyHealthImpact('休养恢复');
+    }
+    if (GameState.mentalState !== '稳定' && pacing !== '紧迫') {
+      applyMentalStateImpact('沉淀恢复');
+    }
+  }
+}
+
+// ---------- migrateGameState() ----------
+function migrateGameState(gs) {
+  if (gs.health === undefined) gs.health = '健康';
+  if (gs.mentalState === undefined) gs.mentalState = '稳定';
+  if (gs.fatePoints === undefined) gs.fatePoints = 0;
+  if (gs.fatePointsEarned === undefined) gs.fatePointsEarned = [];
+  if (gs.fatePointsSpent === undefined) gs.fatePointsSpent = [];
+  if (gs.crisisEventsTriggered === undefined) gs.crisisEventsTriggered = [];
+  if (gs.crisisEventsCompleted === undefined) gs.crisisEventsCompleted = [];
+  if (gs.lastCrisisTurn === undefined) gs.lastCrisisTurn = 0;
+  if (gs.lastAnchorTurn === undefined) gs.lastAnchorTurn = 0;
+  if (gs.activeCrisisEvent === undefined) gs.activeCrisisEvent = null;
+  if (gs.crisisJudgmentPending === undefined) gs.crisisJudgmentPending = false;
+  if (gs.crisisTags === undefined) gs.crisisTags = {};
+  if (gs.permanentBodyDamage === undefined) gs.permanentBodyDamage = 0;
+  if (gs.permanentMentalDamage === undefined) gs.permanentMentalDamage = 0;
+  if (gs.npcCrisisState === undefined) gs.npcCrisisState = {};
+  if (gs.originNPCState === undefined) gs.originNPCState = {};
+  return gs;
+}
+// ========== END v3.12.0 生死危机事件层 ==========

@@ -284,9 +284,75 @@ async function streamBotAPI(userMessage, streamTarget, options) {
           actionHint = '对本出身玩家，"投靠"选项意味着主动融入/靠近近臣圈子（如：结交近臣门路、进献投名状、主动承担近臣交代的差事等），选择后近臣阵营大幅回升；';
         }
         return '【出身锁定·前' + (6 - GameState.turn) + '回合】' + bg + '的出身偏向阵营「' + fl + '」当前变化幅度减半（初始关系更稳固）。' + actionHint + '你必须在3个选项中安排至少1个与出身阵营关系重大转变的选项（用叙事语言包装，不要出现"决裂""数值"等游戏术语）。当玩家选择该选项时，你必须在state block的changes中加入"faction_break": true标记，以便前端取消减半。';
+      })(),
+      // ========== v3.12.0 生死危机事件层注入 ==========
+      crisis_story: (function(){
+        var evt = GameState.activeCrisisEvent;
+        if (!evt) return '';
+        var data = evt.data;
+        var bg = GameState.character.background;
+        var originVariant = data.originVariants ? data.originVariants[bg] : null;
+        return JSON.stringify({
+          eventId: evt.eventId,
+          title: data.title,
+          type: data.type,
+          background: data.backgroundStory || '',
+          originVariant: originVariant,
+          scene: data.sceneDescription || '',
+          choices: data.choices.map(function(c) { return { id: c.id, label: c.label }; }),
+          countdown: evt.countdown || null,
+          countdownDesc: data.countdownDescription || '',
+          tags: GameState.crisisTags || {},
+          directive: data.narrativeDirective || ''
+        });
+      })(),
+      crisis_judgment: (function(){
+        if (!GameState.crisisJudgmentPending) return '';
+        var j = GameState._lastCrisisJudgment;
+        if (!j) return '';
+        return JSON.stringify({
+          eventId: j.eventId, result: j.result, pool: j.pool,
+          outcome: j.outcome, effects: j.effects, npcFate: j.npcFate,
+          fatePointSpent: j.fatePointSpent || null
+        });
+      })(),
+      visible_state: (function(){
+        var parts = [];
+        if (GameState.health !== '健康') parts.push('身体状况：' + GameState.health);
+        if (GameState.mentalState !== '稳定') parts.push('精神状态：' + GameState.mentalState);
+        if (GameState.fatePoints > 0) parts.push('命运庇护：' + GameState.fatePoints + '层');
+        if (GameState.permanentBodyDamage > 0) parts.push('旧伤累积：' + GameState.permanentBodyDamage);
+        if (GameState.permanentMentalDamage > 0) parts.push('心魔累积：' + GameState.permanentMentalDamage);
+        var activeTags = [];
+        for (var tag in GameState.crisisTags) {
+          if (GameState.crisisTags.hasOwnProperty(tag)) {
+            var t = GameState.crisisTags[tag];
+            if (t.permanent || (!t.expiresAt || t.expiresAt > GameState.turn)) activeTags.push(tag);
+          }
+        }
+        if (activeTags.length > 0) parts.push('身上标签：' + activeTags.join('、'));
+        return parts.length > 0 ? parts.join('\n') : '';
+      })(),
+      fate_point_prompt: (function(){
+        if (GameState.activeCrisisEvent && GameState.fatePoints > 0) {
+          return '玩家当前有' + GameState.fatePoints + '点天命值。可在叙事中暗示"命运的丝线似乎还可以偏转"，让玩家知道可以消耗天命值扭转败局。';
+        }
+        return '';
+      })(),
+      low_attribute_narrative: (function(){
+        var a = GameState.attributes;
+        var hints = [];
+        if (a.power < 20) hints.push('权势极低：上级轻视你、忽视你的意见。叙事中体现"人微言轻"的处境。');
+        if (a.people < 20) hints.push('民心极低：百姓/下属不信任你。叙事中体现"说话没人听"的困境。');
+        if (a.wisdom < 20) hints.push('智谋极低：判断力差。叙事中体现"后知后觉""被人当枪使"。');
+        if (a.bond < 20) hints.push('情义极低：孤家寡人。叙事中体现"独来独往""无人照应"。');
+        if (a.fame < 20) hints.push('声望极低：默默无闻。叙事中体现"没人认识你"。');
+        return hints.length > 0 ? hints.join('\n') : '';
       })()
     },
-    player_action: userMessage
+    player_action: userMessage,
+    // v3.11.0f: 选择回应铁律——强制AI在叙事开头回应玩家上一选择（仅非首轮生效）
+    choice_ack_required: (userMessage && userMessage.length < 200) ? '【选择回应·铁律】玩家刚刚选择了：「' + userMessage + '」。你的叙事必须在前1-3句内明确回应这个选择——交代行动的后果、走向或发现。严禁跳过选择直接开启无关剧情。即使行动暂无结果，也要交代"你去了但..."或"你做了X，注意到..."。' : undefined
   };
   
   // v3.8.15: 上下文已读取currentLifeEvent，清空以备下次触发
@@ -620,8 +686,13 @@ async function processAITurn(userChoice) {
     fixedNarrative = fixedNarrative.replace(/\d{4}年/g, correctYearName);
   }
 
+  // v3.12.1: 叙事中隐藏【墓志铭】段落——结局卡片（showEnding）统一展示，避免叙事与结局卡片重复
+  // 注意：showEnding 仍使用原始 parsed.narrative 提取墓志铭续句，不受此处影响
+  var displayNarrative = fixedNarrative.replace(/【墓志铭】[\s\S]*$/, '').trim();
+  if (!displayNarrative) displayNarrative = fixedNarrative;
+
   // 渲染叙事（驳回时使用特殊样式）
-  const narrativeHTML = narrativeToHTML(fixedNarrative);
+  const narrativeHTML = narrativeToHTML(displayNarrative);
   const narrativeEl = renderNarrative(narrativeHTML);
   if (isRejected) {
     const textEl = narrativeEl.querySelector('.narrative-text');
@@ -744,6 +815,29 @@ async function processAITurn(userChoice) {
         parsed.narrative
       );
     }
+    return;
+  }
+
+  // v3.12.1: 终局兜底——AI已写"驾崩"叙事但未输出 ending 字段时强制结算
+  // 场景：AI在锚点9窗口内/前提前写驾崩（或输出缺失ending字段），turn/year未达硬边界，
+  // 导致结局不触发、选项照常渲染——用户会看到"墓志铭文字+三个选项"却没有结局卡片
+  // 判定窗口：锚点9（朱元璋驾崩，57-60回）前2回合起启用，即 turn >= 55
+  var finaleWindowStart = 55;
+  if (typeof HISTORY_ANCHORS !== 'undefined' && HISTORY_ANCHORS.length >= 9) {
+    finaleWindowStart = HISTORY_ANCHORS[8].start - 2;
+  }
+  if (!isRejected && GameState.turn >= finaleWindowStart
+      && typeof detectEmperorDeath === 'function'
+      && detectEmperorDeath(rawOutput)
+      && !(parsed.stateBlock && parsed.stateBlock.ending)) {
+    var finaleEnding = resolveFinaleEnding();
+    if (!finaleEnding) {
+      finaleEnding = {
+        title: '洪武落幕',
+        description: '洪武三十一年，太祖驾崩。建文帝即位，改元建文。你的洪武仕途在此画上句号——身后功过，留与青史。'
+      };
+    }
+    showEnding(finaleEnding, parsed.narrative);
     return;
   }
 
@@ -1075,6 +1169,18 @@ async function fetchEpitaphAsync(ending, deathIdx) {
 function showEnding(ending, narrative) {
   // v3.8.11: 游戏终止标记——阻止选项渲染
   GameState.gameOver = true;
+  // v3.12.1: 防御性归一化——兼容字符串/数组/空对象等异常 ending 格式（AI输出不稳定）
+  if (!ending || typeof ending !== 'object' || Array.isArray(ending)) {
+    var fallbackTitle = (typeof ending === 'string' && ending) ? ending : '';
+    ending = {
+      title: fallbackTitle || '洪武落幕',
+      description: fallbackTitle
+        ? ''
+        : '洪武三十一年，太祖驾崩。建文帝即位，改元建文。你的洪武仕途在此画上句号——身后功过，留与青史。'
+    };
+  }
+  if (!ending.title) ending.title = '洪武落幕';
+  if (!ending.description) ending.description = '';
   const div = document.createElement('div');
   div.className = 'input-screen';
   // v3.8.6: 结局卡片展示AI叙事 + 代码评价
@@ -1547,6 +1653,24 @@ function applySnapshot(save) {
   GameState.familyCrisisOutcome = gs.familyCrisisOutcome || {};
   // v3.11.0d: 恢复家庭信任度（兼容旧存档——无此字段默认50）
   GameState.familyTrust = gs.familyTrust || 50;
+  // v3.12.0: 恢复生死危机事件层数据（兼容旧存档）
+  if (typeof migrateGameState === 'function') migrateGameState(GameState);
+  GameState.health = gs.health || '健康';
+  GameState.mentalState = gs.mentalState || '稳定';
+  GameState.fatePoints = gs.fatePoints || 0;
+  GameState.fatePointsEarned = Array.isArray(gs.fatePointsEarned) ? gs.fatePointsEarned : [];
+  GameState.fatePointsSpent = Array.isArray(gs.fatePointsSpent) ? gs.fatePointsSpent : [];
+  GameState.crisisEventsTriggered = Array.isArray(gs.crisisEventsTriggered) ? gs.crisisEventsTriggered : [];
+  GameState.crisisEventsCompleted = Array.isArray(gs.crisisEventsCompleted) ? gs.crisisEventsCompleted : [];
+  GameState.lastCrisisTurn = gs.lastCrisisTurn || 0;
+  GameState.lastAnchorTurn = gs.lastAnchorTurn || 0;
+  GameState.activeCrisisEvent = gs.activeCrisisEvent || null;
+  GameState.crisisJudgmentPending = gs.crisisJudgmentPending || false;
+  GameState.crisisTags = gs.crisisTags || {};
+  GameState.permanentBodyDamage = gs.permanentBodyDamage || 0;
+  GameState.permanentMentalDamage = gs.permanentMentalDamage || 0;
+  GameState.npcCrisisState = gs.npcCrisisState || {};
+  GameState.originNPCState = gs.originNPCState || {};
   // v3.9.2: 恢复成就数据（兼容旧存档）
   GameState.achievements = Array.isArray(gs.achievements) ? gs.achievements : [];
 

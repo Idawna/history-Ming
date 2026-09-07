@@ -67,6 +67,23 @@ const GameState = {
   familyCrisisOutcome: {},      // 家庭危机选择结果记录 { crisisId: outcome }
   // v3.11.0d: 家庭信任度（家庭叙事回响系统）
   familyTrust: 50,              // 家庭信任度：0-100，50为中性起点
+  // ========== v3.12.0 生死危机事件层 ==========
+  health: '健康',                 // '健康' | '受伤' | '重伤' | '濒死'
+  mentalState: '稳定',            // '稳定' | '焦虑' | '崩溃边缘' | '崩溃'
+  fatePoints: 0,                  // 天命值（全游戏上限5）
+  fatePointsEarned: [],           // 获取记录 [{turn, reason}]
+  fatePointsSpent: [],            // 消耗记录 [{turn, eventId, reason}]
+  crisisEventsTriggered: [],      // 已触发的危机事件ID列表
+  crisisEventsCompleted: [],      // 已完成的危机事件ID列表
+  lastCrisisTurn: 0,              // 上次危机触发回合号（冷却判定用）
+  lastAnchorTurn: 0,              // 上次锚点结束回合（冲突检测用）
+  activeCrisisEvent: null,        // 当前正在进行的危机事件
+  crisisJudgmentPending: false,   // 是否有待判定的危机结果
+  crisisTags: {},                 // 危机标签 { 'tag': {turn, expiresAt, permanent} }
+  permanentBodyDamage: 0,         // 永久身体伤害累积
+  permanentMentalDamage: 0,       // 永久心理创伤累积
+  npcCrisisState: {},             // NPC危机命运变更 { '蓝玉': 'escaped'|'dead'|... }
+  originNPCState: {},
   // v3.8.5: 圣眷风险追踪
   consecutiveHighEfTurns: 0,
   favorCrashThisTurn: null,
