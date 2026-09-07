@@ -675,6 +675,20 @@ async function processAITurn(userChoice) {
         console.log('[DEBUG] parsed stateBlock.changes:', JSON.stringify(sb.changes));
         applyChanges(sb.changes, parsed.narrative || '');
       }
+      // v3.11.0: 导演指令模式——提取AI生成的EA字段存入GameState临时变量
+      if (GameState.currentEmotionalAnchor && GameState.currentEmotionalAnchor.isNewFormat) {
+        if (sb.ea_option_text) {
+          GameState._pendingEaOptions = sb.ea_option_text;
+        }
+        if (sb.ea_memory_quote) {
+          GameState._pendingEaMemoryQuote = sb.ea_memory_quote;
+        }
+        if (sb.ea_ripple_text) {
+          GameState._pendingEaRipple = sb.ea_ripple_text;
+        }
+        console.log('[EA-V2] 提取AI字段：options=' + !!sb.ea_option_text +
+          ' quote=' + !!sb.ea_memory_quote + ' ripple=' + !!sb.ea_ripple_text);
+      }
       // v3.8.23: 家庭成员命名处理（P2-5）——从AI输出提取名字回写GameState
       if (typeof processFamilyNames === 'function' && sb.family_name_updates) {
         processFamilyNames(sb.family_name_updates);
@@ -749,6 +763,22 @@ async function processAITurn(userChoice) {
     choices = choices.concat(filler);
   } else {
     choices = DEFAULT_CHOICES;
+  }
+
+  // v3.11.0: 导演指令模式——EA回合使用AI生成的选项文字替换默认choices
+  if (GameState.currentEmotionalAnchor && GameState.currentEmotionalAnchor.isNewFormat
+      && GameState._pendingEaOptions) {
+    var eaOpts = GameState._pendingEaOptions;
+    var eaChoices = [];
+    var dirs = GameState.currentEmotionalAnchor.choiceDirections;
+    for (var ei2 = 0; ei2 < dirs.length; ei2++) {
+      var lbl = dirs[ei2].label;
+      var txt = eaOpts[lbl] || dirs[ei2].direction; // fallback到direction
+      eaChoices.push(txt);
+    }
+    if (eaChoices.length >= 2) {
+      choices = eaChoices;
+    }
   }
 
   // v3.10.0: P1-1 出身策略注入——确保每回合至少1个出身特色选项
@@ -870,13 +900,27 @@ async function processAITurn(userChoice) {
     note.className = 'history-choice-made';
     note.textContent = `▸ ${choice}`;
     gameContainer.appendChild(note);
-    // v3.9.0: 情感锚点选择记录
+    // v3.9.0 / v3.11.0: 情感锚点选择记录（兼容新旧格式）
     if (GameState.currentEmotionalAnchor && typeof recordEmotionalChoice === 'function') {
       var anchor = GameState.currentEmotionalAnchor;
-      for (var ei = 0; ei < anchor.choices.length; ei++) {
-        if (anchor.choices[ei].text === choice || choice.indexOf(anchor.choices[ei].text) !== -1) {
-          recordEmotionalChoice(anchor.choices[ei].label);
-          break;
+      if (anchor.isNewFormat && GameState._pendingEaOptions) {
+        // 新格式：通过AI生成的选项文字匹配label
+        var eaOpts = GameState._pendingEaOptions;
+        for (var di = 0; di < anchor.choiceDirections.length; di++) {
+          var dirLabel = anchor.choiceDirections[di].label;
+          var dirText = eaOpts[dirLabel] || '';
+          if (choice === dirText || choice.indexOf(dirText) !== -1 || dirText.indexOf(choice) !== -1) {
+            recordEmotionalChoice(dirLabel);
+            break;
+          }
+        }
+      } else {
+        // 旧格式：通过config.js中的固定text匹配label
+        for (var ei = 0; ei < anchor.choices.length; ei++) {
+          if (anchor.choices[ei].text === choice || choice.indexOf(anchor.choices[ei].text) !== -1) {
+            recordEmotionalChoice(anchor.choices[ei].label);
+            break;
+          }
         }
       }
     }

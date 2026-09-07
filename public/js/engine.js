@@ -3037,6 +3037,7 @@ if (typeof GameState.emotionalMemory === 'undefined') {
 
 /**
  * 检测当前回合是否触发情感锚点，返回格式化指令供AI使用
+ * 支持新旧两种格式：通过 matched.coreEvent/sceneDirective 判断新格式（导演指令模式）
  * @param {number} turn - 当前回合
  * @param {string} background - 玩家出身背景
  * @returns {string} 格式化指令，无匹配返回空字符串
@@ -3054,7 +3055,147 @@ function getEmotionalAnchorDirective(turn, background) {
   }
   if (!matched) return '';
 
-  // 构建指令
+  // 判断格式：新格式（导演指令模式） vs 旧格式（完整剧本模式）
+  var isNewFormat = !!(matched.coreEvent && matched.sceneDirective);
+
+  if (isNewFormat) {
+    return _buildDirectorDirective(matched, turn);
+  } else {
+    return _buildLegacyDirective(matched, turn);
+  }
+}
+
+/**
+ * 新格式：拼装导演指令文本
+ */
+function _buildDirectorDirective(matched, turn) {
+  var lines = [];
+  lines.push('═══════════════════════════════════════');
+  lines.push('【情感锚点·' + matched.title + '】（导演指令模式）');
+  lines.push('═══════════════════════════════════════');
+  lines.push('');
+
+  // 1. 核心事件
+  lines.push('▌核心事件：' + matched.coreEvent);
+  lines.push('▌情感弧线：' + matched.emotionalArc);
+  lines.push('');
+
+  // 2. 关键节拍
+  lines.push('▌关键节拍（必须按此顺序出现）：');
+  for (var b = 0; b < matched.keyBeats.length; b++) {
+    lines.push('  ' + (b + 1) + '. ' + matched.keyBeats[b]);
+  }
+  lines.push('');
+
+  // 3. 场景指令
+  var sd = matched.sceneDirective;
+  lines.push('▌场景指令：');
+  lines.push('  地点：' + sd.location);
+  lines.push('  时间：' + sd.time);
+  lines.push('  氛围：' + sd.atmosphere);
+  lines.push('  必须出现：' + sd.requiredElements.join('、'));
+  if (sd.forbiddenPatterns && sd.forbiddenPatterns.length > 0) {
+    lines.push('  禁用表达：' + sd.forbiddenPatterns.join('、'));
+  }
+  lines.push('');
+
+  // 4. 角色指令
+  var cd = matched.characterDirective;
+  lines.push('▌角色指令：');
+  var npcNames = Object.keys(cd);
+  for (var n = 0; n < npcNames.length; n++) {
+    var npcName = npcNames[n];
+    var npcDir = cd[npcName];
+    lines.push('  【' + npcName + '】');
+    lines.push('    状态：' + npcDir.state);
+    lines.push('    说话风格：' + npcDir.speechStyle);
+    lines.push('    外貌/动作：' + npcDir.physicalDetails.join('，'));
+  }
+  lines.push('');
+
+  // 5. 基调指令
+  var td = matched.toneDirective;
+  lines.push('▌基调指令：');
+  lines.push('  ' + td.overall);
+  lines.push('  技法：' + td.technique);
+  lines.push('  节奏：' + td.pacing);
+  lines.push('');
+
+  // 6. 条件节拍（检查emotionalMemory判断哪些已触发）
+  if (matched.conditionalBeats && matched.conditionalBeats.length > 0) {
+    var anyTriggered = false;
+    var beatLines = [];
+    for (var cb = 0; cb < matched.conditionalBeats.length; cb++) {
+      var beat = matched.conditionalBeats[cb];
+      if (checkConditionalBeat(beat.condition)) {
+        anyTriggered = true;
+        beatLines.push('  ✓ [已触发] ' + beat.beat);
+        beatLines.push('    设计意图：' + beat.implication);
+      }
+    }
+    if (anyTriggered) {
+      lines.push('▌条件节拍（根据玩家历史选择触发）：');
+      for (var bl = 0; bl < beatLines.length; bl++) {
+        lines.push(beatLines[bl]);
+      }
+      lines.push('');
+    }
+  }
+
+  // 7. 选项方向
+  lines.push('▌选项方向（你来生成具体文字，方向如下）：');
+  for (var d = 0; d < matched.choiceDirections.length; d++) {
+    var dir = matched.choiceDirections[d];
+    lines.push('  ' + dir.label + '. 方向：' + dir.direction);
+    lines.push('     情感：' + dir.emotionalNote);
+    lines.push('     余波方向：' + dir.rippleHint);
+  }
+  lines.push('');
+
+  // 8. 记忆模板
+  if (matched.memoryTemplate) {
+    lines.push('▌记忆提取（请在stateBlock.ea_memory_quote中填入关键引语）：');
+    lines.push('  提取规则：' + matched.memoryTemplate.extractionRule);
+    lines.push('');
+  }
+
+  // 9. 输出格式要求
+  var labelStr = matched.choiceDirections.map(function(c) { return c.label; }).join('/');
+  lines.push('▌输出要求（重要）：');
+  lines.push('1. 根据以上指令自由创作场景、对话和叙事，不要机械复述指令内容');
+  lines.push('2. 意象"' + matched.memoryItem + '"必须在场景中自然出现');
+  lines.push('3. 叙事结束后，在stateBlock中输出以下字段：');
+  lines.push('   - "ea_option_text": {"A": "选项A具体文字", "B": "选项B具体文字", "C": "选项C具体文字"}');
+  lines.push('   - "ea_memory_quote": "从对话中提取的关键引语"');
+  lines.push('   - "ea_ripple_text": {"A": "选A的余波", "B": "选B的余波", "C": "选C的余波"}');
+  lines.push('   - "emotional_anchor_choice": "' + labelStr + '"之一');
+  lines.push('4. 选项文字要简洁（每条≤30字），适合按钮展示');
+  lines.push('');
+
+  // 10. 设计意图
+  if (matched.designNote) {
+    lines.push('▌设计意图·仅供你理解精神：');
+    lines.push(matched.designNote);
+  }
+
+  // 标记当前触发状态（新格式）
+  GameState.currentEmotionalAnchor = {
+    id: matched.id,
+    turn: turn,
+    npc: matched.requiredNPCs.join('、'),
+    memoryItem: matched.memoryItem,
+    choiceDirections: matched.choiceDirections,
+    linksTo: matched.linksTo || null,
+    isNewFormat: true
+  };
+
+  return lines.join('\n');
+}
+
+/**
+ * 旧格式兼容：拼装完整剧本文本（原有逻辑保留）
+ */
+function _buildLegacyDirective(matched, turn) {
   var lines = [];
   lines.push('═══════════════════════════════════════');
   lines.push('【情感锚点·' + matched.title + '】');
@@ -3068,7 +3209,6 @@ function getEmotionalAnchorDirective(turn, background) {
   lines.push('【核心对话】');
   lines.push(matched.dialogue);
 
-  // 条件对话
   if (matched.conditionalDialogue && matched.conditionalDialogue.length > 0) {
     lines.push('');
     lines.push('【条件对话·根据玩家历史选择触发】');
@@ -3078,7 +3218,6 @@ function getEmotionalAnchorDirective(turn, background) {
     }
   }
 
-  // 选项
   lines.push('');
   lines.push('【玩家选项·必须原样呈现给玩家】');
   for (var k = 0; k < matched.choices.length; k++) {
@@ -3098,17 +3237,39 @@ function getEmotionalAnchorDirective(turn, background) {
   lines.push('【设计意图·仅供你理解精神】');
   lines.push(matched.designNote || '');
 
-  // 标记当前触发状态，供前端记录
+  // 标记当前触发状态（旧格式）
   GameState.currentEmotionalAnchor = {
     id: matched.id,
     turn: turn,
     npc: matched.npc,
     memoryItem: matched.memoryItem,
     choices: matched.choices,
-    linksTo: matched.linksTo || null
+    linksTo: matched.linksTo || null,
+    isNewFormat: false
   };
 
   return lines.join('\n');
+}
+
+/**
+ * 检查条件节拍是否满足
+ * 条件格式：'EA-XX-N选Y'，如 'EA-HW-2选A'
+ * @param {string} condition - 条件表达式
+ * @returns {boolean}
+ */
+function checkConditionalBeat(condition) {
+  if (!GameState.emotionalMemory || GameState.emotionalMemory.length === 0) return false;
+  var match = condition.match(/^(EA-[A-Z]+-\d+)选([A-C])$/);
+  if (!match) return false;
+  var targetAnchorId = match[1];
+  var targetChoice = match[2];
+  for (var i = 0; i < GameState.emotionalMemory.length; i++) {
+    var mem = GameState.emotionalMemory[i];
+    if (mem.anchorId === targetAnchorId && mem.choice === targetChoice) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -3119,28 +3280,63 @@ function recordEmotionalChoice(choiceLabel) {
   if (!GameState.currentEmotionalAnchor) return;
 
   var anchor = GameState.currentEmotionalAnchor;
-  var choiceData = null;
-  for (var i = 0; i < anchor.choices.length; i++) {
-    if (anchor.choices[i].label === choiceLabel) {
-      choiceData = anchor.choices[i];
-      break;
+
+  if (anchor.isNewFormat) {
+    // ═══ 新格式：从GameState临时字段获取AI生成的数据 ═══
+    var dirData = null;
+    for (var i = 0; i < anchor.choiceDirections.length; i++) {
+      if (anchor.choiceDirections[i].label === choiceLabel) {
+        dirData = anchor.choiceDirections[i];
+        break;
+      }
     }
+    var aiRipple = (GameState._pendingEaRipple && GameState._pendingEaRipple[choiceLabel])
+                   || (dirData ? dirData.rippleHint : '');
+    var aiQuote = GameState._pendingEaMemoryQuote || '';
+
+    if (!GameState.emotionalMemory) GameState.emotionalMemory = [];
+    GameState.emotionalMemory.push({
+      anchorId: anchor.id,
+      turn: anchor.turn,
+      npc: anchor.npc,
+      choice: choiceLabel,
+      ripple: aiRipple,
+      memoryQuote: aiQuote,
+      memoryItem: anchor.memoryItem,
+      linksTo: anchor.linksTo,
+      version: 2
+    });
+    console.log('[情感锚点V2] 记录：' + anchor.id + ' → ' + choiceLabel +
+      ' | 余波：' + aiRipple + ' | 引语：' + aiQuote);
+
+    // 清理临时字段
+    GameState._pendingEaRipple = null;
+    GameState._pendingEaMemoryQuote = null;
+    GameState._pendingEaOptions = null;
+
+  } else {
+    // ═══ 旧格式：原有逻辑 ═══
+    var choiceData = null;
+    for (var j = 0; j < anchor.choices.length; j++) {
+      if (anchor.choices[j].label === choiceLabel) {
+        choiceData = anchor.choices[j];
+        break;
+      }
+    }
+    if (!GameState.emotionalMemory) GameState.emotionalMemory = [];
+    GameState.emotionalMemory.push({
+      anchorId: anchor.id,
+      turn: anchor.turn,
+      npc: anchor.npc,
+      choice: choiceLabel,
+      ripple: choiceData ? choiceData.ripple : '',
+      memoryItem: anchor.memoryItem,
+      linksTo: anchor.linksTo,
+      version: 1
+    });
+    console.log('[情感锚点] 记录选择：' + anchor.id + ' → ' + choiceLabel +
+      (choiceData ? ' | 余波：' + choiceData.ripple : ''));
   }
-
-  // 记录到情感记忆
-  if (!GameState.emotionalMemory) GameState.emotionalMemory = [];
-  GameState.emotionalMemory.push({
-    anchorId: anchor.id,
-    turn: anchor.turn,
-    npc: anchor.npc,
-    choice: choiceLabel,
-    ripple: choiceData ? choiceData.ripple : '',
-    memoryItem: anchor.memoryItem,
-    linksTo: anchor.linksTo
-  });
-
-  console.log('[情感锚点] 记录选择：' + anchor.id + ' → ' + choiceLabel +
-    (choiceData ? ' | 余波：' + choiceData.ripple : ''));
 
   // v3.9.1: EA-HW-3"初为人父"特殊处理——同步更新family状态，防止child1重复触发
   if (anchor.id === 'EA-HW-3' && GameState.family) {
