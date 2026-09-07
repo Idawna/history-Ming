@@ -714,6 +714,11 @@ async function processAITurn(userChoice) {
         }
         return;
       }
+      // v3.11.0e: 提前更新pendingChoices，确保autoSave快照一致性
+      // 此时parsed.choices已可用，先做初步更新；完整选项逻辑（EA覆盖/出身策略）在后续执行
+      if (parsed && Array.isArray(parsed.choices) && parsed.choices.length > 0) {
+        GameState.pendingChoices = parsed.choices.slice(0, 3);
+      }
       autoSave();
       // v3.8.10: 回合结束后检测锚点完成
       if (typeof checkAnchorCompletion === 'function') {
