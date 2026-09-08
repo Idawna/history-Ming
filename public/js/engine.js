@@ -2761,6 +2761,13 @@ function applyFavorRisk() {
 
 // ========== v3.9: 锚点顺序强制控制（简化版——仅精确短语匹配） ==========
 
+// v3.12.2: 统一皇帝驾崩词表——死亡检测(detectEmperorDeath)、锚点校验(ANCHOR_EXACT_PHRASES[9])统一引用此常量，新增词条只改一处
+var EMPEROR_EXPIRY_KEYWORDS = [
+  '朱元璋驾崩', '太祖驾崩', '太祖崩', '皇上驾崩', '朱元璋病逝', '太祖晏驾',
+  '龙驭上宾', '大行皇帝', '圣上殡天', '皇帝殡天',
+  '殡天', '宾天', '山陵崩'
+];
+
 // v3.9精确短语表：每个锚点对应一组"不可能误判"的短语
 // 原则：短语必须足够特异，在正常叙事中不可能偶然出现
 var ANCHOR_EXACT_PHRASES = {
@@ -2778,8 +2785,7 @@ var ANCHOR_EXACT_PHRASES = {
   7: ['蓝玉谋反', '蓝玉被诛', '蓝玉伏诛', '蓝案爆发',
       '蓝玉案发', '蓝玉案牵连', '蓝玉族灭', '蓝玉被杀', '蓝玉赐死'],
   8: ['锦衣卫权力巅峰', '诏狱人满为患'],
-  9: ['朱元璋驾崩', '太祖驾崩', '太祖崩', '皇上驾崩',
-      '朱元璋病逝', '太祖晏驾']
+  9: EMPEROR_EXPIRY_KEYWORDS
 };
 
 // v3.12.1: 终局驾崩检测——AI在终局叙事中已写"驾崩"但忘记输出 ending 字段时的兜底触发
@@ -2787,12 +2793,8 @@ var ANCHOR_EXACT_PHRASES = {
 // 覆盖场景：AI 在锚点9窗口内/前提前写驾崩、或输出格式缺失 ending，导致结局不触发、选项照常渲染
 function detectEmperorDeath(text) {
   if (!text) return false;
-  // 1) 皇帝驾崩专用短语——直接命中
-  var direct = [
-    '朱元璋驾崩', '太祖驾崩', '太祖崩', '皇上驾崩', '朱元璋病逝', '太祖晏驾',
-    '龙驭上宾', '大行皇帝', '圣上殡天', '皇帝殡天',
-    '殡天', '宾天', '山陵崩'
-  ];
+  // 1) 皇帝驾崩专用短语——直接命中（v3.12.2: 统一引用 EMPEROR_EXPIRY_KEYWORDS，与锚点校验同源）
+  var direct = EMPEROR_EXPIRY_KEYWORDS;
   for (var i = 0; i < direct.length; i++) {
     if (text.indexOf(direct[i]) >= 0) return true;
   }
@@ -3997,10 +3999,8 @@ function activateCrisisEvent(evt) {
 // ---------- checkCrisisStoryEvent() ----------
 function checkCrisisStoryEvent() {
   var turn = GameState.turn;
-  // 终局危机 T57-60（Phase 2实现，此处占位）
-  if (turn >= 57 && turn <= 60) return null;
-  // 硬截止
-  if (turn >= 57) return null;
+  // 硬截止：终局窗口内不再调度新危机事件（HISTORY_ANCHORS[8] = 朱元璋驾崩锚点，start = 第57回）
+  if (turn >= HISTORY_ANCHORS[8].start) return null;
   // 当前有活跃危机
   if (GameState.activeCrisisEvent) return null;
   // 冷却+屏蔽

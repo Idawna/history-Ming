@@ -1,3 +1,23 @@
+// ========== v3.12.2 第一阶段修复：调试日志降级封装 + 轻量提示 ==========
+// 调试日志：window.DEBUG_MODE 为 true 时输出，生产环境默认关闭
+const log = {
+  debug: function () {
+    if (window.DEBUG_MODE) console.log.apply(console, arguments);
+  }
+};
+
+// 轻量 Toast 提示：非阻断式，自动消失（用于自动存档失败等低危提示）
+function showToast(msg) {
+  try {
+    var t = document.createElement('div');
+    t.className = 'v3122-toast';
+    t.textContent = msg;
+    t.style.cssText = 'position:fixed;left:50%;bottom:56px;transform:translateX(-50%);background:rgba(16,42,67,.92);color:#F8F6F0;padding:8px 18px;border-radius:6px;font-size:13px;z-index:9999;box-shadow:0 4px 14px rgba(0,0,0,.25);pointer-events:none;';
+    document.body.appendChild(t);
+    setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 2600);
+  } catch (e) { /* 提示失败不影响主流程 */ }
+}
+
 // ========== v3.8.17 上下文优化 Phase 1：历史分层压缩 ==========
 // 三级衰减：L1热区(最近4回合全文) → L2温区(5-8回合摘要) → L3冷区(9+回合一行)
 // 将 chatHistory 从 ~135K tokens 压缩至 ~45K tokens（-67%）
@@ -743,7 +763,7 @@ async function processAITurn(userChoice) {
         }
       }
       if (sb.changes) {
-        console.log('[DEBUG] parsed stateBlock.changes:', JSON.stringify(sb.changes));
+        log.debug('[DEBUG] parsed stateBlock.changes:', JSON.stringify(sb.changes));
         applyChanges(sb.changes, parsed.narrative || '');
       }
       // v3.11.0: 导演指令模式——提取AI生成的EA字段存入GameState临时变量
@@ -1728,8 +1748,14 @@ function applySnapshot(save) {
 }
 
 // Auto-save after each turn (separate key)
+// v3.12.2: try-catch 保护——自动存档失败不阻断回合流程，仅 warn + 轻量提示
 function autoSave() {
-  localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(saveSnapshot()));
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(saveSnapshot()));
+  } catch (err) {
+    console.warn('自动存档失败:', err);
+    showToast('自动存档失败（存储不可用）');
+  }
 }
 
 function loadAutoSave() {

@@ -68,6 +68,47 @@ function updateStatusPanel() {
     });
   }
 
+  // ========== v3.12.0: 生死危机——体魄/心志状态指示器 + 天命值 ==========
+  (function renderCrisisStateIndicators() {
+    var oldBar = document.getElementById('stateIndicatorBar');
+    if (oldBar) oldBar.remove();
+    var oldFate = document.getElementById('fatePointBar');
+    if (oldFate) oldFate.remove();
+
+    var bar = document.createElement('div');
+    bar.id = 'stateIndicatorBar';
+    bar.className = 'state-indicator-bar';
+
+    var healthIcons = { '健康': '❤️', '受伤': '🤕', '重伤': '🩸', '濒死': '💀' };
+    var mentalIcons = { '稳定': '🧘', '焦虑': '😰', '崩溃边缘': '😱', '崩溃': '🫠' };
+    var healthColors = { '健康': '#4a7c59', '受伤': '#b8860b', '重伤': '#cc6600', '濒死': '#8b0000' };
+    var mentalColors = { '稳定': '#4a7c59', '焦虑': '#b8860b', '崩溃边缘': '#cc6600', '崩溃': '#8b0000' };
+    var hp = GameState.health || '健康';
+    var ms = GameState.mentalState || '稳定';
+
+    bar.innerHTML = '<div class="state-row">' +
+      '<span class="state-label">体魄</span>' +
+      '<span class="state-value" style="color:' + healthColors[hp] + '">' +
+      (healthIcons[hp] || '') + ' ' + hp + '</span></div>' +
+      '<div class="state-row">' +
+      '<span class="state-label">心志</span>' +
+      '<span class="state-value" style="color:' + mentalColors[ms] + '">' +
+      (mentalIcons[ms] || '') + ' ' + ms + '</span></div>';
+    attrContainer.appendChild(bar);
+
+    // 天命值
+    var fp = GameState.fatePoints || 0;
+    if (fp > 0) {
+      var fateBar = document.createElement('div');
+      fateBar.id = 'fatePointBar';
+      fateBar.className = 'fate-point-bar';
+      var stars = '';
+      for (var si = 0; si < 5; si++) stars += si < fp ? '✦' : '✧';
+      fateBar.innerHTML = '<span class="fate-label">天命</span> <span class="fate-stars">' + stars + '</span>';
+      attrContainer.appendChild(fateBar);
+    }
+  })();
+
   // ========== P0-1: 阵营区域改造（5条→2条跷跷板+近臣独立） ==========
   const factionContainer = document.getElementById('factionRows');
   factionContainer.innerHTML = '';
