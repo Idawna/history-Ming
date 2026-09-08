@@ -23,9 +23,12 @@ function showToast(msg) {
 // 将 chatHistory 从 ~135K tokens 压缩至 ~45K tokens（-67%）
 
 function compressHistory() {
-  const HOT = 8;    // 最近4回合(8条消息)：全文保留
+  const HOT = 8;    // 最近4回合(8条消息)：叙事全文保留
   const WARM = 16;  // 第5-8回合(9-16条消息)：段落摘要
   // 第9+回合(17+条消息)：一行摘要
+  // v3.14.1 新增：热区内「非最新」user 消息也压缩为 L2
+  // 理由：user 消息中的每回合指令（rhythm_directive/dynamic_rules/recent_plot 等）只对当时回合有效，
+  //       进入历史后是纯冗余；保留 current_state+player_action 已足够衔接剧情与角色状态演变
 
   for (let i = 0; i < chatHistory.length; i++) {
     const msg = chatHistory[i];
@@ -33,7 +36,7 @@ function compressHistory() {
 
     if (age > WARM) {
       // L3 冷区：一行摘要
-      if (msg._compressedTier === 2) continue; // 已冷压缩，跳过
+      if (msg._compressedTier) continue; // v3.14.1: 已压缩（任意层级）跳过——修复 tier=3 被重复压缩导致内容退化（'【第?回合】'）的幂等性 bug
       msg.content = compressToLine(msg);
       msg._compressedTier = 3;
     } else if (age > HOT) {
@@ -41,8 +44,12 @@ function compressHistory() {
       if (msg._compressedTier) continue; // 已压缩（温或冷），跳过
       msg.content = compressToSummary(msg);
       msg._compressedTier = 2;
+    } else if (msg.role === 'user' && age > 2 && msg._compressedTier !== 2) {
+      // v3.14.1 热区 user 压缩：保留最新1条 user（当前回合注入指令）全文，更早的 user 压缩为 L2
+      msg.content = compressToSummary(msg);
+      msg._compressedTier = 2;
     }
-    // L1 热区：不动
+    // L1 热区：assistant 叙事全文保留（衔接连贯性）
   }
 
   // 调试日志：追踪压缩效果
@@ -130,7 +137,9 @@ async function streamBotAPI(userMessage, streamTarget, options) {
   // 构造当前回合的上下文消息
   const contextPayload = {
     rhythm_directive: rhythm.directive,
-    character_canon: GameState.character.intro
+    // v3.14.1: 身世铁律低频注入——前5回合每回合注入（开局定型），之后每10回合刷新一次（防长局遗忘），
+    // 减少每回合重复发送固定身世文本（~150字符/回合）；角色姓名/出身/官职仍通过 current_state 每回合提供
+    character_canon: (GameState.character.intro && (GameState.turn <= 5 || GameState.turn % 10 === 0))
       ? `【角色身世·铁律】以下角色身世小传是玩家开局时确认过的正史设定，任何叙事涉及角色姓名、籍贯、家庭、早年经历、出身时，必须与之严格一致，不得改写、不得新增矛盾设定、不得重新介绍角色身世：\n${GameState.character.intro}`
       : undefined,
     recent_plot: collectRecentPlot(8),
@@ -312,6 +321,11 @@ async function streamBotAPI(userMessage, streamTarget, options) {
         var data = evt.data;
         var bg = GameState.character.background;
         var originVariant = data.originVariants ? data.originVariants[bg] : null;
+        var timer = GameState.crisisTimers ? GameState.crisisTimers[evt.eventId] : null;
+        var countdownState = null;
+        if (timer && timer.states && timer.currentStateIndex !== undefined) {
+          countdownState = timer.states[timer.currentStateIndex] || null;
+        }
         return JSON.stringify({
           eventId: evt.eventId,
           title: data.title,
@@ -320,10 +334,16 @@ async function streamBotAPI(userMessage, streamTarget, options) {
           originVariant: originVariant,
           scene: data.sceneDescription || '',
           choices: data.choices.map(function(c) { return { id: c.id, label: c.label }; }),
-          countdown: evt.countdown || null,
+          countdown: timer ? timer.remaining : (evt.countdown || null),
+          countdownTotal: evt.countdownTurns || null,
+          countdownState: countdownState,
           countdownDesc: data.countdownDescription || '',
+          isFinale: !!data.isFinale,
+          finalePhase: GameState.crisisFinalePhase || 0,
+          finaleChoices: GameState.crisisFinaleChoices || [],
           tags: GameState.crisisTags || {},
-          directive: data.narrativeDirective || ''
+          directive: data.narrativeDirective || '',
+          choiceMarkProtocol: '玩家做出选择后，你必须在 state block 的 changes 中加入 "crisis_choice": "A"/"B"/"C"（对应上方 choices 数组中的 id），其余判定与后果由前端硬判定系统执行，你只需在叙事正文中呈现选择后的场景；若本回合玩家尚未做出选择，不要输出该标记。'
         });
       })(),
       crisis_judgment: (function(){
@@ -406,13 +426,20 @@ async function streamBotAPI(userMessage, streamTarget, options) {
   // 控制历史长度：保留最近 30 条消息（约 15 回合），防止超出上下文窗口
   // 每回合 = 1条 user + 1条 assistant，30条 ≈ 15 回合
   const MAX_HISTORY = 30;
-  // v3.8.23 P2-2: 历史压缩异步化 — 使用requestIdleCallback不阻塞主线程
-  if (typeof requestIdleCallback !== 'undefined') {
-    requestIdleCallback(() => compressHistory());
-  } else {
-    setTimeout(compressHistory, 0);
-  }
+  // v3.14.1: 压缩时序修复——发送前同步压缩，保证 trimmedHistory 已压缩（原 requestIdleCallback 异步调度
+  // 与 slice(-MAX_HISTORY) 存在竞态：本回合请求可能在压缩完成前发出，导致热区全量 JSON 直接发送）
+  // compressHistory 为 O(n) 且已压缩消息有 _compressedTier 标记跳过，实际每次只处理新增 1-2 条，开销 <10ms
+  compressHistory();
   const trimmedHistory = chatHistory.slice(-MAX_HISTORY);
+
+  // v3.14.1 性能埋点：测量请求 payload 与各环节耗时（F12 Console 可查）
+  var perfPayloadChars = 0;
+  for (var pi = 0; pi < trimmedHistory.length; pi++) {
+    perfPayloadChars += (trimmedHistory[pi].content || '').length;
+  }
+  var t_reqStart = Date.now();
+  var t_firstChunk = 0;
+  console.log('[perf] 回合' + GameState.turn + ' 请求 payload: ' + trimmedHistory.length + '条消息, ' + perfPayloadChars + '字符 ≈' + Math.round(perfPayloadChars / 1.5) + ' tokens');
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s 超时（flash 模型响应较慢）
@@ -458,6 +485,12 @@ async function streamBotAPI(userMessage, streamTarget, options) {
 
       const chunk = decoder.decode(value, { stream: true });
       fullText += chunk;
+
+      // v3.14.1 性能埋点：首 chunk 到达时间 = 首 token 延迟（用户感知的「开始出字」等待）
+      if (!t_firstChunk) {
+        t_firstChunk = Date.now();
+        console.log('[perf] 首 chunk 到达: ' + (t_firstChunk - t_reqStart) + 'ms');
+      }
 
       // v3.8.23 P1-1 + v3.8.25 hotfix: 流式增量解析 — 分隔符出现后锁定显示
       if (streamTarget && !buffered) {
@@ -508,6 +541,9 @@ async function streamBotAPI(userMessage, streamTarget, options) {
     window.removeEventListener('wheel', scrollHandler);
     window.removeEventListener('touchmove', scrollHandler);
 
+    // v3.14.1 性能埋点：完整响应耗时
+    console.log('[perf] 完整响应: ' + (Date.now() - t_reqStart) + 'ms, 输出 ' + (fullText || '').length + '字符');
+
     // 把 AI 回复加入历史
     if (fullText.trim()) {
       chatHistory.push({ role: 'assistant', content: fullText.trim() });
@@ -535,6 +571,8 @@ async function streamBotAPI(userMessage, streamTarget, options) {
 // ========== TURN PROCESSOR ==========
 // v3.9: 增加自动重试机制——AI输出先缓冲，校验通过才展示给玩家
 async function processAITurn(userChoice) {
+  // v3.14.1 性能埋点：选择后处理总耗时
+  var t_turnStart = Date.now();
   // 前端节奏引擎：本回合目标节奏（在叙事上屏/回合推进前计算，回合号准确）
   const engineRhythm = getRhythmDirective(getNextTurn());
   
@@ -587,6 +625,9 @@ async function processAITurn(userChoice) {
 
     // 移除等待提示
     streamArea.remove();
+
+    // v3.14.1 性能埋点：AI 完整回复耗时（含可能的校验重试）
+    console.log('[perf] AI 回复完成: ' + (Date.now() - t_turnStart) + 'ms (重试次数=' + retryCount + ')');
 
     if (!rawOutput || !rawOutput.trim()) {
       showError('墨史官的回复为空，请重试。', userChoice);
@@ -723,13 +764,14 @@ async function processAITurn(userChoice) {
 
   // 应用状态变更（驳回时跳过：不更新数值、不推进回合、不存档）
   if (!isRejected) {
-    // v3.8.22 P0: 等待叙事淡入动画完成，兜底1s
+    // v3.14.1: 等待叙事淡入动画完成，兜底400ms（原1000ms——动画实际0.8s，且applyChanges只更新数值/存档，
+    // 不依赖叙事DOM，过早触发无副作用；减少每回合选择后 ~600ms 人为等待）
     await new Promise(r => {
       const narrativeText = narrativeEl.querySelector('.narrative-text');
       if (narrativeText) {
         const onEnd = () => { narrativeText.removeEventListener('animationend', onEnd); r(); };
         narrativeText.addEventListener('animationend', onEnd);
-        setTimeout(r, 1000); // 安全兜底
+        setTimeout(r, 400); // 安全兜底
       } else {
         r();
       }
@@ -842,6 +884,7 @@ async function processAITurn(userChoice) {
   // 场景：AI在锚点9窗口内/前提前写驾崩（或输出缺失ending字段），turn/year未达硬边界，
   // 导致结局不触发、选项照常渲染——用户会看到"墓志铭文字+三个选项"却没有结局卡片
   // 判定窗口：锚点9（朱元璋驾崩，57-60回）前2回合起启用，即 turn >= 55
+  // v3.14.0（P1-3）：直接读锚点表，消除魔法数字 55；锚点表不可用时兜底 55
   var finaleWindowStart = 55;
   if (typeof HISTORY_ANCHORS !== 'undefined' && HISTORY_ANCHORS.length >= 9) {
     finaleWindowStart = HISTORY_ANCHORS[8].start - 2;
@@ -1265,55 +1308,7 @@ function showEnding(ending, narrative) {
     ${epitaphHtml}
     <button class="confirm-btn" onclick="location.reload()">重新开始</button>
   `;
-  // Add styles for ending display
-  const style = document.createElement('style');
-  style.textContent = `
-    .ending-title { font-size: 1.6em; margin-bottom: 0.3em; color: #d4a574; text-align: center; }
-    .ending-career-name { font-size: 1.2em; color: #e8c9a0; text-align: center; margin-bottom: 0.5em; font-weight: 600; }
-    .ending-legacy {
-      margin: 1.2em 0; padding: 1em 1.2em;
-      background: rgba(180,140,80,0.08); border: 1px solid rgba(196,168,130,0.25);
-      border-radius: 6px;
-    }
-    .ending-legacy-title { font-size: 1.0em; color: #b8956a; text-align: center; margin-bottom: 0.5em; }
-    .ending-legacy-name { font-size: 1.1em; color: #d4b88c; text-align: center; font-weight: 600; margin-bottom: 0.3em; }
-    .ending-legacy-desc { font-size: 0.9em; color: #a89070; text-align: center; line-height: 1.6; font-style: italic; }
-    .ending-verdict {
-      font-style: italic; color: #a89070; text-align: center;
-      margin: 1em 0; padding: 0 1em; line-height: 1.6;
-    }
-    .ending-epitaph {
-      text-align: center; color: #d4c4a0; font-size: 1.0em;
-      margin: 1.5em auto 0.8em; padding: 1.2em 1.5em;
-      background: linear-gradient(135deg, rgba(60,45,30,0.6), rgba(40,30,20,0.8));
-      border: 1px solid rgba(196,168,130,0.35);
-      border-radius: 4px;
-      box-shadow: inset 0 0 20px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.2);
-      line-height: 2; letter-spacing: 0.1em;
-      font-family: "Noto Serif SC", "Source Han Serif SC", "STSong", serif;
-      position: relative;
-      max-width: 400px;
-    }
-    .ending-epitaph::before {
-      content: '\u2014\u00A0\u2014';
-      display: block;
-      color: rgba(196,168,130,0.5);
-      font-size: 0.85em;
-      margin-bottom: 0.5em;
-      letter-spacing: 0.3em;
-    }
-    .epitaph-loading {
-      display: inline-block;
-      color: rgba(196,168,130,0.5);
-      font-size: 0.85em;
-      animation: epitaphPulse 1.5s ease-in-out infinite;
-    }
-    @keyframes epitaphPulse {
-      0%, 100% { opacity: 0.4; }
-      50% { opacity: 1; }
-    }
-  `;
-  div.appendChild(style);
+  // v3.12.3 P1-5: 终局展示样式已迁移至 styles.css（.ending-title / .ending-career-name / .ending-legacy-* / .ending-verdict / .ending-epitaph / .epitaph-loading）
   gameContainer.appendChild(div);
   scrollToBottom();
 
@@ -1331,9 +1326,9 @@ async function enterGameLoop() {
     // === LIVE MODE ===
     chatHistory = []; // 重置对话历史
     // First turn: send character intro as context
-    const initialContext = `【角色创建已完成，跳过第16.3节首轮格式。玩家角色已确定，身世小传玩家已在开局界面读过，即上文 character_canon 字段】
+    const initialContext = `【角色创建已完成，跳过第十七章首轮格式。玩家角色已确定，身世小传玩家已在开局界面读过，即上文 character_canon 字段】
 
-请严格按照第16.1节的输出格式，直接输出第一回合的完整内容：
+请严格按照第十七章的输出格式，直接输出第一回合的完整内容：
 1. 叙事段落（400-600字·**首回合蒙太奇**）：本回合允许用蒙太奇手法快进"从小传入仕（约洪武初年）到洪武八年春"的数年铺垫。先用 2-3 句话从小传结尾处接续（角色到任/当差），然后用 2-3 句话概括这数年间的关键变化（官职升降/人际聚散/某次危机），最后落点到**洪武八年春**——一个让角色嗅到"太师刘基病重"风声的清晨或午后，窗外有具体可感的场景。可以引用小传中的人物与细节（如父亲遗言、家世处境、舅舅蓝玉），但禁止复述、重写或扩写小传本身，禁止重新介绍角色身世
 2. ---分隔符
 3. 3个选项+1个自由行动（用「」包裹），围绕"刘基病重"消息的初步反应（打探/观望/拜访等）
@@ -1628,71 +1623,51 @@ function saveSnapshot() {
 function applySnapshot(save) {
   if (!save || !save.gameState) return;
   const gs = save.gameState;
-  // 基础容错：确保 gs 的嵌套对象存在
-  if (!gs.character) gs.character = { name: '', age: 22, background: '', position: '未入流', rank: 0 };
-  if (!gs.attributes) gs.attributes = { power: 20, people: 30, wisdom: 40, bond: 50, fame: 10 };
-  if (!gs.factions) gs.factions = { huaixi: 0, zhedong: 0, donggong: 0, zhuwang: 0, jinchen: 0 };
-  if (!Array.isArray(gs.seeds)) gs.seeds = [];
-  if (!Array.isArray(gs.seeds_triggered)) gs.seeds_triggered = [];
 
-  // 重置 GameState 再合并（避免上一局的残留字段污染）
-  GameState.turn = gs.turn || 1;
-  GameState.year = gs.year || 1375;
-  GameState.month = gs.month || 1;
-  GameState.pacing = gs.pacing || '日常';
-  GameState.emperor_feeling = gs.emperor_feeling || 0;
+  // ========== v3.14.0（P0-6）: 存档自动恢复机制 ==========
+  // 1) 用 DEFAULT_GAME_STATE 模板重置全部字段：新增字段自动获得默认值，
+  //    不再需要逐字段手动维护恢复逻辑（修复"恢复后 crisisTags 等字段丢失"类问题）
+  // 2) 用存档值整体覆盖：存档是 GameState 的完整快照（JSON.stringify），
+  //    读档后状态与存档时刻一致
+  // 3) 嵌套对象深合并 + 旧存档格式兼容（缺子键时补默认值）
+  // 4) 保留 migrateGameState 处理字段类型变化等复杂迁移
+  const base = (typeof DEFAULT_GAME_STATE !== 'undefined')
+    ? JSON.parse(JSON.stringify(DEFAULT_GAME_STATE))
+    : {};
 
-  // 浅层合并嵌套对象
-  GameState.character = { ...GameState.character, ...gs.character };
-  GameState.attributes = { ...gs.attributes };
-  GameState.factions = { ...gs.factions };
+  // 1) 模板重置（所有已定义字段回到默认值）
+  for (const k in base) {
+    if (Object.prototype.hasOwnProperty.call(base, k)) GameState[k] = base[k];
+  }
+  // 2) 存档值覆盖（跳过一次性运行时内部字段，避免旧存档残留通知复活）
+  for (const k in gs) {
+    if (!Object.prototype.hasOwnProperty.call(gs, k) || gs[k] === undefined) continue;
+    if (k.charAt(0) === '_' && k !== '_pendingEaOptions' && k !== '_pendingEaMemoryQuote' && k !== '_pendingEaRipple') continue;
+    GameState[k] = gs[k];
+  }
+  // 3) 嵌套对象深合并（旧存档缺子键时补默认值）
+  GameState.character = { ...(base.character || {}), ...(gs.character || {}) };
+  GameState.attributes = { ...(base.attributes || {}), ...(gs.attributes || {}) };
+  GameState.factions = { ...(base.factions || {}), ...(gs.factions || {}) };
   // 种子格式兼容：旧版存盘种子为字符串，统一转为对象格式
-  GameState.seeds = gs.seeds.map(function(s) {
+  GameState.seeds = Array.isArray(gs.seeds) ? gs.seeds.map(function(s) {
     return typeof s === 'string' ? { id: s, planted_turn: 1 } : s;
-  });
-  GameState.seeds_triggered = [...gs.seeds_triggered];
-  // v3.8.10: 恢复已完成锚点列表（兼容旧存档）
-  GameState.completedAnchors = Array.isArray(gs.completedAnchors) ? [...gs.completedAnchors] : [];
-  // v3.9.1: 恢复待选选项（修复"继续前行"重做后读档选项丢失）
-  GameState.pendingChoices = Array.isArray(gs.pendingChoices) ? [...gs.pendingChoices] : [];
-  // v3.11.0b: 恢复EA导演指令模式临时变量（修复退出重进后EA上下文丢失）
+  }) : (Array.isArray(base.seeds) ? [...base.seeds] : []);
+  // 数组字段类型兜底（防旧存档异常值破坏遍历逻辑）
+  const ARRAY_FIELDS = ['seeds_triggered', 'completedAnchors', 'pendingChoices', 'lifeEventsTriggered',
+    'fatePointsEarned', 'fatePointsSpent', 'crisisEventsTriggered', 'crisisEventsCompleted', 'achievements',
+    'crisisFinaleChoices', 'crisisSkippedEvents', 'emotionalMemory'];
+  for (const f of ARRAY_FIELDS) {
+    if (!Array.isArray(GameState[f])) GameState[f] = [];
+  }
+  // v3.11.0b: EA导演指令模式临时变量（修复退出重进后EA上下文丢失）
   GameState._pendingEaOptions = gs._pendingEaOptions || null;
   GameState._pendingEaMemoryQuote = gs._pendingEaMemoryQuote || null;
   GameState._pendingEaRipple = gs._pendingEaRipple || null;
-  GameState.currentEmotionalAnchor = gs.currentEmotionalAnchor || null;
-  // v3.8.15: 恢复家庭数据（兼容旧存档——旧存档没有family字段，下次updateDeathTracking会自动初始化）
-  GameState.family = gs.family || null;
-  GameState.lifeEventLastTurn = gs.lifeEventLastTurn || 0;
-  GameState.lifeEventsTriggered = Array.isArray(gs.lifeEventsTriggered) ? [...gs.lifeEventsTriggered] : [];
+  // v3.8.16: 当前生活事件不落档，读档后硬重置（原逻辑保留）
   GameState.currentLifeEvent = null;
-  // v3.8.16: 恢复Phase 2-3婚姻/危机状态（兼容旧存档）
-  GameState.pendingMarriageChoice = gs.pendingMarriageChoice || null;
-  GameState.currentFamilyCrisis = gs.currentFamilyCrisis || null;
-  GameState.familyCrisisTriggeredThisAnchor = gs.familyCrisisTriggeredThisAnchor || false;
-  GameState.lastFamilyCrisisAnchor = gs.lastFamilyCrisisAnchor || 0;
-  GameState.familyCrisisOutcome = gs.familyCrisisOutcome || {};
-  // v3.11.0d: 恢复家庭信任度（兼容旧存档——无此字段默认50）
-  GameState.familyTrust = gs.familyTrust || 50;
-  // v3.12.0: 恢复生死危机事件层数据（兼容旧存档）
+  // 4) 复杂迁移（字段类型变化等，保留原有迁移逻辑）
   if (typeof migrateGameState === 'function') migrateGameState(GameState);
-  GameState.health = gs.health || '健康';
-  GameState.mentalState = gs.mentalState || '稳定';
-  GameState.fatePoints = gs.fatePoints || 0;
-  GameState.fatePointsEarned = Array.isArray(gs.fatePointsEarned) ? gs.fatePointsEarned : [];
-  GameState.fatePointsSpent = Array.isArray(gs.fatePointsSpent) ? gs.fatePointsSpent : [];
-  GameState.crisisEventsTriggered = Array.isArray(gs.crisisEventsTriggered) ? gs.crisisEventsTriggered : [];
-  GameState.crisisEventsCompleted = Array.isArray(gs.crisisEventsCompleted) ? gs.crisisEventsCompleted : [];
-  GameState.lastCrisisTurn = gs.lastCrisisTurn || 0;
-  GameState.lastAnchorTurn = gs.lastAnchorTurn || 0;
-  GameState.activeCrisisEvent = gs.activeCrisisEvent || null;
-  GameState.crisisJudgmentPending = gs.crisisJudgmentPending || false;
-  GameState.crisisTags = gs.crisisTags || {};
-  GameState.permanentBodyDamage = gs.permanentBodyDamage || 0;
-  GameState.permanentMentalDamage = gs.permanentMentalDamage || 0;
-  GameState.npcCrisisState = gs.npcCrisisState || {};
-  GameState.originNPCState = gs.originNPCState || {};
-  // v3.9.2: 恢复成就数据（兼容旧存档）
-  GameState.achievements = Array.isArray(gs.achievements) ? gs.achievements : [];
 
   updateStatusPanel();
   clearContainer();
@@ -1772,6 +1747,18 @@ function loadAutoSave() {
 }
 
 // ========== INIT ==========
+// v3.12.3 P0-5: 开局显式重置终局相关字段
+// gameOver 仅在 showEnding 中置 true、原无重置入口，旧逻辑依赖 location.reload() 重建整个 JS 环境；
+// 此处显式重置，保证未来改为不刷新页面重开时终局状态不残留。
+function resetFinaleState() {
+  GameState.gameOver = false;
+  GameState.ending = null;            // 运行时动态字段（showEnding 局部参数），防御性清空
+  GameState.completedAnchors = [];
+  GameState.lastAnchorAchieved = 0;
+  GameState.pendingChoices = null;    // 终局回合若有未决选项，一并清理
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  resetFinaleState();
   startGame();
 });

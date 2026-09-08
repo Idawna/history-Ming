@@ -1174,6 +1174,31 @@ function applyChanges(changes, narrative) {
     GameState.currentFamilyCrisis = null;
   }
 
+  // ========== v3.13.0 生死危机 Phase 2: 危机事件选择处理（AI 标记 → 前端硬判定） ==========
+  if (changes.crisis_choice && GameState.activeCrisisEvent) {
+    var crisisChoiceId = changes.crisis_choice;
+    console.log('[生死危机] 玩家选择标记：' + crisisChoiceId);
+    if (typeof resolveCrisisJudgment === 'function') {
+      var judgment = resolveCrisisJudgment(crisisChoiceId);
+      if (judgment) {
+        GameState._lastCrisisJudgment = judgment;
+        // 浮动显示判定结果
+        try {
+          var fcEl = document.getElementById('floatingChanges');
+          if (fcEl) {
+            var crisisEl = document.createElement('div');
+            crisisEl.className = 'float-notify ' + (judgment.result === 'favorable' ? 'positive' : (judgment.result === 'normal' ? '' : 'negative'));
+            crisisEl.textContent = '【' + judgment.eventTitle + '】' + judgment.choiceLabel + '：' + (judgment.outcome.desc || '');
+            fcEl.appendChild(crisisEl);
+            setTimeout(function() { crisisEl.remove(); }, 3500);
+          }
+        } catch (e) { console.warn('[生死危机] 浮动显示失败', e); }
+      } else {
+        console.warn('[生死危机] crisis_choice 标记无效：' + crisisChoiceId);
+      }
+    }
+  }
+
   // ========== v3.8.19: 阶段性成就系统 ==========
   if (typeof generateAnchorAchievement === 'function') {
     var achievement = generateAnchorAchievement(GameState.turn);

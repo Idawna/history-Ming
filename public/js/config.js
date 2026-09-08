@@ -24,7 +24,13 @@ function toggleMode() {
 }
 
 // ========== GAME STATE ==========
-const GameState = {
+// ========== v3.14.0（P0-6）: 默认状态模板与运行时状态分离 ==========
+// DEFAULT_GAME_STATE 是 GameState 的默认值模板（唯一事实来源）：
+//   - 新游戏初始化：GameState = 模板的深拷贝
+//   - 读档恢复：applySnapshot 用 Object.assign(GameState, 模板, 存档) 自动合并，
+//     新增字段自动获得默认值，不再需要逐字段手动维护恢复逻辑
+// 注意：DEFAULT_GAME_STATE 必须保持纯数据（可 JSON 序列化），禁止函数/undefined 值
+const DEFAULT_GAME_STATE = {
   turn: 1,
   year: 1375,
   month: 1,
@@ -84,6 +90,10 @@ const GameState = {
   permanentMentalDamage: 0,       // 永久心理创伤累积
   npcCrisisState: {},             // NPC危机命运变更 { '蓝玉': 'escaped'|'dead'|... }
   originNPCState: {},
+  // ========== v3.13.0 生死危机 Phase 2 ==========
+  crisisTimers: {},               // 限时事件计时器 { eventId: { remaining, total, startTurn, lastDecrementTurn, states } }
+  crisisFinalePhase: 0,           // 终局危机当前阶段（0=未开始，1-4=国丧/站队/暗涌/天命落）
+  crisisFinaleChoices: [],        // 终局危机各阶段选择记录 [{ phase, choiceId, choiceLabel, turn }]
   // v3.8.5: 圣眷风险追踪
   consecutiveHighEfTurns: 0,
   favorCrashThisTurn: null,
@@ -113,6 +123,9 @@ const GameState = {
   // v3.8.19: 阶段性成就系统 — 上次触发成就的锚点ID（防重复）
   lastAnchorAchieved: 0
 };
+
+// 运行时状态：默认模板的深拷贝（保证嵌套对象独立，不共享 DEFAULT_GAME_STATE 内部引用）
+const GameState = JSON.parse(JSON.stringify(DEFAULT_GAME_STATE));
 
 // ========== LABELS ==========
 const ATTR_LABELS = {

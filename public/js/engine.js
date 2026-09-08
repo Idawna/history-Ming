@@ -106,6 +106,44 @@ const HISTORY_ANCHORS = [
   { id: 9, name: '朱元璋驾崩', desc: '朱元璋病逝、建文帝即位，游戏终点', start: 57, end: 60, time: '洪武三十一年·1398年闰五月', year: 1398 }
 ];
 
+// ========== v3.14.0: 统一锚点插值表（P1-3） ==========
+// 年份→回合 锚点插值表：所有年份→回合转换统一查此表，禁止散落硬编码映射。
+// 代表回合取值沿用 v3.13.0 修复后的保守锚点对（保持既有调度行为不变），
+// 与 HISTORY_ANCHORS 窗口对应关系：
+//   锚点1 刘伯温之死(1375,T2-4)→3   锚点2 胡惟庸案(1380,T12-15)→13
+//   锚点3 空印案(1382,T21-22)→21    锚点4 郭桓案(1385,T27-29)→28
+//   锚点5 李善长案(1390,T38-40)→39  锚点6 太子之死(1392,T43-44)→43
+//   锚点7 蓝玉案(1393,T47-49)→48    锚点8 锦衣卫膨胀(1396,T52-53)→52
+//   锚点9 朱元璋驾崩(1398,T57-60)→58
+const ANCHOR_TURN_TABLE = [
+  { year: 1375, turn: 3,  anchorId: 1 },
+  { year: 1380, turn: 13, anchorId: 2 },
+  { year: 1382, turn: 21, anchorId: 3 },
+  { year: 1385, turn: 28, anchorId: 4 },
+  { year: 1390, turn: 39, anchorId: 5 },
+  { year: 1392, turn: 43, anchorId: 6 },
+  { year: 1393, turn: 48, anchorId: 7 },
+  { year: 1396, turn: 52, anchorId: 8 },
+  { year: 1398, turn: 58, anchorId: 9 }
+];
+
+// v3.14.0: 年份→回合 统一转换函数（查 ANCHOR_TURN_TABLE 线性插值）
+function yearToTurn(year) {
+  var table = (typeof ANCHOR_TURN_TABLE !== 'undefined') ? ANCHOR_TURN_TABLE : [];
+  if (!table.length) return Math.round((year - 1373) * 2.85); // 极端兜底，正常不会走到
+  if (year <= table[0].year) return table[0].turn;
+  if (year >= table[table.length - 1].year) return table[table.length - 1].turn;
+  for (var i = 1; i < table.length; i++) {
+    if (year <= table[i].year) {
+      var y0 = table[i - 1].year, y1 = table[i].year;
+      var t0 = table[i - 1].turn, t1 = table[i].turn;
+      var ratio = (year - y0) / (y1 - y0);
+      return Math.round(t0 + ratio * (t1 - t0));
+    }
+  }
+  return table[table.length - 1].turn;
+}
+
 // 即将生成的回合号：屏幕上还没有叙事=开局第1回；否则=当前回合+1
 function getNextTurn() {
   const hasNarratives = gameContainer.querySelectorAll('.narrative-area').length > 0;
@@ -129,6 +167,22 @@ const NPC_BIRTH_DEATH = {
   '宋濂':   { birth: 1310, death: 1381, personality: '翰林学士承旨、太子师、"开国文臣之首"。温厚儒雅、学识渊博。文官自称「下官/臣」' },
   '毛骧':   { birth: null, death: 1390, personality: '锦衣卫首任指挥使、凤阳定远人。阴鸷精明、对皇帝绝对忠诚。武官自称「末将/卑职」' }
 };
+
+// ========== v3.14.0: 公共工具（P1-2 重复代码抽取） ==========
+// NPC 是否在当前年份已死亡/未出场（统一 getAliveNPCs / getDeadNPCs 的判断）：
+//   - 刘伯温（刘基）之死是锚点事件1，必须等锚点1完成后才算死亡
+//   - 毛骧 1382 年前未出场（锦衣卫尚未设立），视为"已死"以排除出场
+function isNPCDead(name, info, year) {
+  var isDead = year >= info.death;
+  if ((name === '刘伯温' || name === '刘基') &&
+      (!GameState.completedAnchors || !GameState.completedAnchors.includes(1))) {
+    isDead = false; // 锚点1未完成，刘伯温不算死亡
+  }
+  if (name === '毛骧' && year < 1382) {
+    isDead = true; // 未出场，不显示
+  }
+  return isDead;
+}
 
 // v3.9: NPC↔锚点绑定表——哪个NPC的命运与哪个未来锚点挂钩
 // 用于信息隔离：当该锚点尚未发生时，在NPC描述中附加禁止指令
@@ -156,28 +210,21 @@ var POSITIVE_SEED_TYPES = [
   { id: '声名渐起', type: '正面·名望', effect: { attributes: { fame: 7, people: 3 }, emperor_feeling: 2 }, desc: '你的才干逐渐为人所知，皇帝也有所耳闻' }
 ];
 
-// v3.8.18: 种植正面种子（P0-1修正：概率提升+上限提升+沉淀回合+紧迫减半）
-function plantPositiveSeed(turn) {
-  var pacing = GameState.pacing;
-  // 沉淀回合也允许种植；紧迫回合概率减半
-  if (pacing !== '日常' && pacing !== '缓冲' && pacing !== '沉淀' && pacing !== '紧迫') return;
-  
-  // 已有未触发的正面种子>=3个，不再种植
-  var positiveCount = 0;
+// ========== v3.14.0: 正面种子公共工具（P1-2 重复代码抽取） ==========
+// 统计当前未触发正面种子数量（random 种植与建设种植共用）
+function countPendingPositiveSeeds() {
+  var count = 0;
   for (var i = 0; i < GameState.seeds.length; i++) {
     var s = GameState.seeds[i];
-    if (s.type && s.type.indexOf('正面') === 0) positiveCount++;
+    if (s.type && s.type.indexOf('正面') === 0) count++;
   }
-  if (positiveCount >= 3) return;
-  
-  // 35%概率种植（紧迫回合减半为17.5%）
-  var effectiveProb = (pacing === '紧迫') ? 0.175 : 0.35;
-  if (Math.random() >= effectiveProb) return;
-  
-  // 随机选一种正面种子
-  var seedType = POSITIVE_SEED_TYPES[Math.floor(Math.random() * POSITIVE_SEED_TYPES.length)];
+  return count;
+}
+
+// 构造正面种子对象（tag 用于区分来源：'_' 随机种植 / '_build_' 建设触发）
+function createPositiveSeed(seedType, turn, tag) {
   var newSeed = {
-    id: seedType.id + '_' + turn,
+    id: seedType.id + tag + turn,
     type: seedType.type,
     planted_turn: turn,
     trigger_turn: turn + 3 + Math.floor(Math.random() * 3), // 3-5回合后触发
@@ -185,12 +232,40 @@ function plantPositiveSeed(turn) {
     desc: seedType.desc,
     positive: true
   };
-  
-  // 避免重复
-  if (!GameState.seeds.some(function(s) { return s.id === newSeed.id; })) {
-    GameState.seeds.push(newSeed);
+  if (tag === '_build_') newSeed.from_building = true; // 标记为建设类触发
+  return newSeed;
+}
+
+// 避免重复并种植（返回是否成功种植；成功时写种植通知）
+function addSeedIfNew(newSeed, seedTypeId, fromBuilding) {
+  if (GameState.seeds.some(function(s) { return s.id === newSeed.id; })) return false;
+  GameState.seeds.push(newSeed);
+  var notif = { action: 'planted', id: seedTypeId, type: newSeed.type, desc: newSeed.desc, positive: true };
+  if (fromBuilding) notif.from_building = true;
+  GameState._pendingSeedNotif = notif;
+  return true;
+}
+
+// v3.8.18: 种植正面种子（P0-1修正：概率提升+上限提升+沉淀回合+紧迫减半）
+function plantPositiveSeed(turn) {
+  var pacing = GameState.pacing;
+  // 沉淀回合也允许种植；紧迫回合概率减半
+  if (pacing !== '日常' && pacing !== '缓冲' && pacing !== '沉淀' && pacing !== '紧迫') return;
+
+  // 已有未触发的正面种子>=3个，不再种植（v3.14.0: 公共计数函数）
+  if (countPendingPositiveSeeds() >= 3) return;
+
+  // 35%概率种植（紧迫回合减半为17.5%）
+  var effectiveProb = (pacing === '紧迫') ? 0.175 : 0.35;
+  if (Math.random() >= effectiveProb) return;
+
+  // 随机选一种正面种子
+  var seedType = POSITIVE_SEED_TYPES[Math.floor(Math.random() * POSITIVE_SEED_TYPES.length)];
+  var newSeed = createPositiveSeed(seedType, turn, '_');
+
+  // 避免重复（v3.14.0: 公共种植函数）
+  if (addSeedIfNew(newSeed, seedType.id, false)) {
     // v3.8.20: 种植通知（UI层读取后清除）
-    GameState._pendingSeedNotif = { action: 'planted', id: seedType.id, type: seedType.type, desc: seedType.desc, positive: true };
     console.log('[正面种子] 种下「' + seedType.id + '」：' + seedType.desc);
   }
 }
@@ -200,47 +275,32 @@ function plantPositiveSeed(turn) {
 // actionCategory: '建设' | '社交' | '政治' | 其他（只有'建设'触发）
 function plantBuildingSeed(turn, actionCategory) {
   if (actionCategory !== '建设') return;
-  
+
   // 已有未触发的正面种子>=4个，不再额外种植（比随机上限高1）
-  var positiveCount = 0;
-  for (var i = 0; i < GameState.seeds.length; i++) {
-    var s = GameState.seeds[i];
-    if (s.type && s.type.indexOf('正面') === 0) positiveCount++;
-  }
+  var positiveCount = countPendingPositiveSeeds();
   if (positiveCount >= 4) {
     console.log('[建设种子] 正面种子已满（' + positiveCount + '个），跳过种植');
     return;
   }
-  
+
   // 根据建设类型选择对应种子
   // 建设类选项：发展人脉→贵人提携/知己相交，积累财富→意外之喜，培养门生→民心归附/声名渐起
   var buildingSeeds = POSITIVE_SEED_TYPES.filter(function(s) {
-    return s.type.indexOf('人脉') !== -1 || s.type.indexOf('情谊') !== -1 || 
-           s.type.indexOf('机遇') !== -1 || s.type.indexOf('声望') !== -1 || 
+    return s.type.indexOf('人脉') !== -1 || s.type.indexOf('情谊') !== -1 ||
+           s.type.indexOf('机遇') !== -1 || s.type.indexOf('声望') !== -1 ||
            s.type.indexOf('名望') !== -1;
   });
-  
+
   if (buildingSeeds.length === 0) return;
-  
+
   var seedType = buildingSeeds[Math.floor(Math.random() * buildingSeeds.length)];
-  var newSeed = {
-    id: seedType.id + '_build_' + turn,
-    type: seedType.type,
-    planted_turn: turn,
-    trigger_turn: turn + 3 + Math.floor(Math.random() * 3), // 3-5回合后触发
-    effect: JSON.parse(JSON.stringify(seedType.effect)),
-    desc: seedType.desc,
-    positive: true,
-    from_building: true // 标记为建设类触发
-  };
-  
-  // 避免重复
-  if (!GameState.seeds.some(function(s) { return s.id === newSeed.id; })) {
-    GameState.seeds.push(newSeed);
+  var newSeed = createPositiveSeed(seedType, turn, '_build_');
+
+  // 避免重复（v3.14.0: 公共种植函数）
+  if (addSeedIfNew(newSeed, seedType.id, true)) {
     // v3.8.20: 种植通知
-    GameState._pendingSeedNotif = { action: 'planted', id: seedType.id, type: seedType.type, desc: seedType.desc, positive: true, from_building: true };
     console.log('[建设种子] 玩家选择建设类行动，种下「' + seedType.id + '」：' + seedType.desc);
-    
+
     // P1-7: 即时微效——建设选择当回合获得+1~+2属性回报
     var instantBonus = {};
     var bonusKey = ['power', 'people'][Math.floor(Math.random() * 2)];
@@ -550,14 +610,10 @@ function checkFamilyCrisis(turn) {
   if (!currentAnchor) return;
   
   // v3.9.1: 情感锚点回合不触发家庭危机（避免叙事重复）
-  if (typeof EMOTIONAL_ANCHORS !== 'undefined' && EMOTIONAL_ANCHORS[bg]) {
-    var eaForCrisis = EMOTIONAL_ANCHORS[bg];
-    for (var eaci = 0; eaci < eaForCrisis.length; eaci++) {
-      if (eaForCrisis[eaci].triggerTurn === turn) {
-        console.log('[家庭危机] 跳过：当前回合有情感锚点 ' + eaForCrisis[eaci].id);
-        return;
-      }
-    }
+  // v3.14.0: 统一走 isEATurn（P1-2）
+  if (isEATurn(turn)) {
+    console.log('[家庭危机] 跳过：当前回合有情感锚点');
+    return;
   }
   
   // 遍历家庭牵连事件表
@@ -629,12 +685,8 @@ function checkLifeEvents(turn) {
   var family = GameState.family;
   
   // v3.9.0: 情感锚点回合不触发生活事件（叙事密度已经够高）
-  if (typeof EMOTIONAL_ANCHORS !== 'undefined' && EMOTIONAL_ANCHORS[bg]) {
-    var eaForBg = EMOTIONAL_ANCHORS[bg];
-    for (var eai = 0; eai < eaForBg.length; eai++) {
-      if (eaForBg[eai].triggerTurn === turn) return;
-    }
-  }
+  // v3.14.0: 统一走 isEATurn（P1-2）
+  if (isEATurn(turn)) return;
   
   // 遍历所有事件，找到当前可触发的
   for (var i = 0; i < LIFE_EVENTS.length; i++) {
@@ -766,22 +818,12 @@ function checkLifeEvents(turn) {
 }
 
 // 1. 获取当前在世NPC列表（v3.9：信息隔离——对绑定未来锚点的NPC附加禁止指令）
-// v3.8.15修正：刘伯温之死是锚点事件1，必须等锚点完成后才算死亡
+// v3.14.0：死亡判断统一走 isNPCDead（P1-2）
 function getAliveNPCs(year) {
   const alive = [];
   const dead = [];
   for (const [name, info] of Object.entries(NPC_BIRTH_DEATH)) {
-    var isDead = year >= info.death;
-    // 特殊处理：刘伯温之死是锚点事件1，必须等锚点完成后才算死亡
-    if (name === '刘伯温' || name === '刘基') {
-      if (!GameState.completedAnchors || !GameState.completedAnchors.includes(1)) {
-        isDead = false; // 锚点1未完成，刘伯温不算死亡
-      }
-    }
-    // P0-1: 毛骧特殊处理——1382年前锦衣卫不存在，毛骧不出场
-    if (name === '毛骧' && year < 1382) {
-      isDead = true; // 未出场，不显示
-    }
+    var isDead = isNPCDead(name, info, year);
     if (!isDead) {
       const age = info.birth ? year - info.birth : null;
       const ageStr = age ? `${age}岁` : '年龄不详';
@@ -807,18 +849,12 @@ function getAliveNPCs(year) {
 }
 
 // v3.8.14: 获取当前已故NPC列表（用于输出校验）
-// v3.8.15修正：刘伯温之死是锚点事件1，必须等锚点完成后才算死亡
+// v3.14.0：死亡判断统一走 isNPCDead（P1-2）
 function getDeadNPCs(year) {
   var dead = [];
   for (var name in NPC_BIRTH_DEATH) {
     var info = NPC_BIRTH_DEATH[name];
-    var isDead = year >= info.death;
-    // 特殊处理：刘伯温之死是锚点事件1，必须等锚点完成后才算死亡
-    if (name === '刘伯温' || name === '刘基') {
-      if (!GameState.completedAnchors || !GameState.completedAnchors.includes(1)) {
-        isDead = false; // 锚点1未完成，刘伯温不算死亡
-      }
-    }
+    var isDead = isNPCDead(name, info, year);
     if (isDead) {
       dead.push({ name: name, deathYear: info.death });
     }
@@ -2133,6 +2169,10 @@ function updateDeathTracking(narrative) {
       GameState.lastFamilyCrisisAnchor = 0;
     }
   }
+  // v3.13.0: 限时倒计时——每回合推进时递减活跃危机的倒计时（先于新事件调度）
+  if (typeof crisisTimerTick === 'function') {
+    crisisTimerTick();
+  }
   // v3.12.0: 生死危机事件层——每回合检查是否触发危机故事事件
   if (typeof checkCrisisStoryEvent === 'function') {
     checkCrisisStoryEvent();
@@ -3284,6 +3324,18 @@ if (typeof GameState.emotionalMemory === 'undefined') {
   GameState.emotionalMemory = [];
 }
 
+// ========== v3.14.0: 公共工具（P1-2 重复代码抽取） ==========
+// 当前回合是否为情感锚点（EA）触发回合（checkFamilyCrisis / checkLifeEvents / canTriggerCrisis 共用）
+function isEATurn(turn) {
+  var bg = GameState.character.background;
+  if (typeof EMOTIONAL_ANCHORS === 'undefined' || !EMOTIONAL_ANCHORS[bg]) return false;
+  var anchors = EMOTIONAL_ANCHORS[bg];
+  for (var i = 0; i < anchors.length; i++) {
+    if (anchors[i].triggerTurn === turn) return true;
+  }
+  return false;
+}
+
 /**
  * 检测当前回合是否触发情感锚点，返回格式化指令供AI使用
  * 支持新旧两种格式：通过 matched.coreEvent/sceneDirective 判断新格式（导演指令模式）
@@ -3304,15 +3356,9 @@ function getEmotionalAnchorDirective(turn, background) {
   }
   if (!matched) return '';
 
-  // 判断格式：新格式（导演指令模式） vs 旧格式（完整剧本模式）
-  var isNewFormat = !!(matched.coreEvent && matched.sceneDirective);
-
-  var result;
-  if (isNewFormat) {
-    result = _buildDirectorDirective(matched, turn);
-  } else {
-    result = _buildLegacyDirective(matched, turn);
-  }
+  // v3.14.0（P1-6）: EA 配置已全部收敛为内联对象（导演指令模式，含 coreEvent/sceneDirective），
+  // 删除旧格式（完整剧本模式）分支，统一走 _buildDirectorDirective
+  var result = _buildDirectorDirective(matched, turn);
 
   // v3.11.0d: 家庭叙事回响——为EA注入家庭危机选择上下文
   var familyCtx = getFamilyContextForEA(matched.id);
@@ -3452,64 +3498,6 @@ function _buildDirectorDirective(matched, turn) {
   return lines.join('\n');
 }
 
-/**
- * 旧格式兼容：拼装完整剧本文本（原有逻辑保留）
- */
-function _buildLegacyDirective(matched, turn) {
-  var lines = [];
-  lines.push('═══════════════════════════════════════');
-  lines.push('【情感锚点·' + matched.title + '】');
-  lines.push('═══════════════════════════════════════');
-  lines.push('');
-  lines.push('NPC：' + matched.npc);
-  lines.push('');
-  lines.push('【场景】');
-  lines.push(matched.scene);
-  lines.push('');
-  lines.push('【核心对话】');
-  lines.push(matched.dialogue);
-
-  if (matched.conditionalDialogue && matched.conditionalDialogue.length > 0) {
-    lines.push('');
-    lines.push('【条件对话·根据玩家历史选择触发】');
-    for (var j = 0; j < matched.conditionalDialogue.length; j++) {
-      var cd = matched.conditionalDialogue[j];
-      lines.push('  若' + cd.condition + '→' + cd.text);
-    }
-  }
-
-  lines.push('');
-  lines.push('【玩家选项·必须原样呈现给玩家】');
-  for (var k = 0; k < matched.choices.length; k++) {
-    var ch = matched.choices[k];
-    lines.push(ch.label + '. ' + ch.text);
-  }
-
-  lines.push('');
-  lines.push('【叙事要求】');
-  lines.push('1. 以以上内容为骨架，用你的文风重新演绎，不要机械复述');
-  lines.push('2. 节奏放慢，注重细节和留白');
-  lines.push('3. 选项必须在叙事结束后同时呈现');
-  lines.push('4. 玩家选择后，在stateBlock中标记"emotional_anchor_choice": "' +
-    matched.choices.map(function(c){ return c.label; }).join('/') + '"');
-  lines.push('5. 情感意象"' + matched.memoryItem + '"必须在场景中自然出现');
-  lines.push('');
-  lines.push('【设计意图·仅供你理解精神】');
-  lines.push(matched.designNote || '');
-
-  // 标记当前触发状态（旧格式）
-  GameState.currentEmotionalAnchor = {
-    id: matched.id,
-    turn: turn,
-    npc: matched.npc,
-    memoryItem: matched.memoryItem,
-    choices: matched.choices,
-    linksTo: matched.linksTo || null,
-    isNewFormat: false
-  };
-
-  return lines.join('\n');
-}
 
 /**
  * 检查条件节拍是否满足
@@ -3541,62 +3529,38 @@ function recordEmotionalChoice(choiceLabel) {
 
   var anchor = GameState.currentEmotionalAnchor;
 
-  if (anchor.isNewFormat) {
-    // ═══ 新格式：从GameState临时字段获取AI生成的数据 ═══
-    var dirData = null;
-    for (var i = 0; i < anchor.choiceDirections.length; i++) {
-      if (anchor.choiceDirections[i].label === choiceLabel) {
-        dirData = anchor.choiceDirections[i];
-        break;
-      }
+  // v3.14.0（P1-6）: EA 已全部收敛为新格式（导演指令模式），删除旧格式分支
+  // 从GameState临时字段获取AI生成的数据
+  var dirData = null;
+  for (var i = 0; i < anchor.choiceDirections.length; i++) {
+    if (anchor.choiceDirections[i].label === choiceLabel) {
+      dirData = anchor.choiceDirections[i];
+      break;
     }
-    var aiRipple = (GameState._pendingEaRipple && GameState._pendingEaRipple[choiceLabel])
-                   || (dirData ? dirData.rippleHint : '');
-    var aiQuote = GameState._pendingEaMemoryQuote || '';
-
-    if (!GameState.emotionalMemory) GameState.emotionalMemory = [];
-    GameState.emotionalMemory.push({
-      anchorId: anchor.id,
-      turn: anchor.turn,
-      npc: anchor.npc,
-      choice: choiceLabel,
-      ripple: aiRipple,
-      memoryQuote: aiQuote,
-      memoryItem: anchor.memoryItem,
-      linksTo: anchor.linksTo,
-      version: 2
-    });
-    console.log('[情感锚点V2] 记录：' + anchor.id + ' → ' + choiceLabel +
-      ' | 余波：' + aiRipple + ' | 引语：' + aiQuote);
-
-    // 清理临时字段
-    GameState._pendingEaRipple = null;
-    GameState._pendingEaMemoryQuote = null;
-    GameState._pendingEaOptions = null;
-
-  } else {
-    // ═══ 旧格式：原有逻辑 ═══
-    var choiceData = null;
-    for (var j = 0; j < anchor.choices.length; j++) {
-      if (anchor.choices[j].label === choiceLabel) {
-        choiceData = anchor.choices[j];
-        break;
-      }
-    }
-    if (!GameState.emotionalMemory) GameState.emotionalMemory = [];
-    GameState.emotionalMemory.push({
-      anchorId: anchor.id,
-      turn: anchor.turn,
-      npc: anchor.npc,
-      choice: choiceLabel,
-      ripple: choiceData ? choiceData.ripple : '',
-      memoryItem: anchor.memoryItem,
-      linksTo: anchor.linksTo,
-      version: 1
-    });
-    console.log('[情感锚点] 记录选择：' + anchor.id + ' → ' + choiceLabel +
-      (choiceData ? ' | 余波：' + choiceData.ripple : ''));
   }
+  var aiRipple = (GameState._pendingEaRipple && GameState._pendingEaRipple[choiceLabel])
+                 || (dirData ? dirData.rippleHint : '');
+  var aiQuote = GameState._pendingEaMemoryQuote || '';
+
+  if (!GameState.emotionalMemory) GameState.emotionalMemory = [];
+  GameState.emotionalMemory.push({
+    anchorId: anchor.id,
+    turn: anchor.turn,
+    npc: anchor.npc,
+    choice: choiceLabel,
+    ripple: aiRipple,
+    memoryQuote: aiQuote,
+    memoryItem: anchor.memoryItem,
+    linksTo: anchor.linksTo,
+    version: 2
+  });
+  console.log('[情感锚点V2] 记录：' + anchor.id + ' → ' + choiceLabel +
+    ' | 余波：' + aiRipple + ' | 引语：' + aiQuote);
+
+  // 清理临时字段
+  GameState._pendingEaRipple = null;
+  GameState._pendingEaMemoryQuote = null;
+  GameState._pendingEaOptions = null;
 
   // v3.9.1: EA-HW-3"初为人父"特殊处理——同步更新family状态，防止child1重复触发
   if (anchor.id === 'EA-HW-3' && GameState.family) {
@@ -3650,9 +3614,14 @@ var MENTAL_LEVELS = ['稳定', '焦虑', '崩溃边缘', '崩溃'];
 // ---------- 调度器配置 ----------
 var CRISIS_SCHEDULER = {
   windows: [
-    { group: 1, eventIds: ['crisis_1', 'crisis_2'], windowStart: 3,  windowEnd: 8,  label: '早期·刘伯温之死前后' },
-    { group: 2, eventIds: ['crisis_3'],               windowStart: 10, windowEnd: 19, label: '胡惟庸案前奏' }
-    // Phase 2 追加 group 3-7
+    { group: 1, eventIds: ['crisis_1', 'crisis_2'],         windowStart: 3,  windowEnd: 12, label: '早期·刘伯温之死前后' },
+    { group: 2, eventIds: ['crisis_3', 'crisis_4'],         windowStart: 10, windowEnd: 20, label: '胡惟庸案前后' },
+    { group: 3, eventIds: ['crisis_5', 'crisis_6'],         windowStart: 16, windowEnd: 26, label: '胡案收尾到空印案' },
+    { group: 4, eventIds: ['crisis_7', 'crisis_8'],         windowStart: 23, windowEnd: 31, label: '空印案后到郭桓案' },
+    { group: 5, eventIds: ['crisis_9', 'crisis_10'],        windowStart: 31, windowEnd: 37, label: '郭桓案后到李善长案' },
+    { group: 6, eventIds: ['crisis_11', 'crisis_12'],       windowStart: 41, windowEnd: 49, label: '太子之死与蓝玉案' },
+    { group: 7, eventIds: ['crisis_13', 'crisis_14', 'crisis_15'], windowStart: 49, windowEnd: 56, label: '蓝玉案后到终局前' },
+    { group: 8, eventIds: ['crisis_finale'],                windowStart: 57, windowEnd: 60, label: '终局·帝王崩天命落', isFinale: true }
   ],
   constraints: {
     minIntervalBetweenCrisis: 3,
@@ -3861,7 +3830,904 @@ var CRISIS_STORY_EVENTS = [
       }
       return {};
     }
-  }
+  },
+// v3.13.0 生死危机 Phase 2 事件配置（crisis_4 ~ crisis_8）
+
+  // ===== crisis_4: 逆党名册 =====
+  {
+    id: 'crisis_4',
+    title: '逆党名册',
+    type: 'B',
+    window: { start: 16, end: 20 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: null,
+    triggerCondition: function(gs) { return gs.turn >= 16; },
+    triggerProbability: 0.80,
+    originVariants: {
+      '淮西武将之后': { conflictDesc: '名册上有你舅舅旧部的名字。锦衣卫千户的手指在那些名字上敲了敲——"这些人，你认识几个？"' },
+      '浙东寒门书生': { conflictDesc: '你的同窗林彦曾出入胡府。缇骑冷笑："浙东来的，果然都是一个窝里的。"' },
+      '应天府商贾之子': { conflictDesc: '你家给胡府送过礼的记录被翻了出来。审理官翻开账册，语气平淡："说说这些银子。"' },
+      '落魄前元官员之后': { conflictDesc: '有人诬告你是「前元余孽+胡党」双重身份。审理官看着你的籍贯，久久没有说话。' }
+    },
+    backgroundStory: '洪武十三年，胡惟庸被诛的消息像一颗炸弹在应天府炸开。你是在下值回衙的路上听到消息的——街上已经没有了行人，所有人都在家里关门闭户。然后锦衣卫来了。为首的缇骑拿出一份名册——「逆党名册」。上面有你的名字。不是因为你做了什么，而是因为你在前些日子的酒局上露过面，或你的名字被某人攀咬上去。「奉旨拿人。」缇骑的声音平静得像在读菜单。你被带到诏狱的一间审讯室，面前坐着锦衣卫千户和一位审理官。「你与胡惟庸是何关系？」你知道这个问题的答案将决定你是活过这一回合，还是被拖进诏狱深处。',
+    sceneDescription: '名册上你的名字墨迹未干。锦衣卫千户的手指点了点你的名字，笑了。',
+    narrativeDirective: '这是玩家第一次直面死亡威胁。核心恐怖是「名册上为什么会有我」——体制杀人不问对错，只问名单。',
+    choices: [
+      {
+        id: 'A', label: '坚决否认——「臣与胡惟庸素无往来，名册必有冤诬」',
+        primaryAttr: 'wisdom', threshold: 55, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '审理官查证后认为你只是被攀咬，释放但留案底', effects: { power: -2, fame: -1 }, tags: { '胡党嫌疑': { expiresAt: 22, affectsCrises: ['crisis_9'] } } },
+          normal: { desc: '审理官将信将疑，释放但「胡党嫌疑」标签持续数回合', effects: { power: -3 }, tags: { '胡党嫌疑': { expiresAt: 24, affectsCrises: ['crisis_9'] } } },
+          unfavorable: { desc: '审理官不信，你被关入诏狱受审，身体受损', effects: { power: -4, wisdom: -2 }, healthImpact: '轻伤', tags: { '胡党嫌疑': { expiresAt: 26, affectsCrises: ['crisis_9'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'B', label: '供出他人——声称是某人拉你入伙，祸水东引',
+        primaryAttr: 'power', threshold: 50, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '你被认定为「从犯且主动交代」，降级罚俸', effects: { power: -2, fame: -3 }, tags: { '攀咬之名': { expiresAt: 24, affectsCrises: ['crisis_5'] } } },
+          normal: { desc: '你供出的人被收监，但你从此背负「卖友求荣」之名', effects: { power: -1, bond: -4, fame: -2 }, tags: { '攀咬之名': { expiresAt: 26, affectsCrises: ['crisis_5'] } } },
+          unfavorable: { desc: '你供出的人当面对质，你被判「首鼠两端」，挨了三十杖', effects: { power: -5, fame: -3 }, healthImpact: '轻伤' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'C', label: '沉默不语——拒绝回答任何问题',
+        primaryAttr: 'wisdom', threshold: 60, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '审理官对你无可奈何，暂时收监但不加刑', effects: { fame: 2, wisdom: 1 } },
+          normal: { desc: '你被收监两日，出来后风声已过', effects: { fame: -1 } },
+          unfavorable: { desc: '被认定为「抗拒审讯」，上了夹棍', effects: { power: -3, wisdom: -2 }, healthImpact: '轻伤', mentalImpact: '崩溃边缘' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: null
+      }
+    ],
+    chainsTo: ['crisis_9'],
+    chainRequires: { '胡党嫌疑': { present: true, difficultyMod: 2 } },
+    chainEffect: function(gs, choiceId, outcome) {
+      if (gs.crisisTags && gs.crisisTags['胡党嫌疑']) {
+        return { crisis_9: { difficultyMod: 2 } };
+      }
+      return {};
+    }
+  },
+
+  // ===== crisis_5: 牢狱中的同窗 =====
+  {
+    id: 'crisis_5',
+    title: '牢狱中的同窗',
+    type: 'D',
+    window: { start: 16, end: 20 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: { type: 'originNPC', key: '同窗', states_alive: ['alive'] },
+    triggerCondition: function(gs) { return gs.turn >= 16; },
+    triggerProbability: 0.75,
+    originVariants: {
+      '淮西武将之后': { npcName: '周大哥', relation: '与你一同在军中长大的好友，因淮西勋贵身份被重点审查' },
+      '浙东寒门书生': { npcName: '林彦', relation: '你的同窗，曾被胡惟庸征召入幕' },
+      '应天府商贾之子': { npcName: '陈掌柜', relation: '你父亲的商业伙伴，手中握有你家的账簿' },
+      '落魄前元官员之后': { npcName: '赵大哥', relation: '故交，他的前朝身份被翻了出来' }
+    },
+    backgroundStory: '你在诏狱外面的走廊里遇到了他——你曾经最亲近的朋友。三天前，他被锦衣卫带走，罪名是「胡党余孽」。他关在诏狱东厢——那是「重犯区」，进去的人十个里面能活着出来三个。你通过一个狱卒的关系得知，他目前还算完好，但审讯即将升级：后天就要用「脑箍」了。那是一种用铁圈箍住脑袋、逐渐收紧的刑罚，轻则永远头痛，重则颅骨碎裂。你有三天时间。问题是：你在逆党名册的事刚过，任何「异常行为」都会被锦衣卫重点关注。救他，可能把你自己也搭进去。',
+    sceneDescription: '他隔着铁栅看你，嘴唇翕动。你读出口型——「别管我。」但他藏在背后的手在发抖。',
+    narrativeDirective: '这是限时营救类事件。核心张力：救朋友可能把自己搭进去；不救，就看着他死。倒计时每回合都要在叙事中体现压迫感。',
+    countdownTurns: 3,
+    countdownDescription: '同窗在诏狱中的状况逐回合恶化，第3回合将上脑箍',
+    countdownStates: [
+      { turn: 0, desc: '同窗尚能撑住，但审讯在升级' },
+      { turn: 1, desc: '同窗开始受刑，身体每况愈下' },
+      { turn: 2, desc: '锦衣卫将用「脑箍」，不救则残废或死亡' }
+    ],
+    timeoutOutcome: {
+      desc: '你未能及时营救。同窗在「脑箍」下颅骨受损，落下终身残疾——总算保住了性命，但你们从此天各一方。',
+      npcFate: '致残流放',
+      effects: { bond: -4 },
+      npcState: 'disabled',
+      tags: { '愧疚': { permanent: true, affectsCrises: [] } }
+    },
+    choices: [
+      {
+        id: 'A', label: '冒死劫狱——买通狱卒，趁换班将他带出',
+        primaryAttr: 'wisdom', threshold: 65, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '两人逃脱，但从此被通缉，需要后续事件洗白', effects: { power: -3, bond: 6 }, npcFate: '逃脱·被通缉' },
+          normal: { desc: '险些被发现，最终逃出但留下线索', effects: { power: -5, bond: 4 }, npcFate: '逃脱·被通缉' },
+          unfavorable: { desc: '你也被关进去，两人一起受审', effects: { power: -5, wisdom: -2 }, npcFate: '双双入狱', healthImpact: '轻伤' }
+        },
+        tags: { '通缉在身': { expiresAt: 26, affectsCrises: ['crisis_6'] } }, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'B', label: '通过正常渠道——找有权势的贵人写保状',
+        primaryAttr: 'power', threshold: 60, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '贵人出面，他获释但被流放边疆', effects: { power: -2, bond: 3 }, npcFate: '流放边疆' },
+          normal: { desc: '贵人勉强出面，他被流放但路途险恶', effects: { power: -3 }, npcFate: '流放边疆' },
+          unfavorable: { desc: '贵人不愿冒险，你的求助被锦衣卫记录在案', effects: { power: -4, jinchen: -4 }, npcFate: '未救出' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: null
+      },
+      {
+        id: 'C', label: '暗中传递消息——将翻案证据偷渡进牢中',
+        primaryAttr: 'wisdom', threshold: 55, secondaryCheck: { attr: 'people', threshold: 40 },
+        outcomes: {
+          favorable: { desc: '证据被审理官看到，他从轻处理（流放代替死刑）', effects: { bond: 5, wisdom: 1 }, npcFate: '流放边疆' },
+          normal: { desc: '证据起了部分作用，他保住了性命但被判重刑', effects: { bond: 3 }, npcFate: '判刑入狱' },
+          unfavorable: { desc: '证据被截获，你被认定为「串供」，自身难保', effects: { power: -5, bond: -3 }, npcFate: '未救出', healthImpact: '轻伤' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      }
+    ],
+    npcDeathConsequence: {
+      tag: '友人之死', permanent: true,
+      effectOnWisdom: -5,
+      narrativeImpact: '所有涉及故交、同窗、旧识的回忆场景'
+    },
+    chainsTo: [],
+    chainEffect: null
+  },
+
+  // ===== crisis_6: 空印的代价 =====
+  {
+    id: 'crisis_6',
+    title: '空印的代价',
+    type: 'B',
+    window: { start: 19, end: 23 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: null,
+    triggerCondition: function(gs) { return gs.turn >= 19; },
+    triggerProbability: 0.75,
+    originVariants: {
+      '淮西武将之后': { conflictDesc: '你衙署里也有「方便行事」的空印文书。上峰拍了拍你的肩："你是武人出身，经手的事少，想个办法。"' },
+      '浙东寒门书生': { conflictDesc: '你的恩师曾告诉你「空印是官场惯例」。如今恩师已逝，无人能为你作证了。' },
+      '应天府商贾之子': { conflictDesc: '你父亲的商号里有盖了官印的空白通关文牒。这笔生意，如今成了催命符。' },
+      '落魄前元官员之后': { conflictDesc: '你母亲说「前朝也是这样做的」。可这是洪武朝，前朝的规矩救不了你。' }
+    },
+    backgroundStory: '你收到一份来自上级衙署的密函——措辞客气，但字里行间的意思很明确：朝廷正在追查「各衙署使用空白盖印文书」的问题。你的衙署里恰好有这种文书——用来「方便行事」的，紧急情况下先盖印后填写。这在官场是心照不宣的惯例，但皇帝的态度已经变了。上峰连夜把你叫去，脸色铁青：「你经手的那几份空印文书，现在必须处理掉。或者，你得想个办法证明，这些文书在你手里的时候，内容是填好了的。」说完他起身走了。你知道，他已经做好了把你推出去当替罪羊的准备。',
+    sceneDescription: '那张盖着鲜红官印的白纸就在你案头。它在烛火下像一只睁开的眼睛。',
+    narrativeDirective: '此事件让玩家体会「大家都这么做，但只有我倒霉」的荒诞。核心不是对错，而是「谁为惯例买单」。',
+    choices: [
+      {
+        id: 'A', label: '销毁证据——连夜烧毁所有空印文书',
+        primaryAttr: 'wisdom', threshold: 50, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '证据消失，无人能证明你用过空印', effects: { wisdom: 1 } },
+          normal: { desc: '文书烧了，但有人看到你深夜焚纸，议论纷纷', effects: { fame: -2 } },
+          unfavorable: { desc: '有人看到你烧纸，或文书已被上级调走存档', effects: { power: -4, fame: -2 }, tags: { '惊弓之鸟': { expiresAt: 26, affectsCrises: ['crisis_9'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'B', label: '补填内容——在所有空印文书上补填合理内容',
+        primaryAttr: 'wisdom', threshold: 65, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '文书看起来完整合规，稽查没有发现问题', effects: { wisdom: 2 } },
+          normal: { desc: '文书勉强过关，但书吏的眼神说明他起了疑心', effects: { fame: -1 } },
+          unfavorable: { desc: '墨迹新旧不同，被有经验的书吏识破', effects: { power: -5, wisdom: -2 }, healthImpact: '轻伤', tags: { '空印嫌疑': { expiresAt: 30, affectsCrises: ['crisis_9'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'C', label: '主动上报——向朝廷坦白「属下衙署确实存在空印惯例」',
+        primaryAttr: 'people', threshold: 55, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '你的坦诚被赏识，从轻处理，只罚俸三月', effects: { people: 3, fame: 2, power: -2 } },
+          normal: { desc: '你被训诫一番，从轻发落', effects: { people: 1, power: -3 } },
+          unfavorable: { desc: '你的上峰因此事被牵连，从此视你为叛徒', effects: { power: -5, bond: -3, jinchen: -3 }, tags: { '告发者': { permanent: true, affectsCrises: ['crisis_10'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: null
+      }
+    ],
+    chainsTo: ['crisis_9'],
+    chainRequires: { '空印嫌疑': { present: true, difficultyMod: 2 } },
+    chainEffect: function(gs, choiceId, outcome) {
+      if (gs.crisisTags && gs.crisisTags['空印嫌疑']) {
+        return { crisis_9: { difficultyMod: 2 } };
+      }
+      return {};
+    }
+  },
+
+  // ===== crisis_7: 产婆之劫 =====
+  {
+    id: 'crisis_7',
+    title: '产婆之劫',
+    type: 'D',
+    window: { start: 23, end: 26 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: { type: 'originNPC', key: '产婆', states_alive: ['alive'] },
+    triggerCondition: function(gs) { return gs.turn >= 23; },
+    triggerProbability: 0.78,
+    originVariants: {
+      '淮西武将之后': { npcName: '刘妈', relation: '你妻子张蕴真的陪嫁老妈子，怀着你家仆人的孩子，已经七个多月了' },
+      '浙东寒门书生': { npcName: '刘妈', relation: '你妻子的乳母，替邻居写了一份保甲证明' },
+      '应天府商贾之子': { npcName: '刘妈', relation: '你家老伙计陈三的儿媳，腹中胎儿七个月' },
+      '落魄前元官员之后': { npcName: '刘妈', relation: '你母亲陈秀英的贴身仆人，知道太多旧事' }
+    },
+    backgroundStory: '空印案爆发后，应天府的衙门像被蝗虫扫过——一批官员被杀，一批被流放，剩下的都不敢做事。在这种混乱中，你家里一个跟了多年的产婆因为替邻居写了一份「保甲证明」（盖的是你家旧衙署废弃的印章），被人告发为「盗用官印」。锦衣卫来抓人的时候，她已经怀了七个多月的身孕。她被关进应天府大牢。牢里潮湿、拥挤、食物不足。一个怀孕七个月的女人撑不了太久。你有四天时间——四天后，案件将被「批量处理」，和空印案的其他犯人一起被判刑。',
+    sceneDescription: '你透过牢门的缝隙看到她。她靠在墙角，一只手护着肚子，另一只手朝你伸出来。',
+    narrativeDirective: '此事件与「家庭」情感线紧密相关。若母亲陈秀英的隐藏身份线推进到一定程度，会触发额外的身份危机（叙事中自然带出）。',
+    countdownTurns: 4,
+    countdownDescription: '刘妈在牢中的身体状况逐回合恶化，第4回合可能一尸两命',
+    countdownStates: [
+      { turn: 0, desc: '刘妈尚能撑住，但牢中环境恶劣' },
+      { turn: 1, desc: '刘妈开始虚弱，有早产风险' },
+      { turn: 2, desc: '刘妈病重，狱医束手无策' },
+      { turn: 3, desc: '案件将被「批量处理」，不救则一尸两命' }
+    ],
+    timeoutOutcome: {
+      desc: '你未能及时营救。刘妈在狱中早产，母子俱危——最终一尸两命。你永远忘不了牢门后那一声微弱的啼哭。',
+      npcFate: '一尸两命',
+      effects: { bond: -4, people: -2 },
+      npcState: 'dead',
+      tags: { '两条人命': { permanent: true, affectsCrises: [] } }
+    },
+    choices: [
+      {
+        id: 'A', label: '花钱疏通——用大量银两打点牢头和审理书吏',
+        primaryAttr: 'power', threshold: 45, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '刘妈被「保外就医」，但花费巨大', effects: { power: -1, bond: 4 }, npcFate: '获救·家产受损' },
+          normal: { desc: '刘妈被允许狱外生产，但银子花了不少', effects: { bond: 3 }, npcFate: '获救' },
+          unfavorable: { desc: '牢头收钱不办事，或被上级发现', effects: { power: -4, bond: -2 }, npcFate: '未救出' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: null
+      },
+      {
+        id: 'B', label: '伪造证据——制造一份「此妇并不知情」的证明文件',
+        primaryAttr: 'wisdom', threshold: 55, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '审理书吏认可，刘妈无罪释放', effects: { wisdom: 1, bond: 4 }, npcFate: '获救' },
+          normal: { desc: '证明被半信半疑地接受，刘妈获释但被罚银', effects: { bond: 3 }, npcFate: '获救' },
+          unfavorable: { desc: '文件被识破，你被追加「伪造官文书」罪名', effects: { power: -5, wisdom: -2 }, npcFate: '未救出', healthImpact: '轻伤' }
+        },
+        tags: { '伪造文书': { expiresAt: 32, affectsCrises: ['crisis_9'] } }, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'C', label: '直接劫狱——趁夜色潜入大牢将人带出',
+        primaryAttr: 'power', threshold: 50, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '救出刘妈，但你成为通缉犯', effects: { power: -3, bond: 5 }, npcFate: '获救·被通缉' },
+          normal: { desc: '费尽周折救出刘妈，惊动了半个衙门', effects: { power: -4, bond: 4 }, npcFate: '获救·被通缉' },
+          unfavorable: { desc: '被抓现行，你也被关进去', effects: { power: -5, bond: -3 }, npcFate: '双双入狱', healthImpact: '重伤' }
+        },
+        tags: { '通缉在身': { expiresAt: 34, affectsCrises: ['crisis_8'] } }, healthImpact: null, mentalImpact: '崩溃边缘'
+      }
+    ],
+    npcDeathConsequence: {
+      tag: '两条人命', permanent: true,
+      effectOnWisdom: -5,
+      narrativeImpact: '所有涉及孕妇、婴儿、家庭团圆的场景'
+    },
+    chainsTo: [],
+    chainEffect: null
+  },
+
+  // ===== crisis_8: 账簿上的血 =====
+  {
+    id: 'crisis_8',
+    title: '账簿上的血',
+    type: 'B',
+    window: { start: 27, end: 31 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: null,
+    triggerCondition: function(gs) { return gs.turn >= 27; },
+    triggerProbability: 0.75,
+    originVariants: {
+      '淮西武将之后': { conflictDesc: '你的上峰是武将转文官，账目一窍不通，只知道说「你看着办」。' },
+      '浙东寒门书生': { conflictDesc: '你是衙署里唯一能看懂账的人——这既是本事，也是催命符。' },
+      '应天府商贾之子': { conflictDesc: '你的商业训练让你一眼看出问题。八千两的亏空，你闭着眼都能算出来。' },
+      '落魄前元官员之后': { conflictDesc: '你的前朝经验让你知道这种账目意味着什么——前朝，就是这么垮的。' }
+    },
+    backgroundStory: '郭桓案的风暴还没到你这级，但空气里已经有了血腥味。你的上峰把你叫到书房，关上门，推过来一摞账簿：「帮我看看，有没有问题。」你翻了半个时辰，心越来越沉——账目上有至少三处明显的亏空，总数高达八千两。这在洪武朝不是「贪污」的问题，是「掉脑袋」的问题。上峰看你的表情就知道你发现了。他没有说话，只是把账簿推回来，淡淡说了一句：「你知道该怎么做。」更糟的是——你下班走在路上，一个陌生人塞给你一张纸条：「有人知道你们衙署的账有问题。三天内把二千两送到某某地方，否则举报。」你被夹在上峰的贪污和匿名勒索之间，两头都是死路。',
+    sceneDescription: '账簿上的墨字像蚂蚁一样爬动。每一笔亏空的数字，都是一条人命。',
+    narrativeDirective: '此事件考验玩家的道德底线——做假账保全自己，还是举报保全良心。选择将决定郭桓案清算时的处境。',
+    choices: [
+      {
+        id: 'A', label: '做平账目——帮上峰掩盖亏空',
+        primaryAttr: 'wisdom', threshold: 60, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '账目看起来天衣无缝，上峰感激', effects: { power: 3, bond: 3 }, tags: { '做账人': { permanent: true, affectsCrises: ['crisis_9'] } } },
+          normal: { desc: '账目勉强做平，但你知道这迟早要爆', effects: { power: 2 }, tags: { '做账人': { permanent: true, affectsCrises: ['crisis_9'] } } },
+          unfavorable: { desc: '做账的手法被后续的审计官识破，你作为「做账人」被首当其冲', effects: { power: -5, wisdom: -2 }, healthImpact: '轻伤', tags: { '做账人': { permanent: true, affectsCrises: ['crisis_9'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'B', label: '匿名举报——向都察院递交密报',
+        primaryAttr: 'people', threshold: 50, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '上峰被查，你因「举报有功」被嘉奖', effects: { people: 4, fame: 3, power: 1 } },
+          normal: { desc: '举报引起注意，但上峰暂时脱身', effects: { people: 2 } },
+          unfavorable: { desc: '举报信被拦截，上峰发现是你干的', effects: { power: -5, bond: -4 }, tags: { '告发者': { permanent: true, affectsCrises: ['crisis_10'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'C', label: '两头通吃——借上峰之手消除勒索者',
+        primaryAttr: 'wisdom', threshold: 55, secondaryCheck: { attr: 'power', threshold: 45 },
+        outcomes: {
+          favorable: { desc: '勒索者被上峰「处理」，你获得上峰信任', effects: { power: 3, bond: 2, wisdom: 1 } },
+          normal: { desc: '勒索者被吓退，但上峰对你起了戒心', effects: { power: 1, bond: -1 } },
+          unfavorable: { desc: '上峰认为你「两边不忠」，你成为弃子', effects: { power: -5, bond: -4 }, tags: { '两边不忠': { permanent: true, affectsCrises: ['crisis_9'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      }
+    ],
+    chainsTo: ['crisis_9'],
+    chainRequires: { '做账人': { present: true, difficultyMod: 2 } },
+    chainEffect: function(gs, choiceId, outcome) {
+      if (gs.crisisTags && gs.crisisTags['做账人']) {
+        return { crisis_9: { difficultyMod: 2 } };
+      }
+      return {};
+    }
+  },
+// v3.13.0 生死危机 Phase 2 事件配置（crisis_9 ~ crisis_15 + crisis_finale）
+
+  // ===== crisis_9: 刑堂对峙 =====
+  {
+    id: 'crisis_9',
+    title: '刑堂对峙',
+    type: 'C',
+    window: { start: 31, end: 34 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: null,
+    triggerCondition: function(gs) { return gs.turn >= 31; },
+    triggerProbability: 0.75,
+    originVariants: {
+      '淮西武将之后': { conflictDesc: '堂上审理官扫了你一眼："武将出身，账目不懂，倒是会推卸。"' },
+      '浙东寒门书生': { conflictDesc: '你上峰供出你时，堂上几位审理官交换了一个了然的眼神——浙东党，果然靠不住。' },
+      '应天府商贾之子': { conflictDesc: '堂外候审的官员里有你家的老主顾。他别过头去，假装不认识你。' },
+      '落魄前元官员之后': { conflictDesc: '有人低声说："前朝余孽，果然会做假账。"声音不大，但满堂都听见了。' }
+    },
+    backgroundStory: '郭桓案的余波还没平息，你的上峰被牵连进去了。他为了自保，在审讯中把你供了出来：「那些账是我的下属做的，我只是奉命行事。」你被传唤到刑部大堂。这不是审判——这是表演。大堂里坐着三位审理官，旁边站着一排锦衣卫。你的上峰坐在被告席上，看到你进来，微微低下了头——不是愧疚，是害怕。审理官问了你三个问题，然后让你当堂和上峰对质。你的上峰矢口否认一切。审理官看着你，说了一句话：「你若说不出是谁指使的，那就是你自己的主意。」大堂里鸦雀无声。',
+    sceneDescription: '你站在大堂中央。所有人的眼睛都盯着你。你的上峰低下了头——不是因为愧疚，而是因为你的回答将决定他是否把你一起拖下水。',
+    narrativeDirective: '这是游戏中最「屈辱」的事件之一。它考验的不是战斗力，而是尊严——在权力面前，你愿意弯腰到什么程度？无论选择什么，都必须在大庭广众之下做出某种「丢脸」的行为。',
+    choices: [
+      {
+        id: 'A', label: '据实指认上峰——当面说出他的名字和指令',
+        primaryAttr: 'wisdom', threshold: 60, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '上峰被定罪，你被从轻处理', effects: { fame: 3, power: 1 } },
+          normal: { desc: '上峰被查但你也受了牵连，降一级', effects: { fame: 1, power: -2 } },
+          unfavorable: { desc: '上峰有贵人保他，你反而成了「诬告」，当堂被斥', effects: { power: -5, fame: -3 }, tags: { '诬告之名': { permanent: true, affectsCrises: ['crisis_13'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'B', label: '承担下来——「是属下自作主张」',
+        primaryAttr: 'power', threshold: 55, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '审理官认为你态度诚恳，从轻发落（降级罚俸）', effects: { power: -3, fame: -2, bond: 2 } },
+          normal: { desc: '被降级罚俸，但保住了上峰的信任', effects: { power: -4, bond: 2 } },
+          unfavorable: { desc: '被认为「刻意包庇」，加重处罚——当堂杖责四十', effects: { power: -5, bond: 1 }, healthImpact: '重伤' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '崩溃边缘'
+      },
+      {
+        id: 'C', label: '当堂崩溃——假装晕厥或哭泣，拖延时间',
+        primaryAttr: 'wisdom', threshold: 55, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '审理被迫暂停，你获得两回合缓冲时间找人运作', effects: { wisdom: 1 }, tags: { '装疯卖傻': { expiresAt: 36, affectsCrises: ['crisis_10'] } } },
+          normal: { desc: '堂上哗然，你被带下去醒神，但案子暂时搁置', effects: { fame: -2 } },
+          unfavorable: { desc: '被拖出去泼冷水「醒神」，当众出丑', effects: { fame: -5, power: -2 }, mentalImpact: '崩溃边缘' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: null
+      }
+    ],
+    chainsTo: ['crisis_13'],
+    chainRequires: { '诬告之名': { present: true, difficultyMod: 2 } },
+    chainEffect: function(gs, choiceId, outcome) {
+      if (gs.crisisTags && gs.crisisTags['诬告之名']) {
+        return { crisis_13: { difficultyMod: 2 } };
+      }
+      return {};
+    }
+  },
+
+  // ===== crisis_10: 恩师的末日 =====
+  {
+    id: 'crisis_10',
+    title: '恩师的末日',
+    type: 'A',
+    window: { start: 35, end: 37 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: { type: 'originNPC', key: '恩师', states_alive: ['alive'] },
+    triggerCondition: function(gs) { return gs.turn >= 35; },
+    triggerProbability: 0.78,
+    originVariants: {
+      '淮西武将之后': { npcName: '老将军', relation: '你舅舅的旧交，一位退休的老将军' },
+      '浙东寒门书生': { npcName: '恩师', relation: '年迈的翰林学士，教你读书识字的人' },
+      '应天府商贾之子': { npcName: '老东家', relation: '你父亲的恩人，一位退隐的老商人' },
+      '落魄前元官员之后': { npcName: '遗老', relation: '赵大哥的旧主，一位隐藏身份的前元遗老' }
+    },
+    backgroundStory: '李善长案像一把从天上落下来的铡刀——没有人知道它会砍在谁头上，但所有人都在发抖。你的恩师被卷进去了。罪名是「与李善长暗通书信，图谋不轨」。你知道这是假的——但你也知道，在洪武朝，真假不重要，重要的是有没有证据。而锦衣卫最擅长的就是「找到」证据。他被软禁在家中，等待审讯通知。你得到了一个消息：三日后，锦衣卫将上门「抄查」——抄查的结果几乎必然是「发现通逆证据」。你有三天时间。更复杂的是：有人悄悄告诉你，如果能在审讯前将一封「自辩书」递到某位正直大臣手中，再由他转呈皇帝，也许还有一线生机。但这位正直大臣自己也在漩涡边缘——帮你，可能连他自己也搭进去。',
+    sceneDescription: '老人的手在抖。他把一封信递给你——「这是我最后的自辩。如果我死了，替我交出去。」',
+    narrativeDirective: '这是四条出身线中情感冲击最大的事件之一。每条线的NPC不同，但情感核心相同——「你最爱戴的人要死了，你救不了」。',
+    countdownTurns: 3,
+    countdownDescription: '三日后锦衣卫上门抄查，恩师命悬一线',
+    countdownStates: [
+      { turn: 0, desc: '恩师被软禁家中，等待审讯通知' },
+      { turn: 1, desc: '风声越来越紧，恩师开始整理后事' },
+      { turn: 2, desc: '明日锦衣卫将上门「抄查」，这是最后的机会' }
+    ],
+    timeoutOutcome: {
+      desc: '你未能及时营救。锦衣卫上门抄查，搜出「通逆证据」。恩师被拖入诏狱，数日后处死。你收到他最后的遗言：「吾道不孤，汝当自重。」',
+      npcFate: '处死',
+      effects: { bond: -4, wisdom: -2 },
+      npcState: 'dead',
+      tags: { '师恩断裂': { permanent: true, affectsCrises: [] } }
+    },
+    choices: [
+      {
+        id: 'A', label: '将自辩书送给正直大臣',
+        primaryAttr: 'wisdom', threshold: 55, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '大臣被打动，上奏求情，恩师被从轻处理（流放）', effects: { power: -2, bond: 5 }, npcFate: '流放' },
+          normal: { desc: '大臣犹豫后转呈，恩师保住性命但被流放', effects: { power: -3, bond: 4 }, npcFate: '流放' },
+          unfavorable: { desc: '大臣被牵连，恩师和你都被列入嫌疑名单', effects: { power: -5, bond: -3 }, npcFate: '未救出' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'B', label: '销毁所有往来书信——断绝证据链',
+        primaryAttr: 'wisdom', threshold: 60, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '锦衣卫抄查后一无所获，恩师被训诫后放回', effects: { wisdom: 2, bond: 4 }, npcFate: '获救' },
+          normal: { desc: '大部分书信被销毁，恩师被罚俸闭门思过', effects: { bond: 3 }, npcFate: '获救·受罚' },
+          unfavorable: { desc: '书信已被锦衣卫提前复制，抄查照旧进行', effects: { power: -4, bond: -3 }, npcFate: '未救出' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'C', label: '放弃营救，暗中转移恩师的家眷',
+        primaryAttr: 'power', threshold: 50, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '恩师被捕（流放），但家眷安全，血脉得以保全', effects: { power: -2, bond: -3 }, npcFate: '被捕·家眷保全' },
+          normal: { desc: '恩师被捕，家眷在混乱中走散了大半', effects: { power: -3, bond: -4 }, npcFate: '被捕' },
+          unfavorable: { desc: '转移家眷时被锦衣卫发现，你也被牵连', effects: { power: -5, bond: -4 }, npcFate: '被捕·牵连' }
+        },
+        tags: { '保全血脉': { permanent: true, affectsCrises: ['crisis_finale'] } }, healthImpact: null, mentalImpact: '崩溃边缘'
+      }
+    ],
+    npcDeathConsequence: {
+      tag: '师恩断裂', permanent: true,
+      effectOnWisdom: -5,
+      narrativeImpact: '所有涉及师长、老人、传承的场景'
+    },
+    chainsTo: [],
+    chainEffect: null
+  },
+
+  // ===== crisis_11: 太子薨前的密信 =====
+  {
+    id: 'crisis_11',
+    title: '太子薨前的密信',
+    type: 'A',
+    window: { start: 41, end: 43 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: ['朱标'],
+    triggerCondition: function(gs) { return gs.turn >= 41; },
+    triggerProbability: 0.85,
+    originVariants: {
+      '淮西武将之后': { conflictDesc: '太子身边的太监认得你舅舅蓝玉——他多看了你两眼，目光意味深长。' },
+      '浙东寒门书生': { conflictDesc: '你整理文书时发现太子的字迹——一笔一划，还是当年的风骨。' },
+      '应天府商贾之子': { conflictDesc: '密信中提到的商路与税银，你一眼看出其中利害。' },
+      '落魄前元官员之后': { conflictDesc: '太子密信里的用词，让你想起父亲书房里那些不敢示人的手稿。' }
+    },
+    backgroundStory: '太子朱标病重的消息在宫中传开了。你奉命参与东宫的一次紧急会议——太子的心腹太监召集了几个低品级官员，要求你们「整理东宫近五年的重要文书并封存」。你在整理过程中发现了一叠密信——是太子与几位边将的私人通信。信中讨论了「如果朝局有变」的应对方案。这些信如果被朱元璋看到，会引发另一场大清洗。如果被其他皇子看到，会成为夺嫡的把柄。太监盯着你：「这些信，你看到了？」你点了点头。太监沉默了很久，然后说了一句话：「太子殿下说——这些东西，该烧就烧。但如果有人觉得应该留下来……他也不会怪你。」他在试探你。',
+    sceneDescription: '密信在你手中。烛火在你面前。太监的眼睛在暗处发亮。',
+    narrativeDirective: '本事件核心不是「救NPC」，而是「在太子之死前做出政治判断」。太子之死是不可避免的历史事实，但你的选择将影响蓝玉案和朱元璋驾崩时的处境。',
+    choices: [
+      {
+        id: 'A', label: '烧掉密信——遵从太子的暗示',
+        primaryAttr: 'wisdom', threshold: 0, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '密信消失，你获得「守密者」之名。太子死后，这些信的内容成为悬案', effects: { bond: 2 }, tags: { '守密者': { permanent: true, affectsCrises: ['crisis_12'] } } },
+          normal: { desc: '密信付之一炬，太监微微点头', effects: {}, tags: { '守密者': { permanent: true, affectsCrises: ['crisis_12'] } } },
+          unfavorable: { desc: '烧信时火星溅到你手上，你记住了那份灼痛', effects: { wisdom: -1 }, tags: { '守密者': { permanent: true, affectsCrises: ['crisis_12'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: null
+      },
+      {
+        id: 'B', label: '保留密信——偷偷藏起最重要的几封',
+        primaryAttr: 'wisdom', threshold: 60, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '密信被保留，成为后续政治博弈的筹码', effects: { wisdom: 3, power: 2 }, tags: { '东宫密信': { permanent: true, affectsCrises: ['crisis_12', 'crisis_finale'] } } },
+          normal: { desc: '你藏起了一封，但心里始终不踏实', effects: { wisdom: 1 }, tags: { '东宫密信': { permanent: true, affectsCrises: ['crisis_12', 'crisis_finale'] } } },
+          unfavorable: { desc: '被太监发现，你被认定为「窃夺东宫机密」', effects: { power: -5, jinchen: -5 }, tags: { '窃密嫌疑': { permanent: true, affectsCrises: ['crisis_13'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'C', label: '上报皇帝——将密信呈给朱元璋',
+        primaryAttr: 'wisdom', threshold: 55, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '朱元璋沉默良久，说「你做得对」。你获得「忠臣」之名，但从此被所有同情太子的人视为叛徒', effects: { power: 3, jinchen: 5, donggong: -5 }, tags: { '忠臣': { permanent: true, affectsCrises: ['crisis_finale'] } } },
+          normal: { desc: '朱元璋收下密信，未置可否', effects: { power: 2, donggong: -3 }, tags: { '忠臣': { permanent: true, affectsCrises: ['crisis_finale'] } } },
+          unfavorable: { desc: '朱元璋勃然大怒，怀疑你与边将勾连，你被罚俸三月', effects: { power: -4, donggong: -5 }, tags: { '忠臣': { permanent: true, affectsCrises: ['crisis_finale'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      }
+    ],
+    chainsTo: ['crisis_12'],
+    chainRequires: { '东宫密信': { present: true, difficultyMod: -1 } },
+    chainEffect: function(gs, choiceId, outcome) {
+      // 持有「守密者」标签时，crisis_12（舅舅血路）中可获得太子旧部帮助（难度降低）
+      if (gs.crisisTags && gs.crisisTags['守密者']) {
+        return { crisis_12: { difficultyMod: -1 } };
+      }
+      if (gs.crisisTags && gs.crisisTags['东宫密信']) {
+        return { crisis_12: { difficultyMod: -1 } };
+      }
+      return {};
+    }
+  },
+
+  // ===== crisis_12: 舅舅的血路 =====
+  {
+    id: 'crisis_12',
+    title: '舅舅的血路',
+    type: 'D',
+    window: { start: 46, end: 49 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: [{ name: '蓝玉', allowStates: ['alive', 'escaped'] }],
+    triggerCondition: function(gs) { return gs.turn >= 46; },
+    triggerProbability: 0.85,
+    originVariants: {
+      '淮西武将之后': { conflictDesc: '蓝玉是你的亲舅舅。消息传来时你正在擦拭你母亲留给你的那把短刀。', npcName: '蓝玉', relation: '亲舅舅' },
+      '浙东寒门书生': { conflictDesc: '你通过太子旧部得知了蓝玉被监视的消息。你与蓝玉并无深交，但你知道——淮西勋贵的末日，也是所有官员的末日。', npcName: '蓝玉', relation: '太子旧部提及的勋贵' },
+      '应天府商贾之子': { conflictDesc: '你家的商路上发现了锦衣卫的暗探。蓝玉的案子，先刮到的是生意人的头上。', npcName: '蓝玉', relation: '商路涉及的勋贵' },
+      '落魄前元官员之后': { conflictDesc: '赵大哥的旧主与蓝玉有旧交。消息传到你耳中时，你已经嗅到了大清洗的味道。', npcName: '蓝玉', relation: '旧交之友' }
+    },
+    backgroundStory: '消息是半夜传来的。你舅舅蓝玉被锦衣卫秘密监视了。你通过内线得知：锦衣卫已经在他的府中搜出了「谋反证据」——几封来历不明的书信和一把刻了铭文的私刀。你知道这些证据是栽赃的。但在洪武二十六年，「知道」没有用。你有一个窗口——锦衣卫在正式告发之前有三天的「取证期」，这段时间内证据还没有呈给皇帝。如果你能在这三天内将关键证据销毁或替换，你舅舅可能还有一线生机。但你更清楚一个残酷的事实：朱元璋要杀的人，从来没有人救得了。你面对的不是锦衣卫，是皇帝本人。',
+    sceneDescription: '夜风里传来更鼓。三天。你只有三天。三天后，你的舅舅将像胡惟庸一样被拖进诏狱——然后，不会再出来。',
+    narrativeDirective: '这是淮西武将出身线的终极考验。蓝玉是主角的舅舅——他的死是主角整个出身线的终结。历史惯性：蓝玉的命运不可改变，但可以改变他是被杀、流放还是出逃。',
+    countdownTurns: 3,
+    countdownDescription: '锦衣卫取证期仅三天，三天后证据将呈给皇帝',
+    countdownStates: [
+      { turn: 0, desc: '锦衣卫正在取证，证据尚未呈递' },
+      { turn: 1, desc: '风声日紧，蓝玉府外暗探增多' },
+      { turn: 2, desc: '明日证据将呈给皇帝，这是最后的机会' }
+    ],
+    timeoutOutcome: {
+      desc: '你未能及时行动。证据被呈给皇帝，蓝玉以「谋反」罪名被诛，株连九族。你眼睁睁看着淮西勋贵的最后一点血脉被碾碎。',
+      npcFate: '被诛',
+      effects: { power: -4, bond: -5 },
+      npcState: 'dead',
+      tags: { '蓝党余波': { permanent: true, affectsCrises: ['crisis_13'] } }
+    },
+    choices: [
+      {
+        id: 'A', label: '销毁证据——潜入蓝玉府中，在锦衣卫之前销毁「谋反证据」',
+        primaryAttr: 'wisdom', threshold: 65, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '证据被毁，锦衣卫暂时失去告发依据', effects: { wisdom: 2, bond: 4 }, npcFate: '暂保·证据已毁' },
+          normal: { desc: '大部分证据被毁，但锦衣卫留了后手', effects: { bond: 3 }, npcFate: '暂保' },
+          unfavorable: { desc: '你被锦衣卫当场抓住，成为「蓝党同谋」', effects: { power: -6, bond: -3 }, npcFate: '蓝玉被诛·你受牵连', healthImpact: '重伤' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '崩溃边缘'
+      },
+      {
+        id: 'B', label: '劝舅舅逃跑——连夜劝他携家出逃',
+        primaryAttr: 'wisdom', threshold: 60, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '蓝玉出逃（从此成为通缉犯），你保住了他的命', effects: { power: -4, bond: 5 }, npcFate: '出逃', npcState: 'escaped' },
+          normal: { desc: '蓝玉犹豫后带着少数亲信出逃', effects: { power: -5, bond: 4 }, npcFate: '出逃', npcState: 'escaped' },
+          unfavorable: { desc: '蓝玉拒绝相信——「我堂堂凉国公，皇帝能拿我怎样？」', effects: { bond: -3 }, npcFate: '蓝玉被诛' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'C', label: '联络其他勋贵——联合与蓝玉关系密切的家族共同上书求情',
+        primaryAttr: 'power', threshold: 55, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '联名书暂时阻止了锦衣卫的行动，蓝玉被流放', effects: { power: 2, bond: 4 }, npcFate: '流放' },
+          normal: { desc: '联名书起了作用，蓝玉从死刑改为流放', effects: { power: 1, bond: 3 }, npcFate: '流放' },
+          unfavorable: { desc: '联名的家族被逐一清洗，你也成为目标', effects: { power: -6, bond: -3 }, tags: { '蓝党余波': { permanent: true, affectsCrises: ['crisis_13'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      }
+    ],
+    npcDeathConsequence: {
+      tag: '蓝党余波', permanent: true,
+      effectOnWisdom: -5,
+      narrativeImpact: '所有涉及淮西勋贵、舅舅、军旅旧事的场景'
+    },
+    chainsTo: ['crisis_13'],
+    chainRequires: { '蓝党余波': { present: true, difficultyMod: 2 } },
+    chainEffect: function(gs, choiceId, outcome) {
+      if (gs.crisisTags && gs.crisisTags['蓝党余波']) {
+        return { crisis_13: { difficultyMod: 2 } };
+      }
+      return {};
+    }
+  },
+
+  // ===== crisis_13: 审讯风暴 =====
+  {
+    id: 'crisis_13',
+    title: '审讯风暴',
+    type: 'C',
+    window: { start: 49, end: 51 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: null,
+    triggerCondition: function(gs) { return gs.turn >= 49; },
+    triggerProbability: 0.85,
+    originVariants: {
+      '淮西武将之后': { conflictDesc: '审讯你的是锦衣卫指挥蒋瓛。他认得你——「蓝玉的外甥，好大的胆子。」' },
+      '浙东寒门书生': { conflictDesc: '供词里你的名字出现了三次。蒋瓛念到你名字时，特意抬了抬眼皮。' },
+      '应天府商贾之子': { conflictDesc: '有人供出你「出资资助蓝玉家眷」。蒋瓛敲了敲案上的银票。' },
+      '落魄前元官员之后': { conflictDesc: '蒋瓛翻着你的籍贯卷宗，忽然笑了：「前朝的官，明朝的贼，你这一家子倒是齐全。」' }
+    },
+    backgroundStory: '你被押进了锦衣卫诏狱最深处的审讯室。你面前坐着锦衣卫指挥蒋瓛——蓝玉案的总负责人。他的案头摊着一份供词，是某个已经被折磨得精神崩溃的小官写的。供词里，你的名字出现了三次。「你认识蓝玉吗？」蒋瓛问。你知道这个问题的答案。你当然认识——但「认识」和「同谋」之间的距离，在这间审讯室里，比一张纸还薄。蒋瓛拍了拍案上的供词：「这个人说，你参加过蓝玉的秘密聚会。你说呢？」他没有等你回答，就对旁边的锦衣卫说了一句话：「先打二十。打完再问。」你被按在地上。这是你的身体和意志的直接考验。',
+    sceneDescription: '第一杖落下来的时候，你听到自己骨头碎裂的声音。第二杖。你开始数了——还有十八杖。',
+    narrativeDirective: '这是游戏中肉体痛苦最强烈的事件。玩家将通过文字「感受」廷杖的每一击。蓝玉案中「八十天，一万五千人」——审讯的核心不是查明真相，而是滚动株连。',
+    choices: [
+      {
+        id: 'A', label: '咬牙硬扛——一声不吭',
+        primaryAttr: 'power', threshold: 55, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '二十杖后你还能站起来，蒋瓛反而犹豫了', effects: { fame: 3, power: 1 }, healthImpact: '轻伤' },
+          normal: { desc: '你挨完二十杖，勉强保住尊严', effects: { fame: 1 }, healthImpact: '重伤' },
+          unfavorable: { desc: '你在第十杖时昏厥，被泼水后继续打', effects: { power: -4, fame: -2 }, healthImpact: '重伤', mentalImpact: '崩溃边缘' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: null
+      },
+      {
+        id: 'B', label: '部分招供——承认「认识但非同谋」，供出一个无足轻重的人名',
+        primaryAttr: 'wisdom', threshold: 55, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '蒋瓛认为你「态度诚恳」，停止用刑', effects: { power: -2, wisdom: 1 }, healthImpact: '轻伤' },
+          normal: { desc: '你招了一个名字，挨了十杖后被放回', effects: { power: -3, fame: -1 }, healthImpact: '轻伤' },
+          unfavorable: { desc: '你供出的人当场对质，你被加刑', effects: { power: -5, fame: -3 }, healthImpact: '重伤', tags: { '攀咬之名': { permanent: true, affectsCrises: ['crisis_15'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'C', label: '全部招供——承认一切（包括你没有做过的事）',
+        primaryAttr: 'wisdom', threshold: 30, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '你活下来了，但被剥夺所有官职，你供出的人因此被杀', effects: { power: -8, fame: -5, bond: -3 }, tags: { '招供者': { permanent: true, affectsCrises: ['crisis_15'] } } },
+          normal: { desc: '你被革职为民，蒋瓛满意地合上了供词', effects: { power: -7, fame: -4 }, tags: { '招供者': { permanent: true, affectsCrises: ['crisis_15'] } } },
+          unfavorable: { desc: '你招了，但蒋瓛觉得你还藏着东西，继续用刑', effects: { power: -5, wisdom: -3 }, healthImpact: '重伤', mentalImpact: '崩溃' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: null
+      }
+    ],
+    chainsTo: ['crisis_15'],
+    chainRequires: { '招供者': { present: true, difficultyMod: 2 } },
+    chainEffect: function(gs, choiceId, outcome) {
+      if (gs.crisisTags && gs.crisisTags['招供者']) {
+        return { crisis_15: { difficultyMod: 2 } };
+      }
+      return {};
+    }
+  },
+
+  // ===== crisis_14: 缇骑在门外 =====
+  {
+    id: 'crisis_14',
+    title: '缇骑在门外',
+    type: 'C',
+    window: { start: 52, end: 54 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: null,
+    triggerCondition: function(gs) { return gs.turn >= 52; },
+    triggerProbability: 0.78,
+    originVariants: {
+      '淮西武将之后': { conflictDesc: '你家院墙外的泥地上有新鲜的脚印——不止一个。' },
+      '浙东寒门书生': { conflictDesc: '你写给友人的信被拆开后又重新封上了，封口的蜡有不同的纹路。' },
+      '应天府商贾之子': { conflictDesc: '你家对面新开的铺子，掌柜的账本上记的却全是进出你家的时辰。' },
+      '落魄前元官员之后': { conflictDesc: '你家仆人出门买菜时总有人「恰好」在同一家铺子。三十年了，这种盯梢你认得出来。' }
+    },
+    backgroundStory: '洪武朝已经快走到尽头了。三十年的恐怖统治，让每个人都变成了惊弓之鸟。你发现自己被监视了。起初是错觉——街上总有人在远处跟着你，你家对面的铺子换了新租客，你家仆人出门买菜时总有人「恰好」在同一家铺子买东西。然后你发现了证据——你家院墙外的泥地上有新鲜的脚印，你写给友人的信被拆开后又重新封上了。你的家里有一个锦衣卫的暗桩。你不知道是谁——是那个新来的厨子？还是跟了你五年的老仆人？还是你的邻居？但你知道，你的每一句话、每一个动作、每一封书信，都被记录在案，呈到了锦衣卫的案头。你活在一个你自己家里的监狱中。',
+    sceneDescription: '你对着镜子说话——因为你知道，隔壁有人在听。你的每一个字都是说给锦衣卫听的。',
+    narrativeDirective: '此事件的恐怖感来自于「日常中的窒息」——不是突然被抓走，而是慢慢发现自己活在一个监控世界里。这种恐惧比任何酷刑都更令人绝望。',
+    choices: [
+      {
+        id: 'A', label: '找出暗桩——通过精心设计的「信息陷阱」锁定暗桩身份',
+        primaryAttr: 'wisdom', threshold: 60, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '找到暗桩并将其控制，从此你的情报渠道反而多了一条', effects: { wisdom: 2, power: 2 }, tags: { '谍中谍': { permanent: true, affectsCrises: ['crisis_finale'] } } },
+          normal: { desc: '你确认了暗桩身份，但没有打草惊蛇', effects: { wisdom: 1 }, tags: { '谍中谍': { permanent: true, affectsCrises: ['crisis_finale'] } } },
+          unfavorable: { desc: '陷阱被识破，暗桩转移，你的怀疑加剧了锦衣卫对你的关注', effects: { power: -4, wisdom: -2 }, tags: { '被盯上': { expiresAt: 58, affectsCrises: ['crisis_finale'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'B', label: '反向利用——通过暗桩向锦衣卫传递精心编造的假情报',
+        primaryAttr: 'wisdom', threshold: 55, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '锦衣卫被误导，对你的关注度下降', effects: { wisdom: 2, power: 1 } },
+          normal: { desc: '假情报起了作用，但你知道这只能维持一时', effects: { wisdom: 1 } },
+          unfavorable: { desc: '假情报被锦衣卫识破，你的处境更加危险', effects: { power: -5, jinchen: -5 }, tags: { '被盯上': { expiresAt: 58, affectsCrises: ['crisis_finale'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'C', label: '彻底断联——切断所有对外联系，不再写任何敏感信息',
+        primaryAttr: 'wisdom', threshold: 50, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '安全但孤立——你在最后几个回合中几乎是一个「隐形人」', effects: { power: -2, fame: -2 } },
+          normal: { desc: '你不再写信、不再会客，日子变得安静而压抑', effects: { fame: -1 } },
+          unfavorable: { desc: '彻底断联让你失去了所有消息渠道，包括保命的那些', effects: { power: -3, wisdom: -2 } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      }
+    ],
+    chainsTo: [],
+    chainEffect: null
+  },
+
+  // ===== crisis_15: 诏狱深处 =====
+  {
+    id: 'crisis_15',
+    title: '诏狱深处',
+    type: 'D',
+    window: { start: 54, end: 56 },
+    minIntervalFromLastCrisis: 3,
+    minIntervalFromAnchor: 2,
+    requiredNPCs: { type: 'originNPC', key: '至亲', states_alive: ['alive'] },
+    triggerCondition: function(gs) { return gs.turn >= 54; },
+    triggerProbability: 0.85,
+    originVariants: {
+      '淮西武将之后': { npcName: '妻子张蕴真', relation: '你的发妻，因一句「如今的日子还不如刚打天下那会儿」被举报' },
+      '浙东寒门书生': { npcName: '母亲', relation: '你的母亲，因在邻家闲谈时说了句犯忌的话' },
+      '应天府商贾之子': { npcName: '老父亲', relation: '你的父亲，因生意场上的一句抱怨被暗探听到' },
+      '落魄前元官员之后': { npcName: '母亲陈秀英', relation: '你的母亲——她的前朝身份，终于被人翻了出来' }
+    },
+    backgroundStory: '你收到了一个消息——你最重要的至亲被锦衣卫抓了。罪名是「诽谤朝廷」——据说是你的至亲在和邻居闲聊时说了一句「如今的日子还不如前元/还不如太祖刚打天下那会儿」。这句话被锦衣卫的暗探听到了。在洪武朝，「诽谤朝廷」可以轻至杖责为民，也可以重至——死。你的至亲被关在诏狱最深处。锦衣卫给你的暗示很明确：「交出一百两黄金，案子可以『从轻』处理。」或者——「把你手中这些年积攒的那些案卷交出来，我们当什么都没发生过。」你在诏狱外站了很久。黄金，你凑得出来。案卷，你这些年也确实暗中保存了一些——那些能证明某些冤案的证据。但交出去，那些冤死的人就永远没有翻案的机会了。',
+    sceneDescription: '诏狱的墙壁在滴水。你至亲的声音从墙后面传来——微弱，但还在。「别交……别把那些东西给他们……」',
+    narrativeDirective: '这是游戏中最「道德两难」的事件。三个选择分别代表：金钱（物质代价）、良心（精神代价）、自由（生命代价）。没有正确答案。',
+    countdownTurns: 3,
+    countdownDescription: '你的至亲在诏狱中撑不了太久，每回合都在受刑',
+    countdownStates: [
+      { turn: 0, desc: '至亲已被打十杖，但始终没有招供' },
+      { turn: 1, desc: '至亲开始说胡话，身体撑不住了' },
+      { turn: 2, desc: '锦衣卫下了最后通牒——明日不来，就按「诽谤朝廷」处死' }
+    ],
+    timeoutOutcome: {
+      desc: '你未能及时行动。你的至亲在诏狱中被折磨致死。临死前，她/他只留给你一句话：「好好活着。」',
+      npcFate: '处死',
+      effects: { bond: -6, wisdom: -2 },
+      npcState: 'dead',
+      tags: { '至亲之死': { permanent: true, affectsCrises: ['crisis_finale'] } }
+    },
+    choices: [
+      {
+        id: 'A', label: '交出一百两黄金赎人',
+        primaryAttr: 'power', threshold: 0, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '至亲获释，但你倾家荡产。在终局中缺少经济资源', effects: { power: -4, bond: 4 }, npcFate: '获释·倾家荡产', tags: { '倾家荡产': { permanent: true, affectsCrises: ['crisis_finale'] } } },
+          normal: { desc: '至亲获释，你掏空了家底', effects: { power: -3, bond: 3 }, npcFate: '获释' },
+          unfavorable: { desc: '你交了黄金，但锦衣卫食言，只放回一具伤痕累累的身体', effects: { power: -4, bond: -2 }, npcFate: '获释·重伤' }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'B', label: '交出案卷换取自由',
+        primaryAttr: 'wisdom', threshold: 0, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '至亲获释，案卷被锦衣卫销毁。你获得「背弃者」之名', effects: { bond: 3, fame: -3 }, npcFate: '获释', tags: { '背弃者': { permanent: true, affectsCrises: ['crisis_finale'] } } },
+          normal: { desc: '至亲获释，但你亲手烧掉了那些冤案的证据', effects: { bond: 3, wisdom: -2 }, npcFate: '获释', tags: { '背弃者': { permanent: true, affectsCrises: ['crisis_finale'] } } },
+          unfavorable: { desc: '案卷被销毁，但锦衣卫以「知情不报」为由仍拘押了你的至亲', effects: { power: -4, bond: -3 }, npcFate: '未获释', tags: { '背弃者': { permanent: true, affectsCrises: ['crisis_finale'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '崩溃边缘'
+      },
+      {
+        id: 'C', label: '自首顶罪——向锦衣卫自首，替至亲顶罪',
+        primaryAttr: 'wisdom', threshold: 65, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '至亲获释，你被关入诏狱。你在狱中撑过了最后的回合，带着满身伤痕走出诏狱', effects: { bond: 6, fame: 3 }, npcFate: '至亲获释·你入狱', healthImpact: '重伤', tags: { '顶罪者': { permanent: true, affectsCrises: ['crisis_finale'] } } },
+          normal: { desc: '至亲获释，你在狱中受尽折磨，但总算活了下来', effects: { bond: 5 }, npcFate: '至亲获释·你入狱', healthImpact: '重伤', tags: { '顶罪者': { permanent: true, affectsCrises: ['crisis_finale'] } } },
+          unfavorable: { desc: '至亲获释，但你在狱中被打成重伤，几乎没能活着出来', effects: { bond: 4, power: -4 }, npcFate: '至亲获释·你重伤', healthImpact: '濒死', tags: { '顶罪者': { permanent: true, affectsCrises: ['crisis_finale'] } } }
+        },
+        tags: {}, healthImpact: null, mentalImpact: '崩溃边缘'
+      }
+    ],
+    npcDeathConsequence: {
+      tag: '至亲之死', permanent: true,
+      effectOnWisdom: -5,
+      narrativeImpact: '所有涉及亲人、家庭、临终嘱托的场景'
+    },
+    chainsTo: ['crisis_finale'],
+    chainRequires: { '至亲之死': { present: true, difficultyMod: 2 } },
+    chainEffect: function(gs, choiceId, outcome) {
+      if (gs.crisisTags && gs.crisisTags['至亲之死']) {
+        return { crisis_finale: { difficultyMod: 2 } };
+      }
+      return {};
+    }
+  },
+
+  // ===== crisis_finale: 帝王崩·天命落（终局） =====
+  {
+    id: 'crisis_finale',
+    title: '帝王崩·天命落',
+    type: 'B',
+    isFinale: true,
+    window: { start: 57, end: 60 },
+    minIntervalFromLastCrisis: 0,
+    minIntervalFromAnchor: 0,
+    requiredNPCs: null,
+    triggerCondition: function(gs) { return gs.turn >= 57; },
+    triggerProbability: 1.0,
+    originVariants: {
+      '淮西武将之后': {
+        conflictDesc: '淮西旧部已被清洗大半，你是硕果仅存的几家之一。燕王派人密信招揽——跟，还是不跟？',
+        keyNPC: '蓝玉已死，军中旧交或死或贬，孤立无援'
+      },
+      '浙东寒门书生': {
+        conflictDesc: '东宫派（方孝孺等人）拉你入幕，但你知道建文帝削藩必激起兵变',
+        keyNPC: '方孝孺、黄子澄等书生意气，但不懂军事'
+      },
+      '应天府商贾之子': {
+        conflictDesc: '商路依赖朝廷稳定，但燕王控制北方商道——两边下注还是选边？',
+        keyNPC: '父亲年迈，家族产业是筹码也是软肋'
+      },
+      '落魄前元官员之后': {
+        conflictDesc: '前朝旧事早已被遗忘，但新政权对「身份可疑」者更加敏感',
+        keyNPC: '母亲的秘密可能在权力真空中被翻出'
+      }
+    },
+    backgroundStory: '洪武三十一年，闰五月初十。皇帝驾崩了。消息在黎明前传遍了应天府。钟声响起——不是朝会的钟声，而是那种你从未听过的、缓慢而沉重的丧钟。你站在衙署的院子里，看着天色从黑变灰。你知道，一个时代结束了。但你更知道，真正的危险才刚刚开始。皇帝的遗诏——「皇太孙即位」——还没有公开宣读。在这段真空期里，整个应天府的权力格局像一盘被打翻的棋。你收到了三封信：第一封来自锦衣卫的某位千户——「识时务者为俊杰。把你知道的交出来，新朝需要你这样的人。」第二封来自一位藩王的使者——「殿下记得你在东宫时的选择。站在正确的一边，你将得到一切。」第三封来自你的至亲——「快走。别回头。」你在洪武朝活了三十年。你经历了九场风暴，在诏狱里挨过杖，在刑堂上低过头，在权力面前弯过腰。现在，最后的十字路口在你面前展开。你必须选择——你要成为什么样的人？',
+    sceneDescription: '丧钟在响。三封信在你手中。你站在时代的门槛上。身后是三十年的血与火，前方是未知的深渊。',
+    narrativeDirective: '终局危机——整个60回合的总清算。这不是一个简单的判定，而是对你三十年宦海生涯的最终审判。天命值可在关键节点消耗，扭转一次致命判定。',
+    phases: [
+      { turn: 57, title: '国丧', desc: '朱元璋驾崩，遗诏宣读。满城缟素之中，你的第一反应是什么？' },
+      { turn: 58, title: '站队', desc: '各方势力开始拉拢，你必须表明立场——锦衣卫、藩王、至亲，三封信摆在你面前。' },
+      { turn: 59, title: '暗涌', desc: '削藩风声渐起，你收到密报——有人在清点你的家产。' },
+      { turn: 60, title: '天命落', desc: '最终结局结算。你的选择决定了家族的命运。' }
+    ],
+    choices: [
+      {
+        id: 'A', label: '留在应天府，拥立皇太孙（正统路线）',
+        primaryAttr: 'people', threshold: 55, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '结局A+：你保全了名节，新朝百姓拥戴', effects: { people: 5, fame: 4 } },
+          normal: { desc: '结局A：你保全了名节，但在新朝中未必有好的前途', effects: { people: 3, fame: 2 } },
+          unfavorable: { desc: '结局A-：你留在应天府，但站错了队，在新朝中被边缘化', effects: { power: -3, fame: 1 } }
+        },
+        tags: { '拥立东宫': { permanent: true, affectsCrises: [] } }, healthImpact: null, mentalImpact: null
+      },
+      {
+        id: 'B', label: '交出所有筹码，投靠新主（实用主义路线）',
+        primaryAttr: 'power', threshold: 50, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '结局B+：新朝权贵，但良心受谴', effects: { power: 5, fame: -3 } },
+          normal: { desc: '结局B：被边缘化的老臣', effects: { power: 3, fame: -2 } },
+          unfavorable: { desc: '结局B-：你投靠的人自身难保，你也被连累', effects: { power: -4, bond: -3 } }
+        },
+        tags: { '投靠新主': { permanent: true, affectsCrises: [] } }, healthImpact: null, mentalImpact: '焦虑'
+      },
+      {
+        id: 'C', label: '趁乱出逃，远离应天府（自由路线）',
+        primaryAttr: 'wisdom', threshold: 55, secondaryCheck: null,
+        outcomes: {
+          favorable: { desc: '结局C+：你成功隐居，安享余年', effects: { wisdom: 3, bond: 2 } },
+          normal: { desc: '结局C：流亡，颠沛流离', effects: { wisdom: 2, power: -2 } },
+          unfavorable: { desc: '结局C-：你在出逃路上被盘查扣留', effects: { power: -4, wisdom: -2 } }
+        },
+        tags: { '出逃': { permanent: true, affectsCrises: [] } }, healthImpact: null, mentalImpact: null
+      }
+    ],
+    chainsTo: [],
+    chainEffect: null
+  },
 ];
 
 // 快速索引：id → event object
@@ -3891,14 +4757,8 @@ function canTriggerCrisis(turn) {
   for (var i = 0; i < HISTORY_ANCHORS.length; i++) {
     if (HISTORY_ANCHORS[i].start - turn === 1) return false;
   }
-  // 条件5：当前回合不能有EA正在触发
-  var bg = GameState.character.background;
-  if (typeof EMOTIONAL_ANCHORS !== 'undefined' && EMOTIONAL_ANCHORS[bg]) {
-    var eaList = EMOTIONAL_ANCHORS[bg];
-    for (var i = 0; i < eaList.length; i++) {
-      if (eaList[i].triggerTurn === turn) return false;
-    }
-  }
+  // 条件5：当前回合不能有EA正在触发（v3.14.0: 统一走 isEATurn，P1-2）
+  if (isEATurn(turn)) return false;
   // 条件6：pacing不为紧迫/反转/沉淀
   var pacing = GameState.pacing;
   if (pacing === '紧迫' || pacing === '反转' || pacing === '沉淀') return false;
@@ -3949,12 +4809,13 @@ function isCrisisNPCAlive(evt, turn) {
   return true;
 }
 
-// 辅助：年份→回合号（基于HISTORY_ANCHORS插值）
+// 辅助：年份→回合号（v3.14.0 改为统一查 ANCHOR_TURN_TABLE，P1-3）
+// 说明：旧实现曾用 (year-1373)*2.85 线性近似，对胡惟庸1380→T20（应为12-15）、
+//   朱标1392→T54（应为43-44）、蓝玉1393→T57（应为47-49）均产生误判，
+//   导致 isCrisisNPCAlive 在这些NPC死后仍判定存活。v3.13.0 改为锚点对插值，
+//   v3.14.0 将锚点对收敛为统一常量 ANCHOR_TURN_TABLE，行为不变。
 function _crisisYearToTurn(year) {
-  // 锚点映射：T2-4→1375, T12-15→1380, T21-22→1382, T27-29→1385,
-  //          T38-40→1390, T43-44→1392, T47-49→1393, T52-53→1396, T57-60→1398
-  // 线性近似：turn ≈ (year - 1373) * 2.85
-  return Math.round((year - 1373) * 2.85);
+  return yearToTurn(year);
 }
 
 // ---------- getEligibleEvents() ----------
@@ -3967,6 +4828,8 @@ function getEligibleEvents(turn) {
       var evtId = win.eventIds[e];
       var evt = _crisisEventMap[evtId];
       if (!evt) continue;
+      // v3.13.0：事件自身精确窗口（若配置则按回合过滤）
+      if (evt.window && (turn < evt.window.start || turn > evt.window.end)) continue;
       // 已触发跳过
       if (GameState.crisisEventsTriggered.indexOf(evt.id) !== -1) continue;
       // 自定义条件
@@ -3975,7 +4838,8 @@ function getEligibleEvents(turn) {
       if (!isCrisisNPCAlive(evt, turn)) continue;
       eligible.push(evt);
     }
-    if (eligible.length > 0) break;
+    // v3.13.0：移除“找到合格即 break”，遍历全部 group 收集，
+    // 使重叠窗口（如 crisis_4/5 同窗口、crisis_13/14 相邻）都能正确进入调度
   }
   return eligible;
 }
@@ -3992,6 +4856,18 @@ function activateCrisisEvent(evt) {
     countdown: evt.countdownTurns || 0,
     choices: evt.choices
   };
+  // v3.13.0 限时倒计时初始化
+  if (evt.countdownTurns) {
+    if (!GameState.crisisTimers) GameState.crisisTimers = {};
+    GameState.crisisTimers[evt.id] = {
+      remaining: evt.countdownTurns,
+      total: evt.countdownTurns,
+      startTurn: turn,
+      lastDecrementTurn: turn,
+      states: evt.countdownStates || null,
+      currentStateIndex: 0
+    };
+  }
   console.log('[生死危机] 触发「' + evt.title + '」(id=' + evt.id + ') at T' + turn);
   return GameState.activeCrisisEvent;
 }
@@ -3999,8 +4875,18 @@ function activateCrisisEvent(evt) {
 // ---------- checkCrisisStoryEvent() ----------
 function checkCrisisStoryEvent() {
   var turn = GameState.turn;
-  // 硬截止：终局窗口内不再调度新危机事件（HISTORY_ANCHORS[8] = 朱元璋驾崩锚点，start = 第57回）
-  if (turn >= HISTORY_ANCHORS[8].start) return null;
+  // v3.13.0：终局窗口（T57-60）内强制触发 crisis_finale，
+  // 不再调度新常规危机事件（HISTORY_ANCHORS[8] = 朱元璋驾崩锚点，start = 第57回）
+  if (turn >= HISTORY_ANCHORS[8].start) {
+    var finaleTriggered = GameState.crisisEventsTriggered &&
+      GameState.crisisEventsTriggered.indexOf('crisis_finale') !== -1;
+    if (!finaleTriggered && !GameState.activeCrisisEvent) {
+      skipRemainingCrisisEvents();
+      var finaleEvt = _crisisEventMap['crisis_finale'];
+      if (finaleEvt) return activateCrisisEvent(finaleEvt);
+    }
+    return null;
+  }
   // 当前有活跃危机
   if (GameState.activeCrisisEvent) return null;
   // 冷却+屏蔽
@@ -4008,7 +4894,7 @@ function checkCrisisStoryEvent() {
   // 获取合格事件
   var eligible = getEligibleEvents(turn);
   if (eligible.length === 0) return null;
-  // 概率触发 + 窗口末尾保底（越接近窗口末尾概率越高）
+  // 概率触发 + 窗口末尾保底（越接近窗口末尾概率越高）+ 连锁标签修正
   for (var i = 0; i < eligible.length; i++) {
     var evt = eligible[i];
     var baseProb = evt.triggerProbability || 0.75;
@@ -4017,6 +4903,20 @@ function checkCrisisStoryEvent() {
     var windowSize = evt.window.end - evt.window.start + 1;
     var endBonus = (windowSize > 1) ? (1 - distToEnd / windowSize) * 0.3 : 0;
     var finalProb = Math.min(1.0, baseProb + endBonus);
+    // v3.13.0：chainRequires 已持有所需标签 → 触发概率提升（难度修正见 resolveCrisisJudgment）
+    if (evt.chainRequires) {
+      var hasReq = true;
+      for (var reqTag in evt.chainRequires) {
+        if (evt.chainRequires.hasOwnProperty(reqTag)) {
+          var req = evt.chainRequires[reqTag];
+          var tagInfo = GameState.crisisTags && GameState.crisisTags[reqTag];
+          var tagPresent = tagInfo && (tagInfo.permanent || (tagInfo.expiresAt && GameState.turn <= tagInfo.expiresAt));
+          if (req.present === true && !tagPresent) { hasReq = false; break; }
+          if (req.present === false && tagPresent) { hasReq = false; break; }
+        }
+      }
+      if (hasReq) finalProb = Math.min(1.0, finalProb + 0.25);
+    }
     // 窗口最后一回合100%触发
     if (distToEnd === 0) finalProb = 1.0;
     if (Math.random() < finalProb) {
@@ -4024,6 +4924,112 @@ function checkCrisisStoryEvent() {
     }
   }
   return null;
+}
+
+// ---------- skipRemainingCrisisEvents() ----------
+// v3.13.0：终局启动时，将尚未触发的常规危机事件标记为已跳过，
+// 避免终局后调度死锁；记录被跳过的 id 供叙事补丁读取
+function skipRemainingCrisisEvents() {
+  if (!GameState.crisisEventsTriggered) GameState.crisisEventsTriggered = [];
+  var skipped = [];
+  for (var i = 0; i < CRISIS_STORY_EVENTS.length; i++) {
+    var evt = CRISIS_STORY_EVENTS[i];
+    if (evt.isFinale) continue;
+    if (GameState.crisisEventsTriggered.indexOf(evt.id) === -1) {
+      GameState.crisisEventsTriggered.push(evt.id);
+      skipped.push(evt.id);
+    }
+  }
+  if (skipped.length > 0) {
+    console.log('[生死危机] 终局启动，跳过未触发的常规危机事件：' + skipped.join(', '));
+    if (!GameState.crisisSkippedEvents) GameState.crisisSkippedEvents = [];
+    GameState.crisisSkippedEvents = GameState.crisisSkippedEvents.concat(skipped);
+  }
+  return skipped;
+}
+
+// ---------- crisisTimerTick() ----------
+// v3.13.0 限时倒计时机制：每回合推进时递减活跃危机的倒计时；
+// 递减到 0 仍未解决 → 执行 timeoutOutcome 并结束该事件
+function crisisTimerTick() {
+  if (!GameState.crisisTimers) return false;
+  var turn = GameState.turn;
+  var expired = [];
+  for (var eventId in GameState.crisisTimers) {
+    if (!GameState.crisisTimers.hasOwnProperty(eventId)) continue;
+    var timer = GameState.crisisTimers[eventId];
+    if (!timer || timer.remaining <= 0) continue;
+    // 同一回合内只递减一次（防重复调用）
+    if (timer.lastDecrementTurn === turn) continue;
+    timer.remaining -= 1;
+    timer.lastDecrementTurn = turn;
+    // 推进 countdownStates 状态索引（供叙事注入读取当前阶段）
+    if (timer.states && timer.total) {
+      var elapsed = timer.total - timer.remaining;
+      timer.currentStateIndex = Math.min(timer.states.length - 1, elapsed);
+    }
+    if (timer.remaining <= 0) {
+      expired.push(eventId);
+    } else {
+      console.log('[生死危机] 限时倒计时：' + eventId + ' 剩余 ' + timer.remaining + ' 回合');
+    }
+  }
+  // 处理超时后果
+  for (var i = 0; i < expired.length; i++) {
+    var expiredId = expired[i];
+    var t = GameState.crisisTimers[expiredId];
+    var evt = _crisisEventMap[expiredId];
+    console.log('[生死危机] 限时倒计时结束：' + expiredId + ' 超时');
+    if (evt && evt.timeoutOutcome) {
+      var to = evt.timeoutOutcome;
+      if (to.effects) {
+        for (var key in to.effects) {
+          if (to.effects.hasOwnProperty(key)) {
+            if (GameState.attributes[key] !== undefined) {
+              GameState.attributes[key] = Math.max(0, Math.min(100, GameState.attributes[key] + to.effects[key]));
+            } else if (GameState.factions[key] !== undefined) {
+              GameState.factions[key] = Math.max(-100, Math.min(100, GameState.factions[key] + to.effects[key]));
+            }
+          }
+        }
+      }
+      if (to.healthImpact) applyHealthImpact(to.healthImpact);
+      if (to.mentalImpact) applyMentalStateImpact(to.mentalImpact);
+      if (to.tags) {
+        for (var tagName in to.tags) {
+          if (to.tags.hasOwnProperty(tagName)) {
+            var tagData = to.tags[tagName];
+            GameState.crisisTags[tagName] = {
+              turn: turn,
+              expiresAt: tagData.expiresAt || null,
+              permanent: tagData.permanent || false,
+              affectsCrises: tagData.affectsCrises || []
+            };
+          }
+        }
+      }
+      if (to.npcFate && evt.requiredNPCs && evt.requiredNPCs.type === 'originNPC') {
+        GameState.originNPCState[evt.requiredNPCs.key] = 'dead';
+        if (evt.npcDeathConsequence) {
+          var nc = evt.npcDeathConsequence;
+          GameState.crisisTags[nc.tag] = { turn: turn, permanent: true, affectsCrises: [] };
+          if (nc.effectOnWisdom) {
+            GameState.attributes.wisdom = Math.max(0, GameState.attributes.wisdom + nc.effectOnWisdom);
+          }
+        }
+      }
+    }
+    // 结束该事件（若仍处于活跃状态）
+    if (GameState.activeCrisisEvent && GameState.activeCrisisEvent.eventId === expiredId) {
+      if (GameState.crisisEventsCompleted.indexOf(expiredId) === -1) {
+        GameState.crisisEventsCompleted.push(expiredId);
+      }
+      GameState.activeCrisisEvent = null;
+      GameState.crisisJudgmentPending = false;
+    }
+    delete GameState.crisisTimers[expiredId];
+  }
+  return expired.length > 0;
 }
 
 // ---------- applyHealthImpact() ----------
@@ -4102,6 +5108,22 @@ function resolveCrisisJudgment(choiceId) {
       }
     }
   }
+  // v3.13.0 跨事件连锁难度修正：chainRequires 已持有所需标签 → 难度提升
+  if (evt.chainRequires) {
+    for (var reqTag in evt.chainRequires) {
+      if (evt.chainRequires.hasOwnProperty(reqTag)) {
+        var req = evt.chainRequires[reqTag];
+        var tagInfo = GameState.crisisTags && GameState.crisisTags[reqTag];
+        var tagPresent = tagInfo && (tagInfo.permanent || (tagInfo.expiresAt && GameState.turn <= tagInfo.expiresAt));
+        if (req.present === true && tagPresent && req.difficultyMod) {
+          tagMod -= req.difficultyMod;
+        }
+        if (req.present === false && !tagPresent && req.difficultyMod) {
+          tagMod -= req.difficultyMod;
+        }
+      }
+    }
+  }
   diff += tagMod;
 
   // 概率池判定
@@ -4170,10 +5192,35 @@ function resolveCrisisJudgment(choiceId) {
     }
   }
 
-  // 完成危机事件
-  GameState.crisisEventsCompleted.push(evt.id);
-  GameState.activeCrisisEvent = null;
-  GameState.crisisJudgmentPending = false;
+  // v3.13.0 终局危机特殊处理：不立即结束，记录选择并推进阶段（4阶段持续叙事）
+  if (evt.isFinale) {
+    if (!GameState.crisisFinaleChoices) GameState.crisisFinaleChoices = [];
+    GameState.crisisFinaleChoices.push({
+      turn: GameState.turn,
+      phase: GameState.crisisFinalePhase || 0,
+      choiceId: choiceId,
+      choiceLabel: choice.label,
+      result: result,
+      outcomeDesc: outcome.desc || ''
+    });
+    if (GameState.crisisFinalePhase === undefined) GameState.crisisFinalePhase = 0;
+    // T57-59 推进阶段并保留 activeCrisisEvent（每回合继续危机叙事）；
+    // T60 为最终回合，完成事件释放给 ending 结算
+    if (GameState.turn < 60) {
+      GameState.crisisFinalePhase += 1;
+      GameState.crisisJudgmentPending = false;
+    } else {
+      GameState.crisisEventsCompleted.push(evt.id);
+      GameState.activeCrisisEvent = null;
+      GameState.crisisJudgmentPending = false;
+    }
+    console.log('[生死危机] 终局「' + evt.title + '」阶段' + GameState.crisisFinalePhase + ' 选择=' + choiceId);
+  } else {
+    // 完成危机事件
+    GameState.crisisEventsCompleted.push(evt.id);
+    GameState.activeCrisisEvent = null;
+    GameState.crisisJudgmentPending = false;
+  }
 
   console.log('[生死危机] 完成「' + evt.title + '」选择=' + choiceId + ' 池=' + pool + ' 结果=' + result);
 
@@ -4233,6 +5280,11 @@ function migrateGameState(gs) {
   if (gs.permanentMentalDamage === undefined) gs.permanentMentalDamage = 0;
   if (gs.npcCrisisState === undefined) gs.npcCrisisState = {};
   if (gs.originNPCState === undefined) gs.originNPCState = {};
+  // v3.13.0 生死危机 Phase 2 字段
+  if (gs.crisisTimers === undefined) gs.crisisTimers = {};
+  if (gs.crisisFinalePhase === undefined) gs.crisisFinalePhase = 0;
+  if (gs.crisisFinaleChoices === undefined) gs.crisisFinaleChoices = [];
+  if (gs.crisisSkippedEvents === undefined) gs.crisisSkippedEvents = [];
   return gs;
 }
 // ========== END v3.12.0 生死危机事件层 ==========

@@ -2168,3 +2168,49 @@ body {
   padding-left: 12px;
   background: linear-gradient(to right, rgba(139, 0, 0, 0.03), transparent);
 }
+
+/* ========== v3.12.3 P1-5: 终局展示样式（从 app.js showEnding 内联 CSS 迁移，类名不变） ========== */
+.ending-title { font-size: 1.6em; margin-bottom: 0.3em; color: #d4a574; text-align: center; }
+.ending-career-name { font-size: 1.2em; color: #e8c9a0; text-align: center; margin-bottom: 0.5em; font-weight: 600; }
+.ending-legacy {
+  margin: 1.2em 0; padding: 1em 1.2em;
+  background: rgba(180,140,80,0.08); border: 1px solid rgba(196,168,130,0.25);
+  border-radius: 6px;
+}
+.ending-legacy-title { font-size: 1.0em; color: #b8956a; text-align: center; margin-bottom: 0.5em; }
+.ending-legacy-name { font-size: 1.1em; color: #d4b88c; text-align: center; font-weight: 600; margin-bottom: 0.3em; }
+.ending-legacy-desc { font-size: 0.9em; color: #a89070; text-align: center; line-height: 1.6; font-style: italic; }
+.ending-verdict {
+  font-style: italic; color: #a89070; text-align: center;
+  margin: 1em 0; padding: 0 1em; line-height: 1.6;
+}
+.ending-epitaph {
+  text-align: center; color: #d4c4a0; font-size: 1.0em;
+  margin: 1.5em auto 0.8em; padding: 1.2em 1.5em;
+  background: linear-gradient(135deg, rgba(60,45,30,0.6), rgba(40,30,20,0.8));
+  border: 1px solid rgba(196,168,130,0.35);
+  border-radius: 4px;
+  box-shadow: inset 0 0 20px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.2);
+  line-height: 2; letter-spacing: 0.1em;
+  font-family: "Noto Serif SC", "Source Han Serif SC", "STSong", serif;
+  position: relative;
+  max-width: 400px;
+}
+.ending-epitaph::before {
+  content: '\2014\00A0\2014';
+  display: block;
+  color: rgba(196,168,130,0.5);
+  font-size: 0.85em;
+  margin-bottom: 0.5em;
+  letter-spacing: 0.3em;
+}
+.epitaph-loading {
+  display: inline-block;
+  color: rgba(196,168,130,0.5);
+  font-size: 0.85em;
+  animation: epitaphPulse 1.5s ease-in-out infinite;
+}
+@keyframes epitaphPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
