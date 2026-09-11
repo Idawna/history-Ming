@@ -1,3 +1,4 @@
+// ========== 墨史·大明 v3.15.0（出身线EA扩展：40→74，前元线亲明/亲北分支） ==========
 // ========== LIVE MODE: CALL BOT API VIA PROXY ==========
 // v3.8.17 上下文优化 Phase 2：前情提要重构 — 最近3段全文 + 滚动摘要
 // 作用：①读档后 chatHistory 清空，AI 靠这个衔接剧情 ②长局历史被裁剪后也不会忘身世
@@ -3325,13 +3326,20 @@ if (typeof GameState.emotionalMemory === 'undefined') {
 }
 
 // ========== v3.14.0: 公共工具（P1-2 重复代码抽取） ==========
+// ========== v3.15.0: 前元线分支过滤（P1：出身线EA扩展） ==========
 // 当前回合是否为情感锚点（EA）触发回合（checkFamilyCrisis / checkLifeEvents / canTriggerCrisis 共用）
 function isEATurn(turn) {
   var bg = GameState.character.background;
+  var branch = (GameState.character || {}).qyBranch || null;
   if (typeof EMOTIONAL_ANCHORS === 'undefined' || !EMOTIONAL_ANCHORS[bg]) return false;
   var anchors = EMOTIONAL_ANCHORS[bg];
   for (var i = 0; i < anchors.length; i++) {
-    if (anchors[i].triggerTurn === turn) return true;
+    if (anchors[i].triggerTurn === turn) {
+      // v3.15.0: 前元线分支过滤——EA带branch字段且与当前分支不符时跳过
+      // 无branch字段或branch==='shared'视为两分支共享；qyBranch未设置时（T8之前）不做过滤，行为与旧版一致
+      if (anchors[i].branch && anchors[i].branch !== 'shared' && branch && anchors[i].branch !== branch) continue;
+      return true;
+    }
   }
   return false;
 }
@@ -3347,9 +3355,12 @@ function getEmotionalAnchorDirective(turn, background) {
   if (typeof EMOTIONAL_ANCHORS === 'undefined' || !EMOTIONAL_ANCHORS[background]) return '';
 
   var anchors = EMOTIONAL_ANCHORS[background];
+  var branch = (GameState.character || {}).qyBranch || null;
   var matched = null;
   for (var i = 0; i < anchors.length; i++) {
     if (anchors[i].triggerTurn === turn) {
+      // v3.15.0: 前元线分支过滤（与 isEATurn 保持一致）
+      if (anchors[i].branch && anchors[i].branch !== 'shared' && branch && anchors[i].branch !== branch) continue;
       matched = anchors[i];
       break;
     }
@@ -3506,8 +3517,15 @@ function _buildDirectorDirective(matched, turn) {
  * @returns {boolean}
  */
 function checkConditionalBeat(condition) {
+  if (!condition) return false;
+  // v3.15.2-P2: 前元线分支表达式（branchChoice === "亲北" / qyBranch === "亲北"）→ 检查 QY-2 设置的 qyBranch
+  var branchMatch = condition.match(/^(?:qyBranch|branchChoice)\s*===\s*["'](.+?)["']$/);
+  if (branchMatch) {
+    return !!(GameState.character && GameState.character.qyBranch === branchMatch[1]);
+  }
   if (!GameState.emotionalMemory || GameState.emotionalMemory.length === 0) return false;
-  var match = condition.match(/^(EA-[A-Z]+-\d+)选([A-C])$/);
+  // v3.15.2-P2: 正则放宽，兼容新EA id（EA-HW-NEW-F / EA-QY-NEW-GW2 / EA-HW-NEW-D）与旧id（EA-HW-10）
+  var match = condition.match(/^(EA-[A-Z0-9]+(?:-[A-Z0-9]+)*)选([A-C])$/);
   if (!match) return false;
   var targetAnchorId = match[1];
   var targetChoice = match[2];
@@ -3537,6 +3555,12 @@ function recordEmotionalChoice(choiceLabel) {
       dirData = anchor.choiceDirections[i];
       break;
     }
+  }
+  // v3.15.0: 前元线分支选择——EA-QY-2（月夜）的选择设置 qyBranch（A=亲明/B=亲北/C=默认亲明）
+  // 其他EA无branchChoice字段，dirData.branchChoice为undefined，不生效，向后兼容
+  if (dirData && dirData.branchChoice) {
+    if (!GameState.character.qyBranch) GameState.character.qyBranch = dirData.branchChoice;
+    console.log('[情感锚点V2] 前元线分支设定：' + anchor.id + ' → ' + choiceLabel + ' → ' + dirData.branchChoice);
   }
   var aiRipple = (GameState._pendingEaRipple && GameState._pendingEaRipple[choiceLabel])
                  || (dirData ? dirData.rippleHint : '');
